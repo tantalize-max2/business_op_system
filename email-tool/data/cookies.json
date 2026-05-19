@@ -1,0 +1,32 @@
+[
+  {
+    "name": "corp_web_mail_lang",
+    "value": "zh-CN",
+    "domain": "mail.chinatelecom.cn",
+    "path": "/",
+    "expires": 1781786445.260059,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "CORP_MAIL_WEB_SESSION_ID",
+    "value": "b94fe31aedd146fd8ba69b3ad94a62d3",
+    "domain": ".mail.chinatelecom.cn",
+    "path": "/",
+    "expires": -1,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax"
+  },
+  {
+    "name": "N_W_C_T",
+    "value": "23e4b308d4a24d73b5ff6e120bd5439e&b37c4dcd9a2a4f128ca405a7a8372cde&4b3ef7f0d06348a3b2e3b603d5796d69&fe398af8e05b4d4eb1a903f2d3a822ca&1ab0fc4cd2cb4d079d28cb577f9db4a7&16bd6499bc0c4986a028f6dc707f91c7&337a6f89eda140e38a539785bdb686c4&7c79fec698a24db6abb68786bcc1eaae&261031320f4647f6a3ad9c22bfafd27b&a20829674a984fd5843f4cd2765b782e&4008a20ea55b4e87ae78d3e9144a1314&e65c902bc1d0440a96bb0b83f2926eb4&b5a79bbe78cc44f08cb6a06823a6d132&06a9e75a1a3e4638b720f29c8d12e609&a405a931931f4beaa2e3fd065b463609&1fe3631b72794d92969abadb789208de&f39c21f6210144c49553c56c0089e7b5&1f395783a1f246beac5b6352006036d1&b9080310f6cb4244a89e89c045b57e94&9ae199a32e7242f2b4aee2155078f142&c73171e5af1f4bf9af8b2b29e189c521&e203958cae07425e918c400843768383&bad9813c86ed44cf9af0b072f8be17ec&e8d9a5b7985f42a8b97b275791c8b4ef&680eb4b630734599ba5c0020d3133be6&d63c081351a149e2bfdb15dea3e1b2cd&7906b5e86fbe46fdaeb2128edf84febc&c6b90265d3144ed58949014f06793559&c50165be24594bec96bbd39a636b770d&b7c0ccc5140149f4805ca8c461352463&",
+    "domain": "mail.chinatelecom.cn",
+    "path": "/",
+    "expires": 1779194525.678101,
+    "httpOnly": false,
+    "secure": true,
+    "sameSite": "Lax"
+  }
+]
