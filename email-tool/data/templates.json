@@ -10,5 +10,22 @@
     "name": "周报模板",
     "subject": "zhoubao",
     "body": "你好"
+  },
+  {
+    "id": 1779198641233,
+    "name": "aaa",
+    "subject": "",
+    "body": "{{group}}{{name}}"
+  },
+  {
+    "id": 1779200037602,
+    "name": "bb",
+    "subject": "a",
+    "body": "{{test2.txt}}",
+    "to": [
+      "2012204737@qq.com",
+      "3334355244@qq.com"
+    ],
+    "cc": []
   }
 ]

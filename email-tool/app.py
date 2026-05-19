@@ -107,6 +107,116 @@ def update_contact(cid):
     return jsonify({'success': True})
 
 
+# ============ 分组管理 ============
+@app.route('/api/groups', methods=['GET'])
+def get_groups():
+    """获取所有分组及每个分组的联系人"""
+    contacts = load_json(CONTACTS_FILE)
+    groups = {}
+    for c in contacts:
+        g = c.get('group', '默认分组')
+        if g not in groups:
+            groups[g] = {'name': g, 'count': 0, 'contacts': []}
+        groups[g]['count'] += 1
+        groups[g]['contacts'].append({'id': c['id'], 'name': c['name'], 'email': c['email'], 'group': g})
+    return jsonify({'success': True, 'data': list(groups.values())})
+
+
+# ============ Cookie 验证 ============
+@app.route('/api/login/check', methods=['GET'])
+def check_login():
+    """检查 Cookie 是否仍然有效"""
+    cookies_data = load_json(COOKIES_FILE, default=None)
+    if not cookies_data:
+        return jsonify({'success': True, 'logged_in': False})
+
+    csrftoken_file = os.path.join(DATA_DIR, 'csrftoken.txt')
+    if not os.path.exists(csrftoken_file):
+        return jsonify({'success': True, 'logged_in': False})
+
+    with open(csrftoken_file, 'r', encoding='utf-8') as f:
+        csrftoken = f.read().strip()
+
+    import re
+    csrftoken = re.sub(r'[\u200b\u200c\u200d\ufeff\u00a0\s]', '', csrftoken)
+    if not csrftoken:
+        return jsonify({'success': True, 'logged_in': False})
+
+    # 尝试用 cookie 发一个轻量请求验证有效性
+    try:
+        import requests as req
+        session = req.Session()
+        for c in cookies_data:
+            session.cookies.set(c['name'], c['value'], domain=c.get('domain', ''))
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'csrftoken': csrftoken,
+            'Referer': 'https://mail.chinatelecom.cn/mail/index.html',
+        })
+        resp = session.post('https://mail.chinatelecom.cn/w2/replay/getRandomNum', timeout=8)
+        if resp.status_code == 200 and resp.json().get('code') == 0:
+            return jsonify({'success': True, 'logged_in': True})
+    except Exception:
+        pass
+
+    return jsonify({'success': True, 'logged_in': False})
+
+
+# ============ txt 变量文件上传 ============
+TXT_VARS_DIR = os.path.join(DATA_DIR, 'txt_vars')
+os.makedirs(TXT_VARS_DIR, exist_ok=True)
+
+
+@app.route('/api/txt-vars', methods=['POST'])
+def upload_txt_var():
+    """上传 txt 文件作为变量源，每行一个值"""
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'success': False, 'message': '请选择文件'}), 400
+    if not f.filename.endswith('.txt'):
+        return jsonify({'success': False, 'message': '仅支持 .txt 文件'}), 400
+
+    basename = os.path.splitext(f.filename)[0]
+    content = f.read().decode('utf-8', errors='ignore')
+    lines = [line.strip() for line in content.split('\n') if line.strip()]
+
+    save_path = os.path.join(TXT_VARS_DIR, f'{basename}.json')
+    save_json(save_path, {'name': basename, 'values': lines})
+
+    return jsonify({'success': True, 'data': {'name': basename, 'count': len(lines)}})
+
+
+@app.route('/api/txt-vars', methods=['GET'])
+def list_txt_vars():
+    """列出所有已上传的 txt 变量文件"""
+    result = []
+    for fname in os.listdir(TXT_VARS_DIR):
+        if fname.endswith('.json'):
+            data = load_json(os.path.join(TXT_VARS_DIR, fname), default={})
+            if data:
+                result.append({'name': data.get('name', ''), 'count': len(data.get('values', []))})
+    return jsonify({'success': True, 'data': result})
+
+
+@app.route('/api/txt-vars/<name>', methods=['GET'])
+def get_txt_var(name):
+    """获取某个 txt 变量文件的值列表"""
+    fpath = os.path.join(TXT_VARS_DIR, f'{name}.json')
+    data = load_json(fpath, default=None)
+    if not data:
+        return jsonify({'success': False, 'message': '变量文件不存在'}), 404
+    return jsonify({'success': True, 'data': data})
+
+
+@app.route('/api/txt-vars/<name>', methods=['DELETE'])
+def delete_txt_var(name):
+    """删除某个 txt 变量文件"""
+    fpath = os.path.join(TXT_VARS_DIR, f'{name}.json')
+    if os.path.exists(fpath):
+        os.remove(fpath)
+    return jsonify({'success': True})
+
+
 # ============ 模板管理 ============
 @app.route('/api/templates', methods=['GET'])
 def get_templates():
@@ -122,6 +232,8 @@ def add_template():
         'name': data.get('name', '未命名模板'),
         'subject': data.get('subject', ''),
         'body': data.get('body', ''),
+        'to': data.get('to', []),
+        'cc': data.get('cc', []),
     }
     templates.append(template)
     save_json(TEMPLATES_FILE, templates)
@@ -144,6 +256,10 @@ def update_template(tid):
             t['name'] = data.get('name', t['name'])
             t['subject'] = data.get('subject', t['subject'])
             t['body'] = data.get('body', t['body'])
+            if 'to' in data:
+                t['to'] = data['to']
+            if 'cc' in data:
+                t['cc'] = data['cc']
             break
     save_json(TEMPLATES_FILE, templates)
     return jsonify({'success': True})
@@ -573,6 +689,202 @@ def _blackbox_login_worker():
                 browser.close()
         except Exception:
             pass
+
+
+# ============ 批量个性化发信 ============
+@app.route('/api/batch-send', methods=['POST'])
+def batch_send_email():
+    """批量个性化发送 - 每人一封，模板变量替换后逐个发送"""
+    import json as _json
+
+    items_json = request.form.get('items', '[]')
+    cc_emails = _json.loads(request.form.get('cc', '[]'))
+
+    try:
+        items = _json.loads(items_json)
+    except Exception:
+        return jsonify({'success': False, 'message': '发信数据格式错误'}), 400
+
+    if not items:
+        return jsonify({'success': False, 'message': '请添加至少一位收件人'}), 400
+
+    cookies_data = load_json(COOKIES_FILE, default=None)
+    if not cookies_data:
+        return jsonify({'success': False, 'message': '请先登录邮箱（点击登录管理进行黑箱登录）'}), 400
+
+    try:
+        import requests as req
+
+        session = req.Session()
+        for c in cookies_data:
+            session.cookies.set(c['name'], c['value'], domain=c.get('domain', ''))
+
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://mail.chinatelecom.cn/mail/index.html',
+        })
+
+        csrftoken_file = os.path.join(DATA_DIR, 'csrftoken.txt')
+        if not os.path.exists(csrftoken_file):
+            return jsonify({'success': False, 'message': '登录会话已过期，请重新登录邮箱'}), 400
+
+        with open(csrftoken_file, 'r', encoding='utf-8') as f:
+            csrftoken = f.read().strip()
+
+        import re
+        csrftoken = re.sub(r'[\u200b\u200c\u200d\ufeff\u00a0\s]', '', csrftoken)
+
+        if not csrftoken:
+            return jsonify({'success': False, 'message': '登录会话已过期，请重新登录邮箱'}), 400
+
+        session.headers.update({'csrftoken': csrftoken})
+
+        # 通用附件（所有收件人共用）
+        common_attachment_list = []
+        common_attachment_name_list = []
+        uploaded_files = request.files.getlist('files')
+
+        for f in uploaded_files:
+            if f.filename:
+                tmp_path = os.path.join(UPLOAD_DIR, f.filename)
+                f.save(tmp_path)
+                try:
+                    file_key = _upload_attachment(session, csrftoken, tmp_path, f.filename)
+                    if file_key:
+                        common_attachment_list.append(file_key)
+                        common_attachment_name_list.append(f.filename)
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
+
+        # 预上传每封邮件的个性化附件
+        per_item_attachments = {}
+        for i, item in enumerate(items):
+            per_files = request.files.getlist(f'files_{i}')
+            per_keys = []
+            per_names = []
+            for f in per_files:
+                if f.filename:
+                    tmp_path = os.path.join(UPLOAD_DIR, f.filename)
+                    f.save(tmp_path)
+                    try:
+                        file_key = _upload_attachment(session, csrftoken, tmp_path, f.filename)
+                        if file_key:
+                            per_keys.append(file_key)
+                            per_names.append(f.filename)
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            os.remove(tmp_path)
+                        except OSError:
+                            pass
+            per_item_attachments[i] = (per_keys, per_names)
+
+        if attachment_list:
+            attachment_list_str = ','.join(attachment_list)
+            attachment_name_list_str = ','.join(attachment_name_list)
+        else:
+            attachment_list_str = ''
+            attachment_name_list_str = ''
+
+        # 逐个发送
+        success_count = 0
+        fail_list = []
+
+        for idx, item in enumerate(items):
+            to_email = item.get('to', '')
+            subject = item.get('subject', '')
+            body = item.get('body', '')
+
+            if not to_email or not subject:
+                fail_list.append(f"{to_email}: 缺少收件人或主题")
+                continue
+
+            # 每封邮件获取新的 securityCode
+            random_resp = session.post('https://mail.chinatelecom.cn/w2/replay/getRandomNum', timeout=10)
+            if random_resp.status_code != 200:
+                fail_list.append(f"{to_email}: 获取安全码失败")
+                continue
+
+            random_data = random_resp.json()
+            if random_data.get('code') != 0:
+                fail_list.append(f"{to_email}: 获取安全码失败")
+                continue
+
+            security_code = random_data.get('data', '')
+
+            html_body = body.replace('\n', '<br>') if '<' not in body else body
+            if '<p>' not in html_body and '<br>' not in html_body and '<div' not in html_body:
+                html_body = '<p>' + html_body + '</p>'
+
+            content_b64 = base64.b64encode(html_body.encode('utf-8')).decode('utf-8')
+
+            # 合并通用附件 + 该收件人的个性化附件
+            per_keys, per_names = per_item_attachments.get(idx, ([], []))
+            all_att_keys = common_attachment_list + per_keys
+            all_att_names = common_attachment_name_list + per_names
+
+            att_list_str = ','.join(all_att_keys) if all_att_keys else ''
+            att_name_str = ','.join(all_att_names) if all_att_names else ''
+
+            send_data = {
+                'from': MAIL_CONFIG['username'],
+                'to': to_email,
+                'cc': ','.join(cc_emails),
+                'bcc': '',
+                'fast': '0',
+                'content': content_b64,
+                'contentType': '1',
+                'subject': subject,
+                'attachmentList': att_list_str,
+                'attachmentNameList': att_name_str,
+                'dnt': '0',
+                'action': 'send',
+                'sendMode': '0',
+                'saveSended': '1',
+                'securityDestroy': '0',
+                'acceptSmsphones': '',
+                'acceptSmsKey': '',
+                'securityCode': security_code,
+            }
+
+            encoded_body = urllib.parse.urlencode(send_data, encoding='utf-8')
+            send_resp = session.post(
+                'https://mail.chinatelecom.cn/w2/mail/sendMail',
+                data=encoded_body.encode('utf-8'),
+                headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+                timeout=30
+            )
+
+            if send_resp.status_code == 200:
+                result = send_resp.json()
+                if result.get('code') == 0:
+                    success_count += 1
+                else:
+                    fail_list.append(f"{to_email}: {result.get('desc', '发送失败')}")
+            else:
+                fail_list.append(f"{to_email}: HTTP {send_resp.status_code}")
+
+        msg = f'成功发送 {success_count}/{len(items)} 封邮件'
+        if fail_list:
+            msg += f'，失败详情: {"; ".join(fail_list[:5])}'
+
+        return jsonify({
+            'success': success_count > 0,
+            'message': msg,
+            'success_count': success_count,
+            'fail_count': len(fail_list)
+        })
+
+    except req.exceptions.ConnectionError:
+        return jsonify({'success': False, 'message': '网络连接失败'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'批量发送失败: {str(e)}'}), 500
 
 
 # ============ 邮箱配置信息 ============

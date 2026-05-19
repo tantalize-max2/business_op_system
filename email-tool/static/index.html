@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>电信邮箱工具</title>
     <style>
-        /* ===== Reset & Variables ===== */
         *{margin:0;padding:0;box-sizing:border-box;}
         :root{
             --primary:#1a73e8;--primary-dark:#1557b0;--primary-light:#e8f0fe;
@@ -22,23 +21,17 @@
             --transition:all 0.2s ease;
         }
         body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;}
-
-        /* ===== 顶部导航栏 ===== */
         .navbar{background:linear-gradient(135deg,#1a73e8 0%,#0d47a1 100%);color:#fff;padding:0 28px;height:60px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(13,71,161,0.3);}
-        .navbar .logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:600;letter-spacing:0.5px;}
+        .navbar .logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:600;}
         .navbar .logo-icon{width:32px;height:32px;background:rgba(255,255,255,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;}
         .navbar .spacer{flex:1;}
         .nav-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:7px 16px;border-radius:var(--radius-xs);cursor:pointer;font-size:13px;font-family:inherit;transition:var(--transition);display:flex;align-items:center;gap:6px;}
         .nav-btn:hover{background:rgba(255,255,255,0.25);transform:translateY(-1px);}
-        .nav-btn .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+        .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
         .dot-green{background:#4caf50;box-shadow:0 0 6px #4caf50;}
         .dot-gray{background:rgba(255,255,255,0.5);}
         .dot-yellow{background:#ff9800;box-shadow:0 0 6px #ff9800;}
-
-        /* ===== 主布局 ===== */
         .main-wrap{display:flex;height:calc(100vh - 60px);}
-
-        /* ===== 左侧边栏 ===== */
         .sidebar{width:220px;background:var(--card);border-right:1px solid var(--border-light);display:flex;flex-direction:column;padding:8px 0;overflow-y:auto;}
         .sidebar-item{display:flex;align-items:center;padding:10px 20px;cursor:pointer;font-size:14px;transition:var(--transition);gap:12px;border-left:3px solid transparent;margin:2px 0;}
         .sidebar-item:hover{background:var(--bg);border-left-color:var(--primary-light);}
@@ -47,28 +40,19 @@
         .sidebar-item .badge{margin-left:auto;background:var(--primary);color:#fff;font-size:11px;padding:1px 7px;border-radius:10px;min-width:20px;text-align:center;}
         .sidebar-divider{height:1px;background:var(--border-light);margin:8px 16px;}
         .sidebar-label{font-size:11px;color:var(--text-light);padding:8px 20px 4px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;}
-
-        /* ===== 内容区 ===== */
         .content{flex:1;overflow-y:auto;padding:24px 28px;background:var(--bg);}
-
-        /* ===== 卡片 ===== */
         .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-sm);margin-bottom:16px;border:1px solid var(--border-light);overflow:hidden;}
         .card-head{padding:16px 22px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(to bottom,#fafbfc,#fff);}
         .card-head h2{font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;}
         .card-head h2 .ico{font-size:18px;}
         .card-body{padding:20px 22px;}
-
-        /* ===== 表单 ===== */
         .form-row{display:flex;gap:16px;margin-bottom:16px;}
-        .form-row .form-col{flex:1;}
         .form-group{margin-bottom:16px;}
         .form-label{display:block;font-size:13px;color:var(--text-sec);margin-bottom:6px;font-weight:500;}
         .form-input,.form-select,.form-textarea{width:100%;padding:9px 14px;border:1px solid var(--border);border-radius:var(--radius-xs);font-size:14px;outline:none;transition:var(--transition);font-family:inherit;background:#fff;color:var(--text);}
         .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,0.12);}
         .form-textarea{min-height:220px;resize:vertical;line-height:1.7;}
         .form-input::placeholder,.form-textarea::placeholder{color:var(--text-light);}
-
-        /* ===== 按钮 ===== */
         .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 20px;border:none;border-radius:var(--radius-xs);font-size:14px;cursor:pointer;transition:var(--transition);font-family:inherit;font-weight:500;line-height:1.4;}
         .btn-primary{background:var(--primary);color:#fff;box-shadow:0 1px 3px rgba(26,115,232,0.3);}
         .btn-primary:hover{background:var(--primary-dark);box-shadow:0 2px 8px rgba(26,115,232,0.4);transform:translateY(-1px);}
@@ -82,8 +66,6 @@
         .btn-success:hover{background:#137333;}
         .btn-sm{padding:5px 14px;font-size:12px;}
         .btn:disabled{opacity:0.5;cursor:not-allowed;transform:none !important;}
-
-        /* ===== 收件人标签 ===== */
         .tag-input-wrap{border:1px solid var(--border);border-radius:var(--radius-xs);padding:6px 10px;min-height:40px;display:flex;flex-wrap:wrap;align-items:center;gap:5px;cursor:text;transition:var(--transition);background:#fff;}
         .tag-input-wrap:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,0.12);}
         .tag-input-wrap input{border:none;outline:none;flex:1;min-width:180px;font-size:13px;padding:3px;font-family:inherit;}
@@ -92,8 +74,6 @@
         .tag-blue{background:var(--primary-light);color:var(--primary);}
         .tag .tag-x{cursor:pointer;font-size:15px;line-height:1;opacity:0.6;margin-left:2px;}
         .tag .tag-x:hover{opacity:1;}
-
-        /* ===== 附件 ===== */
         .drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:28px 20px;text-align:center;cursor:pointer;transition:var(--transition);}
         .drop-zone:hover,.drop-zone.drag-over{border-color:var(--primary);background:var(--primary-light);}
         .drop-zone .dz-icon{font-size:36px;margin-bottom:8px;opacity:0.6;}
@@ -105,8 +85,6 @@
         .attach-item .att-size{color:var(--text-light);font-size:12px;}
         .attach-item .att-del{background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;opacity:0.6;}
         .attach-item .att-del:hover{opacity:1;background:var(--danger-light);}
-
-        /* ===== 模板卡片 ===== */
         .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;}
         .tpl-card{border:1px solid var(--border-light);border-radius:var(--radius-sm);padding:16px;cursor:pointer;transition:var(--transition);position:relative;}
         .tpl-card:hover{border-color:var(--primary);box-shadow:var(--shadow-sm);}
@@ -114,16 +92,14 @@
         .tpl-card .tpl-preview{font-size:12px;color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px;}
         .tpl-card .tpl-actions{display:flex;gap:6px;opacity:0;transition:opacity 0.2s;}
         .tpl-card:hover .tpl-actions{opacity:1;}
-
-        /* ===== 联系人表格 ===== */
+        .tpl-card .tpl-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;}
+        .tpl-card .tpl-tags .tag{font-size:11px;padding:1px 7px;}
         .ct-table{width:100%;border-collapse:collapse;}
         .ct-table th,.ct-table td{text-align:left;padding:12px 16px;font-size:13px;border-bottom:1px solid var(--border-light);}
         .ct-table th{background:var(--bg);font-weight:600;color:var(--text-sec);font-size:12px;text-transform:uppercase;letter-spacing:0.5px;}
         .ct-table tbody tr{transition:background 0.15s;}
         .ct-table tbody tr:hover{background:#fafbfc;}
         .ct-table .td-actions{display:flex;gap:6px;}
-
-        /* ===== 模态框 ===== */
         .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:200;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px);}
         .modal-mask.show{display:flex;}
         .modal-box{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-lg);width:500px;max-width:90vw;max-height:85vh;overflow-y:auto;animation:modalIn 0.25s ease;}
@@ -134,8 +110,6 @@
         .modal-close:hover{background:var(--bg);color:var(--text);}
         .modal-content{padding:22px 24px;}
         .modal-foot{padding:14px 24px;border-top:1px solid var(--border-light);display:flex;justify-content:flex-end;gap:10px;}
-
-        /* ===== Toast ===== */
         .toast-wrap{position:fixed;top:76px;right:28px;z-index:1000;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
         .toast{padding:12px 20px;border-radius:var(--radius-xs);font-size:13px;box-shadow:var(--shadow-md);animation:toastIn 0.3s ease;pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:380px;}
         .toast .t-icon{font-size:16px;}
@@ -143,20 +117,11 @@
         .toast-error{background:#fce8e6;color:#c5221f;border-left:4px solid #ea4335;}
         .toast-info{background:#e8f0fe;color:#1967d2;border-left:4px solid #4285f4;}
         @keyframes toastIn{from{transform:translateX(120%);opacity:0;}to{transform:translateX(0);opacity:1;}}
-
-        /* ===== 登录状态面板 ===== */
         .login-card{text-align:center;padding:48px 24px;}
         .login-card .lc-icon{font-size:56px;margin-bottom:20px;}
         .login-card .lc-text{font-size:15px;color:var(--text-sec);margin-bottom:8px;line-height:1.6;}
         .login-card .lc-sub{font-size:13px;color:var(--text-light);margin-bottom:24px;}
         .login-card .lc-actions{display:flex;gap:10px;justify-content:center;}
-
-        /* ===== 验证码输入 ===== */
-        .code-input-group{display:flex;gap:10px;justify-content:center;align-items:center;margin:20px 0;}
-        .code-input-group input{width:48px;height:56px;text-align:center;font-size:24px;font-weight:600;border:2px solid var(--border);border-radius:var(--radius-sm);outline:none;transition:var(--transition);letter-spacing:2px;font-family:monospace;}
-        .code-input-group input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,0.15);}
-
-        /* ===== 步骤指示器 ===== */
         .steps{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:28px;padding:0 20px;}
         .step{display:flex;align-items:center;gap:8px;}
         .step-num{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;border:2px solid var(--border);color:var(--text-light);transition:var(--transition);}
@@ -167,847 +132,485 @@
         .step.done .step-text{color:var(--success);}
         .step-line{width:40px;height:2px;background:var(--border);margin:0 8px;}
         .step.done + .step-line,.step-line.done{background:var(--success);}
-
-        /* ===== Spinner ===== */
         .spinner{display:inline-block;width:22px;height:22px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;}
-        .spinner-sm{width:16px;height:16px;border-width:2px;}
         @keyframes spin{to{transform:rotate(360deg);}}
-
-        /* ===== 面板显示 ===== */
         .panel{display:none;}.panel.active{display:block;}
-
-        /* ===== 配置信息 ===== */
         .config-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;}
         .config-item{padding:14px 16px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light);}
         .config-item .ci-label{font-size:11px;color:var(--text-light);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;font-weight:600;}
         .config-item .ci-value{font-size:14px;font-weight:500;color:var(--text);font-family:'Courier New',monospace;}
-
-        /* ===== 发送状态 ===== */
         .sending-overlay{position:fixed;inset:0;background:rgba(255,255,255,0.85);z-index:300;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;backdrop-filter:blur(4px);}
         .sending-overlay.show{display:flex;}
         .sending-text{font-size:15px;color:var(--text-sec);font-weight:500;}
-
-        /* ===== Scrollbar ===== */
         ::-webkit-scrollbar{width:6px;}
         ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
         ::-webkit-scrollbar-thumb:hover{background:var(--text-light);}
-
-        /* ===== 分隔线 ===== */
         .divider{height:1px;background:var(--border-light);margin:16px 0;}
+        .gp-group-head{display:flex;align-items:center;padding:10px 12px;cursor:pointer;gap:10px;border-radius:var(--radius-xs);transition:var(--transition);border-bottom:1px solid var(--border-light);}
+        .gp-group-head:hover{background:var(--bg);}
+        .gp-group-head .gp-name{flex:1;font-weight:600;font-size:14px;}
+        .gp-group-head .gp-count{font-size:12px;color:var(--text-light);background:var(--bg);padding:2px 10px;border-radius:10px;}
+        .gp-member{display:flex;align-items:center;padding:8px 12px 8px 40px;gap:10px;font-size:13px;border-bottom:1px solid var(--border-light);}
+        .gp-member:hover{background:#fafbfc;}
+        .gp-member .gp-mname{font-weight:500;min-width:60px;}
+        .gp-member .gp-memail{color:var(--text-sec);flex:1;}
+        .batch-toggle{display:flex;align-items:center;gap:10px;padding:12px 16px;background:linear-gradient(135deg,#e8f0fe 0%,#f0f4ff 100%);border-radius:var(--radius-sm);border:1px solid var(--primary-light);margin-bottom:16px;}
+        .batch-toggle label{font-size:14px;font-weight:500;color:var(--primary-dark);cursor:pointer;user-select:none;}
+        .batch-toggle .batch-hint{font-size:12px;color:var(--text-sec);margin-left:8px;}
+        .batch-toggle input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary);cursor:pointer;}
+        .var-helper{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg);border-radius:var(--radius-xs);margin-bottom:12px;flex-wrap:wrap;border:1px solid var(--border-light);}
+        .var-helper .vh-label{font-size:12px;color:var(--text-light);font-weight:600;letter-spacing:0.5px;white-space:nowrap;}
+        .var-btn{display:inline-flex;align-items:center;padding:4px 12px;font-size:12px;border-radius:14px;border:1px solid var(--primary-light);background:var(--primary-light);color:var(--primary);cursor:pointer;font-family:monospace;font-weight:500;transition:var(--transition);}
+        .var-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);}
+        .preview-section{margin-top:16px;border:1px solid var(--border-light);border-radius:var(--radius-sm);overflow:hidden;}
+        .preview-head{padding:12px 16px;background:linear-gradient(to bottom,#fafbfc,#fff);border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;}
+        .preview-head h3{font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;}
+        .preview-body{max-height:500px;overflow-y:auto;}
+        .preview-item{padding:12px 16px;border-bottom:1px solid var(--border-light);transition:background 0.15s;}
+        .preview-item:hover{background:#fafbfc;}
+        .preview-item:last-child{border-bottom:none;}
+        .pi-head{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+        .pi-name{font-weight:600;font-size:13px;}
+        .pi-email{color:var(--text-sec);font-size:12px;}
+        .pi-group{font-size:11px;padding:1px 8px;border-radius:10px;background:var(--primary-light);color:var(--primary);}
+        .pi-subject{font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px;}
+        .pi-body{font-size:12px;color:var(--text-sec);line-height:1.6;white-space:pre-wrap;max-height:80px;overflow:hidden;text-overflow:ellipsis;}
+        .pi-attach-row{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;}
+        .pi-attach-tag{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--warning-light);color:var(--warning);}
+        .pi-attach-add{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--primary-light);color:var(--primary);cursor:pointer;border:1px dashed var(--primary);transition:var(--transition);}
+        .pi-attach-add:hover{background:var(--primary);color:#fff;}
+        .pi-edit-area{display:none;margin-top:8px;}
+        .pi-edit-area textarea{width:100%;min-height:100px;font-size:12px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-xs);resize:vertical;font-family:inherit;line-height:1.5;}
+        .pi-edit-area input{width:100%;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius-xs);margin-bottom:4px;}
+        .pi-edit-area textarea:focus,.pi-edit-area input:focus{border-color:var(--primary);outline:none;box-shadow:0 0 0 2px rgba(26,115,232,0.1);}
+        .pi-edit-btns{display:flex;gap:6px;margin-top:6px;}
+        /* 富文本工具栏 */
+        .rich-toolbar{display:flex;align-items:center;gap:2px;padding:6px 10px;background:var(--bg);border:1px solid var(--border-light);border-bottom:none;border-radius:var(--radius-sm) var(--radius-sm) 0 0;flex-wrap:wrap;}
+        .rich-toolbar .tb-btn{width:32px;height:30px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;border-radius:4px;cursor:pointer;font-size:14px;color:var(--text-sec);transition:var(--transition);}
+        .rich-toolbar .tb-btn:hover{background:var(--primary-light);color:var(--primary);}
+        .rich-toolbar .tb-btn.active{background:var(--primary);color:#fff;}
+        .rich-toolbar .tb-sep{width:1px;height:20px;background:var(--border);margin:0 4px;}
+        .rich-toolbar .tb-color{width:28px;height:20px;border:2px solid var(--border);border-radius:3px;cursor:pointer;padding:0;overflow:hidden;}
+        .rich-toolbar .tb-color input{width:32px;height:24px;border:none;padding:0;cursor:pointer;margin:-2px;}
+        .rich-body{border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);min-height:220px;padding:10px 14px;font-size:14px;line-height:1.7;outline:none;overflow-y:auto;background:#fff;color:var(--text);}
+        .rich-body:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(26,115,232,0.12);}
+        .rich-body:empty::before{content:attr(data-placeholder);color:var(--text-light);}
     </style>
 </head>
 <body>
 
-<!-- ===== 顶部导航 ===== -->
 <nav class="navbar">
-    <div class="logo">
-        <div class="logo-icon">&#9993;</div>
-        <span>电信邮箱工具</span>
-    </div>
+    <div class="logo"><div class="logo-icon">&#9993;</div><span>电信邮箱工具</span></div>
     <div class="spacer"></div>
-    <div id="nav-login-status" style="display:flex;align-items:center;gap:8px;font-size:13px;">
+    <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
         <span class="dot dot-gray" id="status-dot"></span>
         <span id="status-label">未登录</span>
     </div>
-    <button class="nav-btn" onclick="showPanel('login')">
-        &#128272; 登录管理
-    </button>
+    <button class="nav-btn" onclick="showPanel('login')">&#128272; 登录管理</button>
 </nav>
 
 <div class="main-wrap">
-    <!-- ===== 侧边栏 ===== -->
     <aside class="sidebar">
-        <div class="sidebar-item active" onclick="showPanel('compose')" data-panel="compose">
-            <span class="ico">&#9993;</span> 写信
-        </div>
+        <div class="sidebar-item active" onclick="showPanel('compose')" data-panel="compose"><span class="ico">&#9993;</span> 写信</div>
         <div class="sidebar-divider"></div>
         <div class="sidebar-label">管理</div>
-        <div class="sidebar-item" onclick="showPanel('contacts')" data-panel="contacts">
-            <span class="ico">&#128101;</span> 联系人
-            <span class="badge" id="contact-count">0</span>
-        </div>
-        <div class="sidebar-item" onclick="showPanel('templates')" data-panel="templates">
-            <span class="ico">&#128196;</span> 模板
-            <span class="badge" id="template-count">0</span>
-        </div>
+        <div class="sidebar-item" onclick="showPanel('contacts')" data-panel="contacts"><span class="ico">&#128101;</span> 联系人<span class="badge" id="contact-count">0</span></div>
+        <div class="sidebar-item" onclick="showPanel('templates')" data-panel="templates"><span class="ico">&#128196;</span> 模板<span class="badge" id="template-count">0</span></div>
         <div class="sidebar-divider"></div>
         <div class="sidebar-label">系统</div>
-        <div class="sidebar-item" onclick="showPanel('config')" data-panel="config">
-            <span class="ico">&#9881;</span> 邮箱配置
-        </div>
+        <div class="sidebar-item" onclick="showPanel('config')" data-panel="config"><span class="ico">&#9881;</span> 邮箱配置</div>
     </aside>
 
-    <!-- ===== 内容区 ===== -->
     <main class="content">
-
-        <!-- ========== 写信面板 ========== -->
+        <!-- 写信面板 -->
         <div class="panel active" id="panel-compose">
-            <!-- 模板选择栏 -->
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
                 <div style="display:flex;align-items:center;gap:8px;background:var(--card);padding:8px 16px;border-radius:var(--radius-sm);border:1px solid var(--border-light);">
                     <span style="font-size:13px;color:var(--text-sec);white-space:nowrap;font-weight:500;">&#128196; 选择模板：</span>
-                    <select class="form-select" id="template-select" style="width:200px;padding:6px 10px;" onchange="applyTemplate()">
-                        <option value="">-- 不使用模板 --</option>
-                    </select>
+                    <select class="form-select" id="template-select" style="width:200px;padding:6px 10px;" onchange="applyTemplate()"><option value="">-- 不使用模板 --</option></select>
                 </div>
                 <button class="btn btn-outline btn-sm" onclick="saveCurrentAsTemplate()">&#128190; 保存当前为模板</button>
             </div>
-
-            <!-- 写信卡片 -->
-            <div class="card">
-                <div class="card-body">
-                    <!-- 收件人 -->
-                    <div class="form-group">
-                        <div class="form-label">收件人 <span style="color:var(--danger);">*</span></div>
-                        <div class="tag-input-wrap" onclick="document.getElementById('to-input').focus()">
-                            <div id="to-tags"></div>
-                            <input type="text" id="to-input" placeholder="输入邮箱地址，按 Enter 添加" onkeydown="handleToKey(event)">
-                        </div>
-                        <div style="margin-top:6px;">
-                            <button class="btn btn-ghost btn-sm" onclick="openContactPicker()">&#128101; 从联系人添加</button>
-                        </div>
+            <div class="card"><div class="card-body">
+                <div class="batch-toggle"><input type="checkbox" id="batch-mode" onchange="toggleBatchMode()"><label for="batch-mode">个性化发送</label><span class="batch-hint">每人一封，模板变量自动替换</span></div>
+                <div class="var-helper" id="var-helper" style="display:none;">
+                    <span class="vh-label">插入变量:</span>
+                    <span class="var-btn" onclick="insertVariable('name')">{{name}}</span>
+                    <span class="var-btn" onclick="insertVariable('email')">{{email}}</span>
+                    <span class="var-btn" onclick="insertVariable('group')">{{group}}</span>
+                    <span class="var-btn" style="background:var(--warning-light);color:var(--warning);border-color:var(--warning-light);" onclick="document.getElementById('txt-var-upload').click()">&#128196; 上传txt变量</span>
+                    <div id="txt-var-list" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+                    <input type="file" id="txt-var-upload" accept=".txt" style="display:none" onchange="uploadTxtVar(event)">
+                </div>
+                <div class="form-group">
+                    <div class="form-label">收件人 <span style="color:var(--danger);">*</span></div>
+                    <div class="tag-input-wrap" onclick="document.getElementById('to-input').focus()"><div id="to-tags"></div><input type="text" id="to-input" placeholder="输入邮箱地址，按 Enter 添加" onkeydown="handleToKey(event)"></div>
+                    <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="openContactPicker()">&#128101; 从联系人添加</button><button class="btn btn-ghost btn-sm" onclick="openGroupPicker()">&#128230; 按分组添加</button></div>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">抄送 <span style="color:var(--text-light);font-weight:400;">(可选)</span></div>
+                    <div class="tag-input-wrap" onclick="document.getElementById('cc-input').focus()"><div id="cc-tags"></div><input type="text" id="cc-input" placeholder="输入抄送邮箱，按 Enter 添加" onkeydown="handleCcKey(event)"></div>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">主题 <span style="color:var(--danger);">*</span></div>
+                    <input type="text" class="form-input" id="email-subject" placeholder="请输入邮件主题">
+                </div>
+                <div class="form-group">
+                    <div class="form-label">正文</div>
+                    <div class="rich-toolbar" id="rich-toolbar">
+                        <button class="tb-btn" title="加粗" onclick="execRich('bold')"><b>B</b></button>
+                        <button class="tb-btn" title="斜体" onclick="execRich('italic')"><i>I</i></button>
+                        <button class="tb-btn" title="下划线" onclick="execRich('underline')"><u>U</u></button>
+                        <div class="tb-sep"></div>
+                        <button class="tb-btn" title="有序列表" onclick="execRich('insertOrderedList')">&#9776;1</button>
+                        <button class="tb-btn" title="无序列表" onclick="execRich('insertUnorderedList')">&#9776;</button>
+                        <div class="tb-sep"></div>
+                        <div class="tb-color" title="文字颜色"><input type="color" value="#1a73e8" onchange="execRich('foreColor',this.value)"></div>
+                        <div class="tb-color" title="背景色"><input type="color" value="#fef7e0" onchange="execRich('hiliteColor',this.value)"></div>
                     </div>
-
-                    <!-- 抄送 -->
-                    <div class="form-group">
-                        <div class="form-label">抄送 <span style="color:var(--text-light);font-weight:400;">(可选)</span></div>
-                        <div class="tag-input-wrap" onclick="document.getElementById('cc-input').focus()">
-                            <div id="cc-tags"></div>
-                            <input type="text" id="cc-input" placeholder="输入抄送邮箱，按 Enter 添加" onkeydown="handleCcKey(event)">
-                        </div>
+                    <div class="rich-body" id="email-body" contenteditable="true" data-placeholder="请输入邮件正文内容..."></div>
+                </div>
+                <div class="form-group">
+                    <div class="form-label">通用附件 <span style="color:var(--text-light);font-weight:400;">(所有收件人共用)</span></div>
+                    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="event.preventDefault();this.classList.remove('drag-over');handleDrop(event)">
+                        <div class="dz-icon">&#128206;</div><div class="dz-text">点击选择文件或拖拽文件到此处添加附件</div>
+                        <input type="file" id="file-input" multiple style="display:none" onchange="handleFileSelect(event)">
                     </div>
-
-                    <!-- 主题 -->
-                    <div class="form-group">
-                        <div class="form-label">主题 <span style="color:var(--danger);">*</span></div>
-                        <input type="text" class="form-input" id="email-subject" placeholder="请输入邮件主题">
-                    </div>
-
-                    <!-- 正文 -->
-                    <div class="form-group">
-                        <div class="form-label">正文</div>
-                        <textarea class="form-textarea" id="email-body" placeholder="请输入邮件正文内容..."></textarea>
-                    </div>
-
-                    <!-- 附件 -->
-                    <div class="form-group">
-                        <div class="form-label">附件</div>
-                        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()"
-                             ondragover="event.preventDefault();this.classList.add('drag-over')"
-                             ondragleave="this.classList.remove('drag-over')"
-                             ondrop="event.preventDefault();this.classList.remove('drag-over');handleDrop(event)">
-                            <div class="dz-icon">&#128206;</div>
-                            <div class="dz-text">点击选择文件或拖拽文件到此处添加附件</div>
-                            <input type="file" id="file-input" multiple style="display:none" onchange="handleFileSelect(event)">
-                        </div>
-                        <div class="attach-list" id="attach-list"></div>
-                    </div>
-
-                    <div class="divider"></div>
-
-                    <!-- 操作按钮 -->
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:12px;color:var(--text-light);" id="compose-info"></span>
-                        <div style="display:flex;gap:10px;">
-                            <button class="btn btn-outline" onclick="clearCompose()">&#128465; 清空</button>
-                            <button class="btn btn-primary" onclick="sendEmail()" style="padding:8px 28px;">&#9993; 发送邮件</button>
-                        </div>
+                    <div class="attach-list" id="attach-list"></div>
+                </div>
+                <div class="divider"></div>
+                <div class="preview-section" id="preview-section" style="display:none;">
+                    <div class="preview-head"><h3>&#128065; 收件人预览</h3><span style="font-size:12px;color:var(--text-light);" id="preview-count"></span></div>
+                    <div class="preview-body" id="preview-body"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;color:var(--text-light);" id="compose-info"></span>
+                    <div style="display:flex;gap:10px;">
+                        <button class="btn btn-outline" onclick="clearCompose()">&#128465; 清空</button>
+                        <button class="btn btn-primary" id="send-btn" onclick="sendEmail()" style="padding:8px 28px;">&#9993; 发送邮件</button>
+                        <button class="btn btn-success" id="batch-send-btn" onclick="sendBatchEmail()" style="padding:8px 28px;display:none;">&#9993; 批量发送</button>
                     </div>
                 </div>
-            </div>
+            </div></div>
         </div>
 
-        <!-- ========== 联系人面板 ========== -->
+        <!-- 联系人面板 -->
         <div class="panel" id="panel-contacts">
-            <div class="card">
-                <div class="card-head">
-                    <h2><span class="ico">&#128101;</span> 联系人管理</h2>
-                    <div style="display:flex;gap:8px;">
-                        <input type="text" class="form-input" id="contact-search" placeholder="搜索联系人..."
-                               style="width:200px;padding:6px 12px;font-size:13px;" oninput="renderContactsTable()">
-                        <button class="btn btn-primary btn-sm" onclick="openAddContact()">+ 添加联系人</button>
-                    </div>
-                </div>
-                <div class="card-body" style="padding:0;">
-                    <table class="ct-table">
-                        <thead><tr><th>姓名</th><th>邮箱</th><th>分组</th><th style="width:160px;">操作</th></tr></thead>
-                        <tbody id="contacts-tbody">
-                            <tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:40px;">暂无联系人，请点击"添加联系人"</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <div class="card"><div class="card-head"><h2><span class="ico">&#128101;</span> 联系人管理</h2><div style="display:flex;gap:8px;"><input type="text" class="form-input" id="contact-search" placeholder="搜索联系人..." style="width:200px;padding:6px 12px;font-size:13px;" oninput="renderContactsTable()"><button class="btn btn-primary btn-sm" onclick="openAddContact()">+ 添加联系人</button></div></div>
+            <div class="card-body" style="padding:0;"><table class="ct-table"><thead><tr><th>姓名</th><th>邮箱</th><th>分组</th><th style="width:160px;">操作</th></tr></thead><tbody id="contacts-tbody"><tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:40px;">暂无联系人</td></tr></tbody></table></div></div>
         </div>
 
-        <!-- ========== 模板面板 ========== -->
+        <!-- 模板面板 -->
         <div class="panel" id="panel-templates">
-            <div class="card">
-                <div class="card-head">
-                    <h2><span class="ico">&#128196;</span> 邮件模板</h2>
-                    <button class="btn btn-primary btn-sm" onclick="openNewTemplate()">+ 新建模板</button>
-                </div>
-                <div class="card-body">
-                    <div class="tpl-grid" id="tpl-list">
-                        <div style="grid-column:1/-1;text-align:center;color:var(--text-light);padding:40px;">
-                            暂无模板，可以在写信时保存为模板，或直接新建
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div class="card"><div class="card-head"><h2><span class="ico">&#128196;</span> 邮件模板</h2><button class="btn btn-primary btn-sm" onclick="openNewTemplate()">+ 新建模板</button></div>
+            <div class="card-body"><div class="tpl-grid" id="tpl-list"><div style="grid-column:1/-1;text-align:center;color:var(--text-light);padding:40px;">暂无模板</div></div></div></div>
         </div>
 
-        <!-- ========== 登录管理面板 ========== -->
+        <!-- 登录面板 -->
         <div class="panel" id="panel-login">
-            <div class="card">
-                <div class="card-body">
-                    <div class="login-card">
-                        <!-- 步骤指示器 -->
-                        <div class="steps" id="login-steps">
-                            <div class="step active" data-step="1"><div class="step-num">1</div><div class="step-text">启动登录</div></div>
-                            <div class="step-line"></div>
-                            <div class="step" data-step="2"><div class="step-num">2</div><div class="step-text">自动填写</div></div>
-                            <div class="step-line"></div>
-                            <div class="step" data-step="3"><div class="step-num">3</div><div class="step-text">获取验证码</div></div>
-                            <div class="step-line"></div>
-                            <div class="step" data-step="4"><div class="step-num">4</div><div class="step-text">输入验证码</div></div>
-                            <div class="step-line"></div>
-                            <div class="step" data-step="5"><div class="step-num">5</div><div class="step-text">登录完成</div></div>
-                        </div>
-
-                        <div class="lc-icon" id="login-icon">&#128274;</div>
-                        <div class="lc-text" id="login-text">点击下方按钮，系统将自动完成邮箱登录流程</div>
-                        <div class="lc-sub" id="login-sub">黑箱模式：自动填写账号密码、获取验证码，您只需输入收到的手机验证码</div>
-                        <div id="login-code-area" style="display:none;">
-                            <div style="display:flex;gap:10px;justify-content:center;align-items:center;margin:20px 0;">
-                                <input type="text" id="code-input" maxlength="6" placeholder="请输入6位验证码"
-                                       style="width:200px;height:48px;text-align:center;font-size:22px;font-weight:600;letter-spacing:8px;border:2px solid var(--border);border-radius:var(--radius-sm);outline:none;transition:var(--transition);font-family:monospace;"
-                                       onfocus="this.style.borderColor='var(--primary)';this.style.boxShadow='0 0 0 3px rgba(26,115,232,0.12)'"
-                                       onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'"
-                                       oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===6)submitCode(this.value)">
-                            </div>
-                            <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">验证码已发送到手机 180****7229，输入6位数字后自动提交</div>
-                        </div>
-                        <div class="lc-actions" id="login-actions">
-                            <button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 开始自动登录</button>
-                        </div>
-                    </div>
+            <div class="card"><div class="card-body"><div class="login-card">
+                <div class="steps" id="login-steps">
+                    <div class="step active" data-step="1"><div class="step-num">1</div><div class="step-text">启动登录</div></div><div class="step-line"></div>
+                    <div class="step" data-step="2"><div class="step-num">2</div><div class="step-text">自动填写</div></div><div class="step-line"></div>
+                    <div class="step" data-step="3"><div class="step-num">3</div><div class="step-text">获取验证码</div></div><div class="step-line"></div>
+                    <div class="step" data-step="4"><div class="step-num">4</div><div class="step-text">输入验证码</div></div><div class="step-line"></div>
+                    <div class="step" data-step="5"><div class="step-num">5</div><div class="step-text">登录完成</div></div>
                 </div>
-            </div>
+                <div class="lc-icon" id="login-icon">&#128274;</div>
+                <div class="lc-text" id="login-text">点击下方按钮，系统将自动完成邮箱登录流程</div>
+                <div class="lc-sub" id="login-sub">黑箱模式：自动填写账号密码、获取验证码</div>
+                <div id="login-code-area" style="display:none;">
+                    <div style="display:flex;gap:10px;justify-content:center;align-items:center;margin:20px 0;">
+                        <input type="text" id="code-input" maxlength="6" placeholder="请输入6位验证码" style="width:200px;height:48px;text-align:center;font-size:22px;font-weight:600;letter-spacing:8px;border:2px solid var(--border);border-radius:var(--radius-sm);outline:none;font-family:monospace;" oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===6)submitCode(this.value)">
+                    </div>
+                    <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">验证码已发送到手机 180****7229</div>
+                </div>
+                <div class="lc-actions" id="login-actions"><button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 开始自动登录</button></div>
+            </div></div></div>
         </div>
 
-        <!-- ========== 配置面板 ========== -->
+        <!-- 配置面板 -->
         <div class="panel" id="panel-config">
-            <div class="card">
-                <div class="card-head">
-                    <h2><span class="ico">&#9881;</span> 邮箱配置信息</h2>
-                </div>
-                <div class="card-body">
-                    <div class="config-grid" id="config-grid">
-                        <!-- 动态加载 -->
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <div class="card-head">
-                    <h2><span class="ico">&#128736;</span> 登录账号信息</h2>
-                </div>
-                <div class="card-body">
-                    <div class="config-grid">
-                        <div class="config-item"><div class="ci-label">邮箱账号</div><div class="ci-value">wangy592@chinatelecom.cn</div></div>
-                        <div class="config-item"><div class="ci-label">登录用户名</div><div class="ci-value">wangy592</div></div>
-                        <div class="config-item"><div class="ci-label">手机号码</div><div class="ci-value">180****7229</div></div>
-                        <div class="config-item"><div class="ci-label">SMTP端口</div><div class="ci-value">587 (STARTTLS)</div></div>
-                    </div>
-                </div>
-            </div>
+            <div class="card"><div class="card-head"><h2><span class="ico">&#9881;</span> 邮箱配置信息</h2></div><div class="card-body"><div class="config-grid" id="config-grid"></div></div></div>
+            <div class="card"><div class="card-head"><h2><span class="ico">&#128736;</span> 登录账号信息</h2></div><div class="card-body"><div class="config-grid">
+                <div class="config-item"><div class="ci-label">邮箱账号</div><div class="ci-value">wangy592@chinatelecom.cn</div></div>
+                <div class="config-item"><div class="ci-label">登录用户名</div><div class="ci-value">wangy592</div></div>
+                <div class="config-item"><div class="ci-label">手机号码</div><div class="ci-value">180****7229</div></div>
+                <div class="config-item"><div class="ci-label">SMTP端口</div><div class="ci-value">587 (STARTTLS)</div></div>
+            </div></div></div>
         </div>
-
     </main>
 </div>
 
-<!-- ===== 发送中遮罩 ===== -->
-<div class="sending-overlay" id="sending-overlay">
-    <div class="spinner" style="width:40px;height:40px;border-width:4px;"></div>
-    <div class="sending-text">正在发送邮件，请稍候...</div>
-</div>
-
-<!-- ===== Toast容器 ===== -->
+<div class="sending-overlay" id="sending-overlay"><div class="spinner" style="width:40px;height:40px;border-width:4px;"></div><div class="sending-text">正在发送邮件，请稍候...</div></div>
 <div class="toast-wrap" id="toast-wrap"></div>
 
-<!-- ===== 添加/编辑联系人模态框 ===== -->
-<div class="modal-mask" id="modal-contact">
-    <div class="modal-box">
-        <div class="modal-head">
-            <h3 id="modal-contact-title">添加联系人</h3>
-            <button class="modal-close" onclick="hideModal('modal-contact')">&times;</button>
-        </div>
-        <div class="modal-content">
-            <input type="hidden" id="edit-contact-id">
-            <div class="form-group">
-                <div class="form-label">姓名</div>
-                <input type="text" class="form-input" id="contact-name" placeholder="请输入姓名">
-            </div>
-            <div class="form-group">
-                <div class="form-label">邮箱</div>
-                <input type="email" class="form-input" id="contact-email" placeholder="请输入邮箱地址">
-            </div>
-            <div class="form-group">
-                <div class="form-label">分组</div>
-                <input type="text" class="form-input" id="contact-group" placeholder="例如：客户、同事、领导" value="默认分组">
-            </div>
-        </div>
-        <div class="modal-foot">
-            <button class="btn btn-outline" onclick="hideModal('modal-contact')">取消</button>
-            <button class="btn btn-primary" onclick="saveContact()">保存</button>
-        </div>
-    </div>
-</div>
+<!-- 联系人模态框 -->
+<div class="modal-mask" id="modal-contact"><div class="modal-box"><div class="modal-head"><h3 id="modal-contact-title">添加联系人</h3><button class="modal-close" onclick="hideModal('modal-contact')">&times;</button></div><div class="modal-content">
+    <input type="hidden" id="edit-contact-id"><div class="form-group"><div class="form-label">姓名</div><input type="text" class="form-input" id="contact-name" placeholder="请输入姓名"></div><div class="form-group"><div class="form-label">邮箱</div><input type="email" class="form-input" id="contact-email" placeholder="请输入邮箱地址"></div><div class="form-group"><div class="form-label">分组</div><input type="text" class="form-input" id="contact-group" placeholder="例如：客户、同事、领导" value="默认分组"></div>
+</div><div class="modal-foot"><button class="btn btn-outline" onclick="hideModal('modal-contact')">取消</button><button class="btn btn-primary" onclick="saveContact()">保存</button></div></div></div>
 
-<!-- ===== 新建/编辑模板模态框 ===== -->
-<div class="modal-mask" id="modal-template">
-    <div class="modal-box" style="width:580px;">
-        <div class="modal-head">
-            <h3 id="modal-tpl-title">新建模板</h3>
-            <button class="modal-close" onclick="hideModal('modal-template')">&times;</button>
-        </div>
-        <div class="modal-content">
-            <input type="hidden" id="edit-tpl-id">
-            <div class="form-group">
-                <div class="form-label">模板名称</div>
-                <input type="text" class="form-input" id="tpl-name" placeholder="给模板起个名字，方便识别">
-            </div>
-            <div class="form-group">
-                <div class="form-label">邮件主题</div>
-                <input type="text" class="form-input" id="tpl-subject" placeholder="邮件主题模板">
-            </div>
-            <div class="form-group">
-                <div class="form-label">正文内容</div>
-                <textarea class="form-textarea" id="tpl-body" style="min-height:160px;" placeholder="邮件正文模板"></textarea>
-            </div>
-        </div>
-        <div class="modal-foot">
-            <button class="btn btn-outline" onclick="hideModal('modal-template')">取消</button>
-            <button class="btn btn-primary" onclick="saveTemplateModal()">保存模板</button>
-        </div>
-    </div>
-</div>
+<!-- 模板模态框 -->
+<div class="modal-mask" id="modal-template"><div class="modal-box" style="width:580px;"><div class="modal-head"><h3 id="modal-tpl-title">新建模板</h3><button class="modal-close" onclick="hideModal('modal-template')">&times;</button></div><div class="modal-content">
+    <input type="hidden" id="edit-tpl-id"><div class="form-group"><div class="form-label">模板名称</div><input type="text" class="form-input" id="tpl-name" placeholder="给模板起个名字"></div><div class="form-group"><div class="form-label">收件人 <span style="color:var(--text-light);font-weight:400;">(可选，保存后使用模板时自动填充)</span></div><div class="tag-input-wrap" onclick="document.getElementById('tpl-to-input').focus()"><div id="tpl-to-tags"></div><input type="text" id="tpl-to-input" placeholder="输入邮箱，按 Enter 添加" onkeydown="handleTplToKey(event)"></div></div><div class="form-group"><div class="form-label">抄送 <span style="color:var(--text-light);font-weight:400;">(可选)</span></div><div class="tag-input-wrap" onclick="document.getElementById('tpl-cc-input').focus()"><div id="tpl-cc-tags"></div><input type="text" id="tpl-cc-input" placeholder="输入抄送邮箱" onkeydown="handleTplCcKey(event)"></div></div><div class="form-group"><div class="form-label">邮件主题</div><input type="text" class="form-input" id="tpl-subject" placeholder="邮件主题模板"></div><div class="form-group"><div class="form-label">正文内容</div><textarea class="form-textarea" id="tpl-body" style="min-height:160px;" placeholder="邮件正文模板"></textarea></div>
+</div><div class="modal-foot"><button class="btn btn-outline" onclick="hideModal('modal-template')">取消</button><button class="btn btn-primary" onclick="saveTemplateModal()">保存模板</button></div></div></div>
 
-<!-- ===== 联系人选择器 ===== -->
-<div class="modal-mask" id="modal-picker">
-    <div class="modal-box">
-        <div class="modal-head">
-            <h3>从联系人选择收件人</h3>
-            <button class="modal-close" onclick="hideModal('modal-picker')">&times;</button>
-        </div>
-        <div class="modal-content" id="picker-body" style="max-height:400px;overflow-y:auto;"></div>
-        <div class="modal-foot">
-            <button class="btn btn-outline" onclick="hideModal('modal-picker')">取消</button>
-            <button class="btn btn-primary" onclick="confirmPicker()">添加选中</button>
-        </div>
-    </div>
-</div>
+<!-- 联系人选择器 -->
+<div class="modal-mask" id="modal-picker"><div class="modal-box"><div class="modal-head"><h3>从联系人选择收件人</h3><button class="modal-close" onclick="hideModal('modal-picker')">&times;</button></div><div class="modal-content" id="picker-body" style="max-height:400px;overflow-y:auto;"></div><div class="modal-foot"><button class="btn btn-outline" onclick="hideModal('modal-picker')">取消</button><button class="btn btn-primary" onclick="confirmPicker()">添加选中</button></div></div></div>
+
+<!-- 分组选择器 -->
+<div class="modal-mask" id="modal-group-picker"><div class="modal-box"><div class="modal-head"><h3>按分组添加收件人</h3><button class="modal-close" onclick="hideModal('modal-group-picker')">&times;</button></div><div class="modal-content" id="group-picker-body" style="max-height:450px;overflow-y:auto;padding:8px 0;"></div><div class="modal-foot"><button class="btn btn-outline" onclick="hideModal('modal-group-picker')">取消</button><button class="btn btn-primary" onclick="confirmGroupPicker()">添加选中分组的联系人</button></div></div></div>
 
 <script>
 // ============ 全局状态 ============
-let recipients = [];
-let ccList = [];
-let attachments = [];
-let contacts = [];
-let templates = [];
-let pickerChecked = [];
-let currentStep = 1;
+let recipients = [], ccList = [], attachments = [], contacts = [], templates = [];
+let pickerChecked = [], groupPickerChecked = [];
+let batchMode = false, currentStep = 1;
+let txtVarFiles = {}; // {name: [values]}
+let previewEdits = {}; // {email: {subject, body}}
+let perRecipientFiles = {}; // {email: [File]}
 const API = '';
 
 // ============ 初始化 ============
 document.addEventListener('DOMContentLoaded', () => {
-    loadContacts();
-    loadTemplates();
-    loadMailConfig();
+    loadContacts(); loadTemplates(); loadMailConfig(); loadTxtVars(); checkLoginStatus();
     setInterval(pollLogin, 2000);
 });
 
 // ============ Toast ============
-function toast(msg, type = 'info') {
+function toast(msg, type='info') {
     const wrap = document.getElementById('toast-wrap');
     const el = document.createElement('div');
     el.className = `toast toast-${type}`;
-    const icons = { success: '\u2705', error: '\u274C', info: '\u2139\uFE0F' };
-    el.innerHTML = `<span class="t-icon">${icons[type] || icons.info}</span><span>${esc(msg)}</span>`;
+    const icons = {success:'\u2705',error:'\u274C',info:'\u2139\uFE0F'};
+    el.innerHTML = `<span class="t-icon">${icons[type]||icons.info}</span><span>${esc(msg)}</span>`;
     wrap.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(120%)'; el.style.transition = 'all 0.3s'; setTimeout(() => el.remove(), 300); }, 4000);
+    setTimeout(()=>{el.style.opacity='0';el.style.transform='translateX(120%)';el.style.transition='all 0.3s';setTimeout(()=>el.remove(),300);},4000);
 }
 
 // ============ 面板切换 ============
 function showPanel(name) {
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.sidebar-item').forEach(s=>s.classList.remove('active'));
     const panel = document.getElementById(`panel-${name}`);
     const sidebar = document.querySelector(`.sidebar-item[data-panel="${name}"]`);
-    if (panel) panel.classList.add('active');
-    if (sidebar) sidebar.classList.add('active');
-    if (name === 'contacts') loadContacts();
-    if (name === 'templates') loadTemplates();
+    if(panel) panel.classList.add('active');
+    if(sidebar) sidebar.classList.add('active');
+    if(name==='contacts') loadContacts();
+    if(name==='templates') loadTemplates();
 }
-
-// ============ 模态框 ============
-function showModal(id) { document.getElementById(id).classList.add('show'); }
-function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+function showModal(id){document.getElementById(id).classList.add('show');}
+function hideModal(id){document.getElementById(id).classList.remove('show');}
 
 // ============ 联系人 ============
-async function loadContacts() {
-    try {
-        const r = await fetch(`${API}/api/contacts`);
-        const j = await r.json();
-        if (j.success) { contacts = j.data; renderContactsTable(); document.getElementById('contact-count').textContent = contacts.length; }
-    } catch(e) { console.error(e); }
-}
-
-function renderContactsTable() {
-    const tbody = document.getElementById('contacts-tbody');
-    const search = (document.getElementById('contact-search')?.value || '').toLowerCase();
-    const filtered = contacts.filter(c => !search || c.name.toLowerCase().includes(search) || c.email.toLowerCase().includes(search));
-    if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:40px;">${search ? '未找到匹配的联系人' : '暂无联系人，请点击"添加联系人"'}</td></tr>`;
-        return;
-    }
-    tbody.innerHTML = filtered.map(c => `
-        <tr>
-            <td style="font-weight:500;">${esc(c.name)}</td>
-            <td style="color:var(--text-sec);">${esc(c.email)}</td>
-            <td><span class="tag tag-blue">${esc(c.group)}</span></td>
-            <td class="td-actions">
-                <button class="btn btn-ghost btn-sm" onclick="addToCompose('${esc(c.email)}')">添加到收件人</button>
-                <button class="btn btn-ghost btn-sm" onclick="editContact(${c.id})">编辑</button>
-                <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="delContact(${c.id})">删除</button>
-            </td>
-        </tr>
-    `).join('');
-}
-
-function addToCompose(email) {
-    if (!recipients.includes(email)) { recipients.push(email); renderToTags(); toast(`已添加 ${email}`, 'success'); }
-    else toast('该收件人已存在', 'info');
-}
-
-function openAddContact() {
-    document.getElementById('modal-contact-title').textContent = '添加联系人';
-    document.getElementById('edit-contact-id').value = '';
-    document.getElementById('contact-name').value = '';
-    document.getElementById('contact-email').value = '';
-    document.getElementById('contact-group').value = '默认分组';
-    showModal('modal-contact');
-}
-
-function editContact(id) {
-    const c = contacts.find(x => x.id === id);
-    if (!c) return;
-    document.getElementById('modal-contact-title').textContent = '编辑联系人';
-    document.getElementById('edit-contact-id').value = c.id;
-    document.getElementById('contact-name').value = c.name;
-    document.getElementById('contact-email').value = c.email;
-    document.getElementById('contact-group').value = c.group || '默认分组';
-    showModal('modal-contact');
-}
-
-async function saveContact() {
-    const id = document.getElementById('edit-contact-id').value;
-    const name = document.getElementById('contact-name').value.trim();
-    const email = document.getElementById('contact-email').value.trim();
-    const group = document.getElementById('contact-group').value.trim() || '默认分组';
-    if (!name || !email) { toast('请填写姓名和邮箱', 'error'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast('邮箱格式不正确', 'error'); return; }
-    const url = id ? `${API}/api/contacts/${id}` : `${API}/api/contacts`;
-    const method = id ? 'PUT' : 'POST';
-    await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, group }) });
-    hideModal('modal-contact');
-    loadContacts();
-    toast(id ? '联系人已更新' : '联系人已添加', 'success');
-}
-
-async function delContact(id) {
-    if (!confirm('确定删除该联系人？')) return;
-    await fetch(`${API}/api/contacts/${id}`, { method: 'DELETE' });
-    loadContacts();
-    toast('已删除', 'success');
-}
+async function loadContacts(){try{const r=await fetch(`${API}/api/contacts`);const j=await r.json();if(j.success){contacts=j.data;renderContactsTable();document.getElementById('contact-count').textContent=contacts.length;}}catch(e){console.error(e);}}
+function renderContactsTable(){const tbody=document.getElementById('contacts-tbody');const search=(document.getElementById('contact-search')?.value||'').toLowerCase();const filtered=contacts.filter(c=>!search||c.name.toLowerCase().includes(search)||c.email.toLowerCase().includes(search));if(!filtered.length){tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:40px;">${search?'未找到匹配的联系人':'暂无联系人'}</td></tr>`;return;}tbody.innerHTML=filtered.map(c=>`<tr><td style="font-weight:500;">${esc(c.name)}</td><td style="color:var(--text-sec);">${esc(c.email)}</td><td><span class="tag tag-blue">${esc(c.group)}</span></td><td class="td-actions"><button class="btn btn-ghost btn-sm" onclick="addToCompose('${esc(c.email)}')">添加到收件人</button><button class="btn btn-ghost btn-sm" onclick="editContact(${c.id})">编辑</button><button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="delContact(${c.id})">删除</button></td></tr>`).join('');}
+function addToCompose(email){if(!recipients.includes(email)){recipients.push(email);renderToTags();toast(`已添加 ${email}`,'success');}else toast('该收件人已存在','info');}
+function openAddContact(){document.getElementById('modal-contact-title').textContent='添加联系人';document.getElementById('edit-contact-id').value='';document.getElementById('contact-name').value='';document.getElementById('contact-email').value='';document.getElementById('contact-group').value='默认分组';showModal('modal-contact');}
+function editContact(id){const c=contacts.find(x=>x.id===id);if(!c)return;document.getElementById('modal-contact-title').textContent='编辑联系人';document.getElementById('edit-contact-id').value=c.id;document.getElementById('contact-name').value=c.name;document.getElementById('contact-email').value=c.email;document.getElementById('contact-group').value=c.group||'默认分组';showModal('modal-contact');}
+async function saveContact(){const id=document.getElementById('edit-contact-id').value;const name=document.getElementById('contact-name').value.trim();const email=document.getElementById('contact-email').value.trim();const group=document.getElementById('contact-group').value.trim()||'默认分组';if(!name||!email){toast('请填写姓名和邮箱','error');return;}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('邮箱格式不正确','error');return;}const url=id?`${API}/api/contacts/${id}`:`${API}/api/contacts`;const method=id?'PUT':'POST';await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,group})});hideModal('modal-contact');loadContacts();toast(id?'联系人已更新':'联系人已添加','success');}
+async function delContact(id){if(!confirm('确定删除该联系人？'))return;await fetch(`${API}/api/contacts/${id}`,{method:'DELETE'});loadContacts();toast('已删除','success');}
 
 // ============ 联系人选择器 ============
-function openContactPicker() {
-    pickerChecked = [];
-    const body = document.getElementById('picker-body');
-    if (contacts.length === 0) {
-        body.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:30px;">暂无联系人，请先在"联系人管理"中添加</div>';
-    } else {
-        body.innerHTML = contacts.map(c => `
-            <label style="display:flex;align-items:center;padding:10px 8px;cursor:pointer;gap:10px;border-radius:var(--radius-xs);transition:var(--transition);"
-                   onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'">
-                <input type="checkbox" value="${esc(c.email)}" onchange="togglePicker('${esc(c.email)}',this.checked)" style="width:16px;height:16px;">
-                <span style="flex:1;font-size:14px;"><strong>${esc(c.name)}</strong> <span style="color:var(--text-light);">&lt;${esc(c.email)}&gt;</span></span>
-                <span class="tag tag-blue">${esc(c.group)}</span>
-            </label>
-        `).join('');
-    }
-    showModal('modal-picker');
-}
+function openContactPicker(){pickerChecked=[];const body=document.getElementById('picker-body');if(!contacts.length){body.innerHTML='<div style="text-align:center;color:var(--text-light);padding:30px;">暂无联系人</div>';}else{body.innerHTML=contacts.map(c=>`<label style="display:flex;align-items:center;padding:10px 8px;cursor:pointer;gap:10px;border-radius:var(--radius-xs);transition:var(--transition);" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background='transparent'"><input type="checkbox" value="${esc(c.email)}" onchange="togglePicker('${esc(c.email)}',this.checked)" style="width:16px;height:16px;"><span style="flex:1;font-size:14px;"><strong>${esc(c.name)}</strong> <span style="color:var(--text-light);">&lt;${esc(c.email)}&gt;</span></span><span class="tag tag-blue">${esc(c.group)}</span></label>`).join('');}showModal('modal-picker');}
+function togglePicker(email,checked){if(checked&&!pickerChecked.includes(email))pickerChecked.push(email);if(!checked)pickerChecked=pickerChecked.filter(e=>e!==email);}
+function confirmPicker(){let added=0;pickerChecked.forEach(e=>{if(!recipients.includes(e)){recipients.push(e);added++;}});renderToTags();hideModal('modal-picker');if(added>0)toast(`已添加 ${added} 位收件人`,'success');else toast('选中的联系人已都在收件人列表中','info');}
 
-function togglePicker(email, checked) {
-    if (checked && !pickerChecked.includes(email)) pickerChecked.push(email);
-    if (!checked) pickerChecked = pickerChecked.filter(e => e !== email);
-}
-
-function confirmPicker() {
-    let added = 0;
-    pickerChecked.forEach(e => { if (!recipients.includes(e)) { recipients.push(e); added++; } });
-    renderToTags();
-    hideModal('modal-picker');
-    if (added > 0) toast(`已添加 ${added} 位收件人`, 'success');
-    else toast('选中的联系人已都在收件人列表中', 'info');
-}
+// ============ 分组选择器 ============
+async function openGroupPicker(){groupPickerChecked=[];const body=document.getElementById('group-picker-body');try{const r=await fetch(`${API}/api/groups`);const j=await r.json();if(!j.success||!j.data||!j.data.length){body.innerHTML='<div style="text-align:center;color:var(--text-light);padding:30px;">暂无分组</div>';showModal('modal-group-picker');return;}body.innerHTML=j.data.map(g=>`<div><div class="gp-group-head"><input type="checkbox" class="gp-group-cb" data-group="${esc(g.name)}" onchange="toggleGroupCheck('${esc(g.name)}',this.checked)" style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer;"><span class="gp-name">${esc(g.name)}</span><span class="gp-count">${g.count} 人</span><button class="btn btn-ghost btn-sm" onclick="this.parentElement.nextElementSibling.style.display=this.parentElement.nextElementSibling.style.display==='none'?'block':'none'" style="font-size:11px;padding:2px 8px;">展开</button></div><div style="display:none;">${g.contacts.map(c=>`<div class="gp-member"><input type="checkbox" class="gp-member-cb" data-group="${esc(g.name)}" data-email="${esc(c.email)}" onchange="toggleGroupMemberCheck('${esc(g.name)}','${esc(c.email)}',this.checked)" style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer;"><span class="gp-mname">${esc(c.name)}</span><span class="gp-memail">${esc(c.email)}</span></div>`).join('')}</div></div>`).join('');}catch(e){body.innerHTML='<div style="text-align:center;color:var(--danger);padding:30px;">加载分组失败</div>';}showModal('modal-group-picker');}
+function toggleGroupCheck(groupName,checked){const memberCbs=document.querySelectorAll(`.gp-member-cb[data-group="${groupName}"]`);memberCbs.forEach(cb=>{cb.checked=checked;const email=cb.dataset.email;if(checked){if(!groupPickerChecked.find(g=>g.email===email))groupPickerChecked.push({group:groupName,email:email});}else{groupPickerChecked=groupPickerChecked.filter(g=>g.email!==email);}});}
+function toggleGroupMemberCheck(groupName,email,checked){if(checked){if(!groupPickerChecked.find(g=>g.email===email))groupPickerChecked.push({group:groupName,email:email});}else{groupPickerChecked=groupPickerChecked.filter(g=>g.email!==email);const groupCb=document.querySelector(`.gp-group-cb[data-group="${groupName}"]`);if(groupCb)groupCb.checked=false;}}
+function confirmGroupPicker(){const emails=groupPickerChecked.map(g=>g.email);let added=0;emails.forEach(e=>{if(!recipients.includes(e)){recipients.push(e);added++;}});renderToTags();hideModal('modal-group-picker');if(added>0)toast(`已添加 ${added} 位收件人`,'success');else toast('选中的联系人已都在收件人列表中','info');if(batchMode)renderRecipientPreview();}
 
 // ============ 收件人/抄送 ============
-function handleToKey(e) {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTo(); }
-    if (e.key === 'Backspace' && !e.target.value && recipients.length) { recipients.pop(); renderToTags(); }
-}
-function addTo() {
-    const input = document.getElementById('to-input');
-    const v = input.value.trim().replace(/,$/,'');
-    if (!v) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { toast('邮箱格式不正确', 'error'); return; }
-    if (recipients.includes(v)) { toast('已添加', 'info'); return; }
-    recipients.push(v); input.value = ''; renderToTags();
-}
-function removeTo(email) { recipients = recipients.filter(r => r !== email); renderToTags(); }
-function renderToTags() {
-    document.getElementById('to-tags').innerHTML = recipients.map(e => `<span class="tag tag-green">${esc(e)}<span class="tag-x" onclick="removeTo('${esc(e)}')">&times;</span></span>`).join('');
-    updateComposeInfo();
+function handleToKey(e){if(e.key==='Enter'||e.key===','){e.preventDefault();addTo();}if(e.key==='Backspace'&&!e.target.value&&recipients.length){recipients.pop();renderToTags();}}
+function addTo(){const input=document.getElementById('to-input');const v=input.value.trim().replace(/,$/,'');if(!v)return;if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){toast('邮箱格式不正确','error');return;}if(recipients.includes(v)){toast('已添加','info');return;}recipients.push(v);input.value='';renderToTags();}
+function removeTo(email){recipients=recipients.filter(r=>r!==email);delete previewEdits[email];renderToTags();}
+function renderToTags(){document.getElementById('to-tags').innerHTML=recipients.map(e=>`<span class="tag tag-green">${esc(e)}<span class="tag-x" onclick="removeTo('${esc(e)}')">&times;</span></span>`).join('');updateComposeInfo();if(batchMode)renderRecipientPreview();}
+function handleCcKey(e){if(e.key==='Enter'||e.key===','){e.preventDefault();addCc();}if(e.key==='Backspace'&&!e.target.value&&ccList.length){ccList.pop();renderCcTags();}}
+function addCc(){const input=document.getElementById('cc-input');const v=input.value.trim().replace(/,$/,'');if(!v)return;if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){toast('邮箱格式不正确','error');return;}if(ccList.includes(v)){toast('已添加','info');return;}ccList.push(v);input.value='';renderCcTags();}
+function removeCc(email){ccList=ccList.filter(r=>r!==email);renderCcTags();}
+function renderCcTags(){document.getElementById('cc-tags').innerHTML=ccList.map(e=>`<span class="tag tag-blue">${esc(e)}<span class="tag-x" onclick="removeCc('${esc(e)}')">&times;</span></span>`).join('');}
+function updateComposeInfo(){const info=document.getElementById('compose-info');const parts=[];if(recipients.length>0)parts.push(`${recipients.length} 位收件人`);if(ccList.length>0)parts.push(`${ccList.length} 位抄送`);if(attachments.length>0)parts.push(`${attachments.length} 个附件`);info.textContent=parts.join('，');}
+
+// ============ 富文本工具栏 ============
+function execRich(cmd,val){document.execCommand(cmd,false,val||null);document.getElementById('email-body').focus();if(batchMode)renderRecipientPreview();}
+function getBodyText(){const el=document.getElementById('email-body');return el.innerText||'';}
+function getBodyHTML(){return document.getElementById('email-body').innerHTML;}
+
+// ============ 个性化模式 ============
+function toggleBatchMode(){batchMode=document.getElementById('batch-mode').checked;document.getElementById('var-helper').style.display=batchMode?'flex':'none';document.getElementById('preview-section').style.display=batchMode?'block':'none';document.getElementById('send-btn').style.display=batchMode?'none':'inline-flex';document.getElementById('batch-send-btn').style.display=batchMode?'inline-flex':'none';if(batchMode){document.getElementById('email-body').setAttribute('data-placeholder','输入邮件正文，支持 {{name}}、{{email}}、{{group}}、{{文件名.txt}} 等变量');renderRecipientPreview();}else{document.getElementById('email-body').setAttribute('data-placeholder','请输入邮件正文内容...');}}
+
+function insertVariable(varName){const el=document.getElementById('email-body');el.focus();const insert=`{{${varName}}}`;document.execCommand('insertText',false,insert);if(batchMode)renderRecipientPreview();}
+
+// ============ txt 变量文件 ============
+async function loadTxtVars(){try{const r=await fetch(`${API}/api/txt-vars`);const j=await r.json();if(j.success&&j.data){j.data.forEach(d=>{txtVarFiles[d.name]=null;});renderTxtVarList();}}catch(e){}}
+async function uploadTxtVar(e){const file=e.target.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);try{const r=await fetch(`${API}/api/txt-vars`,{method:'POST',body:fd});const j=await r.json();if(j.success){txtVarFiles[j.data.name]=null;renderTxtVarList();toast(`变量文件 ${j.data.name}.txt 已上传（${j.data.count} 行）`,'success');}else toast(j.message,'error');}catch(e){toast('上传失败','error');}e.target.value='';}
+function renderTxtVarList(){const list=document.getElementById('txt-var-list');list.innerHTML=Object.keys(txtVarFiles).map(name=>`<span class="var-btn" style="background:var(--warning-light);color:var(--warning);border-color:var(--warning-light);" onclick="insertVariable('${name}.txt')" title="插入 {{${name}.txt}}">{{${name}.txt}}</span>`).join('');}
+async function ensureTxtVarLoaded(name){if(txtVarFiles[name]===null){try{const r=await fetch(`${API}/api/txt-vars/${name}`);const j=await r.json();if(j.success)txtVarFiles[name]=j.data.values||[];else txtVarFiles[name]=[];}catch(e){txtVarFiles[name]=[];}}}
+
+// ============ 变量替换 ============
+function findContactByEmail(email){return contacts.find(c=>c.email===email)||null;}
+
+async function replaceVariables(text, contact, recipientIndex){
+    if(!text) return '';
+    let result = text;
+    // 基本变量
+    result = result.replace(/\{\{name\}\}/g, contact?contact.name:'');
+    result = result.replace(/\{\{email\}\}/g, contact?contact.email:'');
+    result = result.replace(/\{\{group\}\}/g, contact?(contact.group||''):'');
+    // txt 文件变量: {{xxx.txt}} 每行一个值，按收件人顺序对应
+    const txtMatches = result.match(/\{\{([^}]+\.txt)\}\}/g);
+    if(txtMatches){
+        for(const m of txtMatches){
+            const varName = m.slice(2,-2); // 去掉 {{ }}
+            const baseName = varName.replace('.txt','');
+            await ensureTxtVarLoaded(baseName);
+            const values = txtVarFiles[baseName]||[];
+            const val = (recipientIndex < values.length) ? values[recipientIndex] : (values[0]||'');
+            result = result.replace(m, val);
+        }
+    }
+    return result;
 }
 
-function handleCcKey(e) {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addCc(); }
-    if (e.key === 'Backspace' && !e.target.value && ccList.length) { ccList.pop(); renderCcTags(); }
-}
-function addCc() {
-    const input = document.getElementById('cc-input');
-    const v = input.value.trim().replace(/,$/,'');
-    if (!v) return;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) { toast('邮箱格式不正确', 'error'); return; }
-    if (ccList.includes(v)) { toast('已添加', 'info'); return; }
-    ccList.push(v); input.value = ''; renderCcTags();
-}
-function removeCc(email) { ccList = ccList.filter(r => r !== email); renderCcTags(); }
-function renderCcTags() {
-    document.getElementById('cc-tags').innerHTML = ccList.map(e => `<span class="tag tag-blue">${esc(e)}<span class="tag-x" onclick="removeCc('${esc(e)}')">&times;</span></span>`).join('');
+// ============ 个性化预览（可编辑） ============
+async function renderRecipientPreview(){
+    const body = document.getElementById('preview-body');
+    const countEl = document.getElementById('preview-count');
+    const subject = document.getElementById('email-subject').value;
+    const bodyText = getBodyText();
+
+    if(!recipients.length){body.innerHTML='<div style="text-align:center;color:var(--text-light);padding:20px;">请先添加收件人</div>';countEl.textContent='';return;}
+    countEl.textContent=`共 ${recipients.length} 位收件人`;
+
+    let html = '';
+    for(let i=0;i<recipients.length;i++){
+        const email = recipients[i];
+        const c = findContactByEmail(email);
+        const name = c?c.name:email.split('@')[0];
+        const group = c?(c.group||'-'):'-';
+        const previewSubject = await replaceVariables(subject, c, i);
+        const previewBody = await replaceVariables(bodyText, c, i);
+        // 保留已有编辑
+        const edit = previewEdits[email];
+        const showSubject = edit ? edit.subject : previewSubject;
+        const showBody = edit ? edit.body : previewBody;
+        const pFiles = perRecipientFiles[email]||[];
+
+        html += `<div class="preview-item" data-email="${esc(email)}">
+            <div class="pi-head">
+                <span class="pi-name">${esc(name)}</span>
+                <span class="pi-email">&lt;${esc(email)}&gt;</span>
+                <span class="pi-group">${esc(group)}</span>
+                <button class="btn btn-ghost btn-sm" onclick="togglePreviewEdit('${esc(email)}')" style="margin-left:auto;font-size:11px;">&#9998; 编辑</button>
+            </div>
+            <div id="pi-display-${esc(email).replace(/[@.]/g,'_')}">
+                <div class="pi-subject">${esc(showSubject)||'<span style="color:var(--text-light)">(无主题)</span>'}</div>
+                <div class="pi-body">${esc(showBody.substring(0,200))}${showBody.length>200?'...':''}</div>
+                <div class="pi-attach-row">
+                    ${pFiles.map(f=>`<span class="pi-attach-tag">${esc(f.name)}</span>`).join('')}
+                    <span class="pi-attach-add" onclick="addPerRecipientFile('${esc(email)}')">+ 个别附件</span>
+                </div>
+            </div>
+            <div class="pi-edit-area" id="pi-edit-${esc(email).replace(/[@.]/g,'_')}">
+                <input type="text" value="${esc(showSubject)}" onchange="updatePreviewEdit('${esc(email)}','subject',this.value)" placeholder="主题">
+                <textarea onchange="updatePreviewEdit('${esc(email)}','body',this.value)" placeholder="正文">${esc(showBody)}</textarea>
+                <div style="font-size:11px;color:var(--text-light);margin-top:4px;">编辑后内容仅对该收件人生效，不影响模板</div>
+            </div>
+        </div>`;
+    }
+    body.innerHTML = html;
 }
 
-function updateComposeInfo() {
-    const info = document.getElementById('compose-info');
-    const parts = [];
-    if (recipients.length > 0) parts.push(`${recipients.length} 位收件人`);
-    if (ccList.length > 0) parts.push(`${ccList.length} 位抄送`);
-    if (attachments.length > 0) parts.push(`${attachments.length} 个附件`);
-    info.textContent = parts.join('，');
+function togglePreviewEdit(email){
+    const safe = email.replace(/[@.]/g,'_');
+    const display = document.getElementById(`pi-display-${safe}`);
+    const editArea = document.getElementById(`pi-edit-${safe}`);
+    if(!display||!editArea) return;
+    const show = editArea.style.display==='none'||!editArea.style.display;
+    editArea.style.display = show?'block':'none';
+    display.style.display = show?'none':'block';
+}
+
+function updatePreviewEdit(email, field, value){
+    if(!previewEdits[email]) previewEdits[email]={};
+    previewEdits[email][field]=value;
+}
+
+function addPerRecipientFile(email){
+    const input = document.createElement('input');
+    input.type='file'; input.multiple=true;
+    input.onchange=function(){
+        if(!perRecipientFiles[email]) perRecipientFiles[email]=[];
+        Array.from(this.files).forEach(f=>perRecipientFiles[email].push(f));
+        if(batchMode) renderRecipientPreview();
+        toast(`已为 ${email} 添加 ${this.files.length} 个个别附件`,'success');
+    };
+    input.click();
 }
 
 // ============ 模板 ============
-async function loadTemplates() {
-    try {
-        const r = await fetch(`${API}/api/templates`);
-        const j = await r.json();
-        if (j.success) { templates = j.data; renderTemplates(); updateTplSelect(); document.getElementById('template-count').textContent = templates.length; }
-    } catch(e) { console.error(e); }
-}
+async function loadTemplates(){try{const r=await fetch(`${API}/api/templates`);const j=await r.json();if(j.success){templates=j.data;renderTemplates();updateTplSelect();document.getElementById('template-count').textContent=templates.length;}}catch(e){console.error(e);}}
+function updateTplSelect(){const sel=document.getElementById('template-select');sel.innerHTML='<option value="">-- 不使用模板 --</option>'+templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');}
+function renderTemplates(){const container=document.getElementById('tpl-list');if(!templates.length){container.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--text-light);padding:40px;">暂无模板</div>';return;}container.innerHTML=templates.map(t=>{const toArr=t.to||[];const ccArr=t.cc||[];let tags='';if(toArr.length)tags+=toArr.slice(0,3).map(e=>`<span class="tag tag-green">${esc(e)}</span>`).join('')+(toArr.length>3?`<span class="tag" style="background:var(--bg);color:var(--text-light);">+${toArr.length-3}</span>`:'');if(ccArr.length)tags+=ccArr.slice(0,2).map(e=>`<span class="tag tag-blue">${esc(e)}</span>`).join('');return`<div class="tpl-card"><div class="tpl-name">&#128196; ${esc(t.name)}</div>${tags?`<div class="tpl-tags">${tags}</div>`:''}<div class="tpl-preview">&#128233; ${esc(t.subject||'(无主题)')}</div><div class="tpl-preview">${esc((t.body||'').substring(0,80))}${(t.body||'').length>80?'...':''}</div><div class="tpl-actions"><button class="btn btn-primary btn-sm" onclick="useTemplate(${t.id})">使用</button><button class="btn btn-outline btn-sm" onclick="editTemplate(${t.id})">编辑</button><button class="btn btn-outline btn-sm" style="color:var(--danger);" onclick="delTemplate(${t.id})">删除</button></div></div>`;}).join('');}
 
-function updateTplSelect() {
-    const sel = document.getElementById('template-select');
-    sel.innerHTML = '<option value="">-- 不使用模板 --</option>' + templates.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
-}
+// 模板模态框的收件人/抄送
+let tplTo=[],tplCc=[];
+function handleTplToKey(e){if(e.key==='Enter'||e.key===','){e.preventDefault();const input=document.getElementById('tpl-to-input');const v=input.value.trim().replace(/,$/,'');if(!v)return;if(!tplTo.includes(v)){tplTo.push(v);input.value='';renderTplToTags();}}}
+function handleTplCcKey(e){if(e.key==='Enter'||e.key===','){e.preventDefault();const input=document.getElementById('tpl-cc-input');const v=input.value.trim().replace(/,$/,'');if(!v)return;if(!tplCc.includes(v)){tplCc.push(v);input.value='';renderTplCcTags();}}}
+function renderTplToTags(){document.getElementById('tpl-to-tags').innerHTML=tplTo.map(e=>`<span class="tag tag-green">${esc(e)}<span class="tag-x" onclick="tplTo=tplTo.filter(x=>x!=='${esc(e)}');renderTplToTags();">&times;</span></span>`).join('');}
+function renderTplCcTags(){document.getElementById('tpl-cc-tags').innerHTML=tplCc.map(e=>`<span class="tag tag-blue">${esc(e)}<span class="tag-x" onclick="tplCc=tplCc.filter(x=>x!=='${esc(e)}');renderTplCcTags();">&times;</span></span>`).join('');}
 
-function renderTemplates() {
-    const container = document.getElementById('tpl-list');
-    if (templates.length === 0) {
-        container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-light);padding:40px;">暂无模板</div>';
-        return;
-    }
-    container.innerHTML = templates.map(t => `
-        <div class="tpl-card">
-            <div class="tpl-name">&#128196; ${esc(t.name)}</div>
-            <div class="tpl-preview">&#128233; ${esc(t.subject || '(无主题)')}</div>
-            <div class="tpl-preview">${esc((t.body||'').substring(0, 80))}${(t.body||'').length > 80 ? '...' : ''}</div>
-            <div class="tpl-actions">
-                <button class="btn btn-primary btn-sm" onclick="useTemplate(${t.id})">使用</button>
-                <button class="btn btn-outline btn-sm" onclick="editTemplate(${t.id})">编辑</button>
-                <button class="btn btn-outline btn-sm" style="color:var(--danger);" onclick="delTemplate(${t.id})">删除</button>
-            </div>
-        </div>
-    `).join('');
-}
+function applyTemplate(){const id=parseInt(document.getElementById('template-select').value);if(id)useTemplate(id);}
+function useTemplate(id){const t=templates.find(x=>x.id===id);if(!t)return;document.getElementById('email-subject').value=t.subject||'';document.getElementById('email-body').innerText=t.body||'';document.getElementById('template-select').value=id;if(t.to&&t.to.length){t.to.forEach(e=>{if(!recipients.includes(e))recipients.push(e);});renderToTags();}if(t.cc&&t.cc.length){t.cc.forEach(e=>{if(!ccList.includes(e))ccList.push(e);});renderCcTags();}showPanel('compose');toast(`已应用模板: ${t.name}`,'success');}
 
-function applyTemplate() {
-    const id = parseInt(document.getElementById('template-select').value);
-    if (id) useTemplate(id);
-}
-
-function useTemplate(id) {
-    const t = templates.find(x => x.id === id);
-    if (!t) return;
-    document.getElementById('email-subject').value = t.subject || '';
-    document.getElementById('email-body').value = t.body || '';
-    document.getElementById('template-select').value = id;
-    showPanel('compose');
-    toast(`已应用模板: ${t.name}`, 'success');
-}
-
-function saveCurrentAsTemplate() {
-    const subject = document.getElementById('email-subject').value.trim();
-    const body = document.getElementById('email-body').value.trim();
-    if (!subject && !body) { toast('当前内容为空，无法保存为模板', 'error'); return; }
-    document.getElementById('modal-tpl-title').textContent = '保存为模板';
-    document.getElementById('edit-tpl-id').value = '';
-    document.getElementById('tpl-name').value = '';
-    document.getElementById('tpl-subject').value = subject;
-    document.getElementById('tpl-body').value = body;
-    showModal('modal-template');
-}
-
-function openNewTemplate() {
-    document.getElementById('modal-tpl-title').textContent = '新建模板';
-    document.getElementById('edit-tpl-id').value = '';
-    document.getElementById('tpl-name').value = '';
-    document.getElementById('tpl-subject').value = '';
-    document.getElementById('tpl-body').value = '';
-    showModal('modal-template');
-}
-
-function editTemplate(id) {
-    const t = templates.find(x => x.id === id);
-    if (!t) return;
-    document.getElementById('modal-tpl-title').textContent = '编辑模板';
-    document.getElementById('edit-tpl-id').value = t.id;
-    document.getElementById('tpl-name').value = t.name;
-    document.getElementById('tpl-subject').value = t.subject || '';
-    document.getElementById('tpl-body').value = t.body || '';
-    showModal('modal-template');
-}
-
-async function saveTemplateModal() {
-    const id = document.getElementById('edit-tpl-id').value;
-    const name = document.getElementById('tpl-name').value.trim();
-    const subject = document.getElementById('tpl-subject').value.trim();
-    const body = document.getElementById('tpl-body').value.trim();
-    if (!name) { toast('请输入模板名称', 'error'); return; }
-    const url = id ? `${API}/api/templates/${id}` : `${API}/api/templates`;
-    const method = id ? 'PUT' : 'POST';
-    await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, subject, body }) });
-    hideModal('modal-template');
-    loadTemplates();
-    toast(id ? '模板已更新' : '模板已保存', 'success');
-}
-
-async function delTemplate(id) {
-    if (!confirm('确定删除该模板？')) return;
-    await fetch(`${API}/api/templates/${id}`, { method: 'DELETE' });
-    loadTemplates();
-    toast('模板已删除', 'success');
-}
+function saveCurrentAsTemplate(){const subject=document.getElementById('email-subject').value.trim();const body=getBodyText().trim();if(!subject&&!body){toast('当前内容为空，无法保存为模板','error');return;}document.getElementById('modal-tpl-title').textContent='保存为模板';document.getElementById('edit-tpl-id').value='';document.getElementById('tpl-name').value='';document.getElementById('tpl-subject').value=subject;document.getElementById('tpl-body').value=body;tplTo=[...recipients];tplCc=[...ccList];renderTplToTags();renderTplCcTags();showModal('modal-template');}
+function openNewTemplate(){document.getElementById('modal-tpl-title').textContent='新建模板';document.getElementById('edit-tpl-id').value='';document.getElementById('tpl-name').value='';document.getElementById('tpl-subject').value='';document.getElementById('tpl-body').value='';tplTo=[];tplCc=[];renderTplToTags();renderTplCcTags();showModal('modal-template');}
+function editTemplate(id){const t=templates.find(x=>x.id===id);if(!t)return;document.getElementById('modal-tpl-title').textContent='编辑模板';document.getElementById('edit-tpl-id').value=t.id;document.getElementById('tpl-name').value=t.name;document.getElementById('tpl-subject').value=t.subject||'';document.getElementById('tpl-body').value=t.body||'';tplTo=[...(t.to||[])];tplCc=[...(t.cc||[])];renderTplToTags();renderTplCcTags();showModal('modal-template');}
+async function saveTemplateModal(){const id=document.getElementById('edit-tpl-id').value;const name=document.getElementById('tpl-name').value.trim();const subject=document.getElementById('tpl-subject').value.trim();const body=document.getElementById('tpl-body').value.trim();if(!name){toast('请输入模板名称','error');return;}const url=id?`${API}/api/templates/${id}`:`${API}/api/templates`;const method=id?'PUT':'POST';await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify({name,subject,body,to:tplTo,cc:tplCc})});hideModal('modal-template');loadTemplates();toast(id?'模板已更新':'模板已保存','success');}
+async function delTemplate(id){if(!confirm('确定删除该模板？'))return;await fetch(`${API}/api/templates/${id}`,{method:'DELETE'});loadTemplates();toast('模板已删除','success');}
 
 // ============ 附件 ============
-function handleFileSelect(e) {
-    Array.from(e.target.files).forEach(f => { attachments.push({ name: f.name, size: f.size, file: f }); });
-    renderAttach(); updateComposeInfo(); e.target.value = '';
-}
-function handleDrop(e) {
-    Array.from(e.dataTransfer.files).forEach(f => { attachments.push({ name: f.name, size: f.size, file: f }); });
-    renderAttach(); updateComposeInfo();
-}
-function removeAttach(i) { attachments.splice(i, 1); renderAttach(); updateComposeInfo(); }
-function renderAttach() {
-    const el = document.getElementById('attach-list');
-    if (!attachments.length) { el.innerHTML = ''; return; }
-    el.innerHTML = attachments.map((a, i) => `
-        <div class="attach-item">
-            <span class="att-icon">&#128206;</span>
-            <span class="att-name">${esc(a.name)}</span>
-            <span class="att-size">${fmtSize(a.size)}</span>
-            <button class="att-del" onclick="removeAttach(${i})">&times;</button>
-        </div>
-    `).join('');
-}
-function fmtSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; }
+function handleFileSelect(e){Array.from(e.target.files).forEach(f=>{attachments.push({name:f.name,size:f.size,file:f});});renderAttach();updateComposeInfo();e.target.value='';}
+function handleDrop(e){Array.from(e.dataTransfer.files).forEach(f=>{attachments.push({name:f.name,size:f.size,file:f});});renderAttach();updateComposeInfo();}
+function removeAttach(i){attachments.splice(i,1);renderAttach();updateComposeInfo();}
+function renderAttach(){const el=document.getElementById('attach-list');if(!attachments.length){el.innerHTML='';return;}el.innerHTML=attachments.map((a,i)=>`<div class="attach-item"><span class="att-icon">&#128206;</span><span class="att-name">${esc(a.name)}</span><span class="att-size">${fmtSize(a.size)}</span><button class="att-del" onclick="removeAttach(${i})">&times;</button></div>`).join('');}
+function fmtSize(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(1)+' MB';}
 
 // ============ 发送邮件 ============
-async function sendEmail() {
-    if (!recipients.length) { toast('请添加至少一位收件人', 'error'); return; }
-    const subject = document.getElementById('email-subject').value.trim();
-    if (!subject) { toast('请填写邮件主题', 'error'); return; }
-    const body = document.getElementById('email-body').value.trim();
+async function sendEmail(){if(!recipients.length){toast('请添加至少一位收件人','error');return;}const subject=document.getElementById('email-subject').value.trim();if(!subject){toast('请填写邮件主题','error');return;}const body=getBodyHTML();document.getElementById('sending-overlay').classList.add('show');const fd=new FormData();fd.append('to',JSON.stringify(recipients));fd.append('cc',JSON.stringify(ccList));fd.append('subject',subject);fd.append('body',body);fd.append('is_html','true');attachments.forEach(a=>{if(a.file)fd.append('files',a.file);});try{const r=await fetch(`${API}/api/send`,{method:'POST',body:fd});const j=await r.json();if(j.success){toast(j.message,'success');clearCompose();}else toast(j.message,'error');}catch(e){toast('发送失败: '+e.message,'error');}document.getElementById('sending-overlay').classList.remove('show');}
 
-    document.getElementById('sending-overlay').classList.add('show');
+// ============ 批量个性化发送 ============
+async function sendBatchEmail(){if(!recipients.length){toast('请添加至少一位收件人','error');return;}const subjectTpl=document.getElementById('email-subject').value.trim();const bodyTpl=getBodyText();if(!subjectTpl){toast('请填写邮件主题模板','error');return;}
+    const items=[];for(let i=0;i<recipients.length;i++){const email=recipients[i];const c=findContactByEmail(email);const edit=previewEdits[email];let s,b;if(edit){s=edit.subject||await replaceVariables(subjectTpl,c,i);b=edit.body||await replaceVariables(bodyTpl,c,i);}else{s=await replaceVariables(subjectTpl,c,i);b=await replaceVariables(bodyTpl,c,i);}items.push({to:email,subject:s,body:b});}
+    document.getElementById('sending-overlay').classList.add('show');document.querySelector('.sending-text').textContent=`正在批量发送邮件 (0/${items.length})...`;
+    const fd=new FormData();fd.append('items',JSON.stringify(items));fd.append('cc',JSON.stringify(ccList));
+    // 通用附件
+    attachments.forEach(a=>{if(a.file)fd.append('files',a.file);});
+    // 个别附件
+    for(let i=0;i<recipients.length;i++){const email=recipients[i];const pFiles=perRecipientFiles[email]||[];pFiles.forEach(f=>{fd.append(`files_${i}`,f);});}
+    try{const r=await fetch(`${API}/api/batch-send`,{method:'POST',body:fd});const j=await r.json();if(j.success){toast(j.message,j.fail_count>0?'info':'success');if(j.success_count===items.length)clearCompose();}else{toast(j.message,'error');}}catch(e){toast('批量发送失败: '+e.message,'error');}
+    document.getElementById('sending-overlay').classList.remove('show');document.querySelector('.sending-text').textContent='正在发送邮件，请稍候...';}
 
-    const fd = new FormData();
-    fd.append('to', JSON.stringify(recipients));
-    fd.append('cc', JSON.stringify(ccList));
-    fd.append('subject', subject);
-    fd.append('body', body);
-    fd.append('is_html', 'false');
-    attachments.forEach(a => { if (a.file) fd.append('files', a.file); });
-
-    try {
-        const r = await fetch(`${API}/api/send`, { method: 'POST', body: fd });
-        const j = await r.json();
-        if (j.success) { toast(j.message, 'success'); clearCompose(); }
-        else toast(j.message, 'error');
-    } catch(e) { toast('发送失败: ' + e.message, 'error'); }
-    document.getElementById('sending-overlay').classList.remove('show');
-}
-
-function clearCompose() {
-    recipients = []; ccList = []; attachments = [];
-    document.getElementById('to-input').value = '';
-    document.getElementById('cc-input').value = '';
-    document.getElementById('email-subject').value = '';
-    document.getElementById('email-body').value = '';
-    document.getElementById('template-select').value = '';
-    renderToTags(); renderCcTags(); renderAttach();
-    document.getElementById('compose-info').textContent = '';
-}
+function clearCompose(){recipients=[];ccList=[];attachments=[];previewEdits={};perRecipientFiles={};document.getElementById('to-input').value='';document.getElementById('cc-input').value='';document.getElementById('email-subject').value='';document.getElementById('email-body').innerHTML='';document.getElementById('template-select').value='';if(batchMode){document.getElementById('batch-mode').checked=false;toggleBatchMode();}renderToTags();renderCcTags();renderAttach();document.getElementById('compose-info').textContent='';}
 
 // ============ 黑箱登录 ============
-function updateSteps(step) {
-    currentStep = step;
-    document.querySelectorAll('.step').forEach(s => {
-        const n = parseInt(s.dataset.step);
-        s.classList.remove('active', 'done');
-        if (n < step) s.classList.add('done');
-        if (n === step) s.classList.add('active');
-    });
-    document.querySelectorAll('.step-line').forEach((line, i) => {
-        line.classList.toggle('done', i + 1 < step);
-    });
-}
+function updateSteps(step){currentStep=step;document.querySelectorAll('.step').forEach(s=>{const n=parseInt(s.dataset.step);s.classList.remove('active','done');if(n<step)s.classList.add('done');if(n===step)s.classList.add('active');});document.querySelectorAll('.step-line').forEach((line,i)=>{line.classList.toggle('done',i+1<step);});}
+async function startLogin(){const icon=document.getElementById('login-icon');const text=document.getElementById('login-text');const sub=document.getElementById('login-sub');const actions=document.getElementById('login-actions');icon.innerHTML='<div class="spinner"></div>';text.textContent='正在启动黑箱登录...';sub.textContent='请稍候';actions.innerHTML='<button class="btn btn-outline" disabled>登录中...</button>';document.getElementById('login-code-area').style.display='none';updateSteps(2);const codeInput=document.getElementById('code-input');if(codeInput)codeInput.value='';try{const r=await fetch(`${API}/api/login/start`,{method:'POST'});const j=await r.json();if(!j.success)text.textContent=j.message;}catch(e){toast('启动失败: '+e.message,'error');}}
 
-async function startLogin() {
-    const icon = document.getElementById('login-icon');
-    const text = document.getElementById('login-text');
-    const sub = document.getElementById('login-sub');
-    const actions = document.getElementById('login-actions');
-    const codeArea = document.getElementById('login-code-area');
+async function checkLoginStatus(){try{const r=await fetch(`${API}/api/login/check`);const j=await r.json();if(j.logged_in){document.getElementById('status-dot').className='dot dot-green';document.getElementById('status-label').textContent='已登录';}}catch(e){}}
 
-    icon.innerHTML = '<div class="spinner"></div>';
-    text.textContent = '正在启动黑箱登录，自动填写账号密码...';
-    sub.textContent = '请稍候，系统正在后台自动操作';
-    actions.innerHTML = '<button class="btn btn-outline" disabled>正在登录中...</button>';
-    codeArea.style.display = 'none';
-    updateSteps(2);
+function pollLogin(){fetch(`${API}/api/login/status`).then(r=>r.json()).then(s=>{const icon=document.getElementById('login-icon');const text=document.getElementById('login-text');const sub=document.getElementById('login-sub');const actions=document.getElementById('login-actions');const codeArea=document.getElementById('login-code-area');const dot=document.getElementById('status-dot');const label=document.getElementById('status-label');if(s.status==='logging_in'){icon.innerHTML='<div class="spinner"></div>';text.textContent=s.message||'正在自动登录...';sub.textContent='系统正在后台操作';actions.innerHTML='<button class="btn btn-outline" disabled>登录中...</button>';codeArea.style.display='none';updateSteps(2);dot.className='dot dot-yellow';label.textContent='登录中';}else if(s.status==='waiting_code'){icon.innerHTML='&#128241;';text.textContent='验证码已发送到您的手机';sub.textContent='请在下方输入6位数字验证码';actions.innerHTML='<button class="btn btn-outline" onclick="cancelLogin()">取消登录</button>';codeArea.style.display='block';updateSteps(4);setTimeout(()=>{const el=document.getElementById('code-input');if(el)el.focus();},100);dot.className='dot dot-yellow';label.textContent='等待验证码';}else if(s.status==='verifying'){icon.innerHTML='<div class="spinner"></div>';text.textContent='正在验证...';codeArea.style.display='none';updateSteps(5);dot.className='dot dot-yellow';label.textContent='验证中';}else if(s.status==='success'){icon.innerHTML='&#9989;';text.textContent='登录成功！可以正常使用邮件发送功能';sub.textContent='邮箱已通过黑箱模式自动登录完成';actions.innerHTML='<button class="btn btn-primary" onclick="startLogin()">重新登录</button>';codeArea.style.display='none';updateSteps(5);dot.className='dot dot-green';label.textContent='已登录';}else if(s.status==='failed'){icon.innerHTML='&#10060;';text.textContent=s.message||'登录失败';sub.textContent='可以尝试重新登录';actions.innerHTML='<button class="btn btn-primary" onclick="startLogin()">重新登录</button>';codeArea.style.display='none';dot.className='dot dot-gray';label.textContent='未登录';}else{checkLoginStatus();}}).catch(()=>{});}
 
-    // 清空验证码输入
-    const codeInput = document.getElementById('code-input'); if (codeInput) codeInput.value = '';
-
-    try {
-        const r = await fetch(`${API}/api/login/start`, { method: 'POST' });
-        const j = await r.json();
-        if (!j.success) { text.textContent = j.message; }
-    } catch(e) { toast('启动失败: ' + e.message, 'error'); }
-}
-
-function pollLogin() {
-    fetch(`${API}/api/login/status`).then(r => r.json()).then(s => {
-        const icon = document.getElementById('login-icon');
-        const text = document.getElementById('login-text');
-        const sub = document.getElementById('login-sub');
-        const actions = document.getElementById('login-actions');
-        const codeArea = document.getElementById('login-code-area');
-        const dot = document.getElementById('status-dot');
-        const label = document.getElementById('status-label');
-
-        if (s.status === 'logging_in') {
-            icon.innerHTML = '<div class="spinner"></div>';
-            text.textContent = s.message || '正在自动登录...';
-            sub.textContent = '系统正在后台操作，无需手动干预';
-            actions.innerHTML = '<button class="btn btn-outline" disabled>登录中...</button>';
-            codeArea.style.display = 'none';
-            updateSteps(2);
-            dot.className = 'dot dot-yellow'; label.textContent = '登录中';
-        } else if (s.status === 'waiting_code') {
-            icon.innerHTML = '&#128241;';
-            text.textContent = '验证码已发送到您的手机';
-            sub.textContent = '请在下方输入6位数字验证码';
-            actions.innerHTML = '<button class="btn btn-outline" onclick="cancelLogin()">取消登录</button>';
-            codeArea.style.display = 'block';
-            updateSteps(4);
-            // 自动聚焦第一个输入框
-            setTimeout(() => { const el = document.getElementById('code-input'); if (el) el.focus(); }, 100);
-            dot.className = 'dot dot-yellow'; label.textContent = '等待验证码';
-        } else if (s.status === 'verifying') {
-            icon.innerHTML = '<div class="spinner"></div>';
-            text.textContent = '正在验证，请稍候...';
-            codeArea.style.display = 'none';
-            updateSteps(5);
-            dot.className = 'dot dot-yellow'; label.textContent = '验证中';
-        } else if (s.status === 'success') {
-            icon.innerHTML = '&#9989;';
-            text.textContent = '登录成功！可以正常使用邮件发送功能';
-            sub.textContent = '邮箱已通过黑箱模式自动登录完成';
-            actions.innerHTML = '<button class="btn btn-primary" onclick="startLogin()">重新登录</button>';
-            codeArea.style.display = 'none';
-            updateSteps(5);
-            dot.className = 'dot dot-green'; label.textContent = '已登录';
-        } else if (s.status === 'failed') {
-            icon.innerHTML = '&#10060;';
-            text.textContent = s.message || '登录失败';
-            sub.textContent = '可以尝试重新登录';
-            actions.innerHTML = '<button class="btn btn-primary" onclick="startLogin()">重新登录</button>';
-            codeArea.style.display = 'none';
-            dot.className = 'dot dot-gray'; label.textContent = '未登录';
-        } else {
-            dot.className = 'dot dot-gray'; label.textContent = '未登录';
-        }
-    }).catch(() => {});
-}
-
-async function submitCode(code) {
-    if (!code || code.length < 4) { toast('验证码不完整', 'error'); return; }
-    try {
-        const r = await fetch(`${API}/api/login/verify`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
-        });
-        const j = await r.json();
-        if (!j.success) toast(j.message, 'error');
-    } catch(e) { toast('提交失败', 'error'); }
-}
-async function cancelLogin() {
-    await fetch(`${API}/api/login/cancel`, { method: 'POST' });
-    updateSteps(1);
-    document.getElementById('login-icon').innerHTML = '&#128274;';
-    document.getElementById('login-text').textContent = '点击下方按钮，系统将自动完成邮箱登录流程';
-    document.getElementById('login-sub').textContent = '黑箱模式：自动填写账号密码、获取验证码，您只需输入收到的手机验证码';
-    document.getElementById('login-actions').innerHTML = '<button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 开始自动登录</button>';
-    document.getElementById('login-code-area').style.display = 'none';
-    document.getElementById('status-dot').className = 'dot dot-gray';
-    document.getElementById('status-label').textContent = '未登录';
-}
+async function submitCode(code){if(!code||code.length<4){toast('验证码不完整','error');return;}try{const r=await fetch(`${API}/api/login/verify`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});const j=await r.json();if(!j.success)toast(j.message,'error');}catch(e){toast('提交失败','error');}}
+async function cancelLogin(){await fetch(`${API}/api/login/cancel`,{method:'POST'});updateSteps(1);document.getElementById('login-icon').innerHTML='&#128274;';document.getElementById('login-text').textContent='点击下方按钮，系统将自动完成邮箱登录流程';document.getElementById('login-sub').textContent='黑箱模式：自动填写账号密码、获取验证码';document.getElementById('login-actions').innerHTML='<button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 开始自动登录</button>';document.getElementById('login-code-area').style.display='none';document.getElementById('status-dot').className='dot dot-gray';document.getElementById('status-label').textContent='未登录';}
 
 // ============ 配置 ============
-async function loadMailConfig() {
-    try {
-        const r = await fetch(`${API}/api/mail-config`);
-        const j = await r.json();
-        if (j.success) {
-            const d = j.data;
-            document.getElementById('config-grid').innerHTML = `
-                <div class="config-item"><div class="ci-label">SMTP 服务器</div><div class="ci-value">${d.smtp_server}:${d.smtp_port}</div></div>
-                <div class="config-item"><div class="ci-label">POP3 服务器</div><div class="ci-value">${d.pop3_server}:${d.pop3_port}</div></div>
-                <div class="config-item"><div class="ci-label">IMAP 服务器</div><div class="ci-value">${d.imap_server}:${d.imap_port}</div></div>
-                <div class="config-item"><div class="ci-label">邮箱账号</div><div class="ci-value">${d.username}</div></div>
-            `;
-        }
-    } catch(e) { console.error(e); }
-}
+async function loadMailConfig(){try{const r=await fetch(`${API}/api/mail-config`);const j=await r.json();if(j.success){const d=j.data;document.getElementById('config-grid').innerHTML=`<div class="config-item"><div class="ci-label">SMTP 服务器</div><div class="ci-value">${d.smtp_server}:${d.smtp_port}</div></div><div class="config-item"><div class="ci-label">POP3 服务器</div><div class="ci-value">${d.pop3_server}:${d.pop3_port}</div></div><div class="config-item"><div class="ci-label">IMAP 服务器</div><div class="ci-value">${d.imap_server}:${d.imap_port}</div></div><div class="config-item"><div class="ci-label">邮箱账号</div><div class="ci-value">${d.username}</div></div>`;}}catch(e){console.error(e);}}
 
-// ============ 工具函数 ============
-function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function esc(s){if(!s)return '';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 </script>
 </body>
 </html>
