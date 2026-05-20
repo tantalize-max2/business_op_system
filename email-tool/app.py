@@ -26,6 +26,8 @@ COOKIES_FILE = os.path.join(DATA_DIR, 'cookies.json')
 UPLOAD_DIR = os.path.join(DATA_DIR, 'uploads')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+LOGIN_CREDS_FILE = os.path.join(DATA_DIR, 'login_creds.json')
+
 MAIL_CONFIG = {
     'username': 'wangy592@chinatelecom.cn',
     'password': 'wY0426!..',
@@ -33,6 +35,19 @@ MAIL_CONFIG = {
     'account': 'wangy592',
     'phone': '18081927229',
 }
+
+
+def load_login_creds():
+    """加载上次登录的账号密码"""
+    data = load_json(LOGIN_CREDS_FILE, default=None)
+    if data and data.get('account'):
+        return data
+    return {'account': MAIL_CONFIG['account'], 'password': MAIL_CONFIG['password'], 'phone': MAIL_CONFIG['phone']}
+
+
+def save_login_creds(account, password, phone):
+    """保存登录凭证供下次默认使用"""
+    save_json(LOGIN_CREDS_FILE, {'account': account, 'password': password, 'phone': phone})
 
 login_state = {
     'status': 'idle',
@@ -215,6 +230,28 @@ def delete_txt_var(name):
     if os.path.exists(fpath):
         os.remove(fpath)
     return jsonify({'success': True})
+
+
+# ============ 图片上传（正文插入） ============
+@app.route('/api/upload-image', methods=['POST'])
+def upload_image():
+    """上传图片文件，返回可访问的URL"""
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'success': False, 'message': '请选择图片'}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'):
+        return jsonify({'success': False, 'message': '仅支持图片文件'}), 400
+    fname = f'{int(time.time()*1000)}{ext}'
+    fpath = os.path.join(UPLOAD_DIR, fname)
+    f.save(fpath)
+    return jsonify({'success': True, 'data': {'url': f'/uploads/{fname}', 'filename': fname}})
+
+
+# 静态文件服务：上传的图片
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
 
 
 # ============ 模板管理 ============
@@ -459,9 +496,25 @@ def get_login_status():
 
 @app.route('/api/login/start', methods=['POST'])
 def start_login():
-    global login_state
+    global login_state, MAIL_CONFIG
     if login_state.get('status') in ('logging_in', 'waiting_code', 'verifying'):
         return jsonify({'success': False, 'message': '登录流程进行中，请稍候'})
+
+    # 接收前端传入的账号密码
+    data = request.json or {}
+    account = data.get('account', '').strip()
+    password = data.get('password', '').strip()
+    phone = data.get('phone', '').strip()
+
+    if account:
+        MAIL_CONFIG['account'] = account
+    if password:
+        MAIL_CONFIG['password'] = password
+    if phone:
+        MAIL_CONFIG['phone'] = phone
+
+    # 保存凭证供下次使用
+    save_login_creds(MAIL_CONFIG['account'], MAIL_CONFIG['password'], MAIL_CONFIG['phone'])
 
     login_state = {
         'status': 'logging_in',
@@ -473,6 +526,38 @@ def start_login():
     thread = threading.Thread(target=_blackbox_login_worker, daemon=True)
     thread.start()
     return jsonify({'success': True, 'message': '登录流程已启动'})
+
+
+@app.route('/api/login/creds', methods=['GET'])
+def get_login_creds_api():
+    """获取上次登录的账号密码（用于前端预填）"""
+    creds = load_login_creds()
+    # 手机号脱敏
+    phone = creds.get('phone', '')
+    phone_display = phone[:3] + '****' + phone[-4:] if len(phone) >= 7 else phone
+    return jsonify({
+        'success': True,
+        'data': {
+            'account': creds.get('account', ''),
+            'password': creds.get('password', ''),
+            'phone': phone,
+            'phone_display': phone_display,
+        }
+    })
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """退出登录：清除 cookie 和 csrftoken"""
+    global login_state
+    login_state = {'status': 'idle', 'message': '已退出登录', 'code': None, 'browser_open': False}
+    # 删除 cookie 和 csrftoken 文件
+    if os.path.exists(COOKIES_FILE):
+        os.remove(COOKIES_FILE)
+    csrftoken_file = os.path.join(DATA_DIR, 'csrftoken.txt')
+    if os.path.exists(csrftoken_file):
+        os.remove(csrftoken_file)
+    return jsonify({'success': True, 'message': '已退出登录'})
 
 
 @app.route('/api/login/verify', methods=['POST'])
@@ -785,12 +870,7 @@ def batch_send_email():
                             pass
             per_item_attachments[i] = (per_keys, per_names)
 
-        if attachment_list:
-            attachment_list_str = ','.join(attachment_list)
-            attachment_name_list_str = ','.join(attachment_name_list)
-        else:
-            attachment_list_str = ''
-            attachment_name_list_str = ''
+        # 通用附件不再需要单独处理，已在逐封发送时合并
 
         # 逐个发送
         success_count = 0

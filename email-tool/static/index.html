@@ -239,9 +239,24 @@
                     <span class="var-btn" onclick="insertVariable('name')">{{name}}</span>
                     <span class="var-btn" onclick="insertVariable('email')">{{email}}</span>
                     <span class="var-btn" onclick="insertVariable('group')">{{group}}</span>
-                    <span class="var-btn" style="background:var(--warning-light);color:var(--warning);border-color:var(--warning-light);" onclick="document.getElementById('txt-var-upload').click()">&#128196; 上传txt变量</span>
+                    <span class="var-btn" style="background:var(--success-light);color:var(--success);border-color:var(--success-light);" onclick="addNewTxtVar()">&#43; 新建变量</span>
+                    <span class="var-btn" style="background:var(--warning-light);color:var(--warning);border-color:var(--warning-light);" onclick="document.getElementById('txt-var-upload').click()">&#128196; 导入txt</span>
                     <div id="txt-var-list" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
                     <input type="file" id="txt-var-upload" accept=".txt" style="display:none" onchange="uploadTxtVar(event)">
+                </div>
+                <!-- 变量编辑面板 -->
+                <div id="var-edit-panel" style="display:none;margin-bottom:12px;border:1px solid var(--border-light);border-radius:var(--radius-sm);overflow:hidden;">
+                    <div style="padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;">
+                        <span style="font-size:13px;font-weight:600;" id="var-edit-title"></span>
+                        <button class="btn btn-ghost btn-sm" onclick="closeVarEdit()" style="padding:2px 8px;">收起</button>
+                    </div>
+                    <div style="padding:10px 14px;">
+                        <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;">变量名（在正文中使用 {{变量名}} 引用，每行对应一位收件人）：</div>
+                        <input type="text" class="form-input" id="var-edit-name" style="font-size:13px;padding:6px 10px;margin-bottom:8px;" placeholder="输入变量名，如：备注" oninput="onVarNameChange()">
+                        <div style="font-size:11px;color:var(--text-light);margin-bottom:6px;">变量值（每行一位收件人，依次对应）：</div>
+                        <textarea class="form-textarea" id="var-edit-values" style="min-height:100px;font-size:13px;padding:8px 10px;line-height:1.8;" placeholder="第1行 → 收件人1&#10;第2行 → 收件人2&#10;..." oninput="onVarValuesChange()"></textarea>
+                        <div style="font-size:11px;color:var(--text-light);margin-top:4px;" id="var-edit-count">0 行</div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <div class="form-label">收件人 <span style="color:var(--danger);">*</span></div>
@@ -262,12 +277,54 @@
                         <button class="tb-btn" title="加粗" onclick="execRich('bold')"><b>B</b></button>
                         <button class="tb-btn" title="斜体" onclick="execRich('italic')"><i>I</i></button>
                         <button class="tb-btn" title="下划线" onclick="execRich('underline')"><u>U</u></button>
+                        <button class="tb-btn" title="删除线" onclick="execRich('strikeThrough')"><s>S</s></button>
                         <div class="tb-sep"></div>
-                        <button class="tb-btn" title="有序列表" onclick="execRich('insertOrderedList')">&#9776;1</button>
-                        <button class="tb-btn" title="无序列表" onclick="execRich('insertUnorderedList')">&#9776;</button>
+                        <select title="字体" onchange="execRich('fontName',this.value);this.value='';" style="height:28px;font-size:12px;border:1px solid var(--border);border-radius:4px;outline:none;cursor:pointer;">
+                            <option value="">字体</option>
+                            <option value="微软雅黑">微软雅黑</option>
+                            <option value="宋体">宋体</option>
+                            <option value="黑体">黑体</option>
+                            <option value="楷体">楷体</option>
+                            <option value="仿宋">仿宋</option>
+                            <option value="Arial">Arial</option>
+                            <option value="Times New Roman">Times New Roman</option>
+                            <option value="Georgia">Georgia</option>
+                        </select>
+                        <select title="字号" onchange="applyFontSize(this.value);this.value='';" style="height:28px;font-size:12px;border:1px solid var(--border);border-radius:4px;outline:none;cursor:pointer;">
+                            <option value="">字号</option>
+                            <option value="1">10px</option>
+                            <option value="2">11px</option>
+                            <option value="3">12px</option>
+                            <option value="4">14px</option>
+                            <option value="5">16px</option>
+                            <option value="6">18px</option>
+                            <option value="7">20px</option>
+                            <option value="8">24px</option>
+                            <option value="9">36px</option>
+                        </select>
                         <div class="tb-sep"></div>
-                        <div class="tb-color" title="文字颜色"><input type="color" value="#1a73e8" onchange="execRich('foreColor',this.value)"></div>
-                        <div class="tb-color" title="背景色"><input type="color" value="#fef7e0" onchange="execRich('hiliteColor',this.value)"></div>
+                        <div class="tb-color" title="文字颜色"><input type="color" value="#1a73e8" oninput="execRich('foreColor',this.value)"></div>
+                        <div class="tb-color" title="背景色"><input type="color" value="#fef7e0" oninput="execRich('hiliteColor',this.value)"></div>
+                        <div class="tb-sep"></div>
+                        <button class="tb-btn" title="有序列表" onclick="execRich('insertOrderedList')" style="font-size:12px;">OL</button>
+                        <button class="tb-btn" title="无序列表" onclick="execRich('insertUnorderedList')" style="font-size:12px;">UL</button>
+                        <div class="tb-sep"></div>
+                        <button class="tb-btn" title="左对齐" onclick="execRich('justifyLeft')" style="font-size:16px;">&#8801;</button>
+                        <button class="tb-btn" title="居中" onclick="execRich('justifyCenter')" style="font-size:14px;">&#8776;</button>
+                        <button class="tb-btn" title="右对齐" onclick="execRich('justifyRight')" style="font-size:14px;">&#8801;</button>
+                        <div class="tb-sep"></div>
+                        <select title="行间距" onchange="applyLineHeight(this.value);this.value='';" style="height:28px;font-size:12px;border:1px solid var(--border);border-radius:4px;outline:none;cursor:pointer;">
+                            <option value="">行距</option>
+                            <option value="1">1.0</option>
+                            <option value="1.5">1.5</option>
+                            <option value="2">2.0</option>
+                            <option value="2.5">2.5</option>
+                            <option value="3">3.0</option>
+                        </select>
+                        <button class="tb-btn" title="首行缩进" onclick="applyIndent()" style="font-size:14px;width:auto;padding:0 6px;">&#8596;</button>
+                        <div class="tb-sep"></div>
+                        <button class="tb-btn" title="超链接" onclick="insertLink()" style="font-size:15px;">&#128279;</button>
+                        <button class="tb-btn" title="插入图片" onclick="insertImage()" style="font-size:15px;">&#128247;</button>
                     </div>
                     <div class="rich-body" id="email-body" contenteditable="true" data-placeholder="请输入邮件正文内容..."></div>
                 </div>
@@ -310,23 +367,35 @@
         <!-- 登录面板 -->
         <div class="panel" id="panel-login">
             <div class="card"><div class="card-body"><div class="login-card">
+                <!-- 步骤指示器 -->
                 <div class="steps" id="login-steps">
-                    <div class="step active" data-step="1"><div class="step-num">1</div><div class="step-text">启动登录</div></div><div class="step-line"></div>
-                    <div class="step" data-step="2"><div class="step-num">2</div><div class="step-text">自动填写</div></div><div class="step-line"></div>
+                    <div class="step active" data-step="1"><div class="step-num">1</div><div class="step-text">填写信息</div></div><div class="step-line"></div>
+                    <div class="step" data-step="2"><div class="step-num">2</div><div class="step-text">自动登录</div></div><div class="step-line"></div>
                     <div class="step" data-step="3"><div class="step-num">3</div><div class="step-text">获取验证码</div></div><div class="step-line"></div>
                     <div class="step" data-step="4"><div class="step-num">4</div><div class="step-text">输入验证码</div></div><div class="step-line"></div>
                     <div class="step" data-step="5"><div class="step-num">5</div><div class="step-text">登录完成</div></div>
                 </div>
                 <div class="lc-icon" id="login-icon">&#128274;</div>
-                <div class="lc-text" id="login-text">点击下方按钮，系统将自动完成邮箱登录流程</div>
-                <div class="lc-sub" id="login-sub">黑箱模式：自动填写账号密码、获取验证码</div>
+                <div class="lc-text" id="login-text">填写账号密码后点击登录，系统将自动完成登录流程</div>
+                <div class="lc-sub" id="login-sub">默认填充上次登录的账号密码，确认无误后点击登录</div>
+                <!-- 账号密码输入 -->
+                <div id="login-creds-area" style="max-width:380px;margin:0 auto 20px;text-align:left;">
+                    <div class="form-group"><div class="form-label">邮箱账号</div><input type="text" class="form-input" id="login-account" placeholder="邮箱账号（如 wangy592）"></div>
+                    <div class="form-group"><div class="form-label">登录密码</div><input type="password" class="form-input" id="login-password" placeholder="登录密码"></div>
+                    <div class="form-group"><div class="form-label">手机号码</div><input type="text" class="form-input" id="login-phone" placeholder="手机号码"></div>
+                </div>
                 <div id="login-code-area" style="display:none;">
                     <div style="display:flex;gap:10px;justify-content:center;align-items:center;margin:20px 0;">
                         <input type="text" id="code-input" maxlength="6" placeholder="请输入6位验证码" style="width:200px;height:48px;text-align:center;font-size:22px;font-weight:600;letter-spacing:8px;border:2px solid var(--border);border-radius:var(--radius-sm);outline:none;font-family:monospace;" oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===6)submitCode(this.value)">
                     </div>
-                    <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">验证码已发送到手机 180****7229</div>
+                    <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;">验证码已发送到手机 <span id="login-phone-mask"></span></div>
                 </div>
-                <div class="lc-actions" id="login-actions"><button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 开始自动登录</button></div>
+                <div class="lc-actions" id="login-actions" style="gap:10px;">
+                    <button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 确认并登录</button>
+                </div>
+                <div id="logout-area" style="margin-top:16px;display:none;">
+                    <button class="btn btn-outline btn-sm" onclick="doLogout()" style="color:var(--danger);border-color:var(--danger-light);">&#128682; 退出登录</button>
+                </div>
             </div></div></div>
         </div>
 
@@ -367,14 +436,13 @@
 let recipients = [], ccList = [], attachments = [], contacts = [], templates = [];
 let pickerChecked = [], groupPickerChecked = [];
 let batchMode = false, currentStep = 1;
-let txtVarFiles = {}; // {name: [values]}
 let previewEdits = {}; // {email: {subject, body}}
 let perRecipientFiles = {}; // {email: [File]}
 const API = '';
 
 // ============ 初始化 ============
 document.addEventListener('DOMContentLoaded', () => {
-    loadContacts(); loadTemplates(); loadMailConfig(); loadTxtVars(); checkLoginStatus();
+    loadContacts(); loadTemplates(); loadMailConfig(); loadTxtVars(); checkLoginStatus(); loadLoginCreds();
     setInterval(pollLogin, 2000);
 });
 
@@ -435,44 +503,231 @@ function renderCcTags(){document.getElementById('cc-tags').innerHTML=ccList.map(
 function updateComposeInfo(){const info=document.getElementById('compose-info');const parts=[];if(recipients.length>0)parts.push(`${recipients.length} 位收件人`);if(ccList.length>0)parts.push(`${ccList.length} 位抄送`);if(attachments.length>0)parts.push(`${attachments.length} 个附件`);info.textContent=parts.join('，');}
 
 // ============ 富文本工具栏 ============
+const FONT_SIZE_MAP = {'1':'10px','2':'11px','3':'12px','4':'14px','5':'16px','6':'18px','7':'20px'};
+const EXTRA_SIZES = {'8':'24px','9':'36px'};
+
 function execRich(cmd,val){document.execCommand(cmd,false,val||null);document.getElementById('email-body').focus();if(batchMode)renderRecipientPreview();}
+
+function applyFontSize(val){
+    if(!val) return;
+    if(EXTRA_SIZES[val]){
+        // 24px 和 36px 超出 fontSize 1-7 范围，用 CSS 方式
+        const sel = window.getSelection();
+        if(!sel.rangeCount) return;
+        document.execCommand('fontSize',false,'7'); // 先设最大
+        // 找到刚插入的 font 标签，替换为 span
+        const fontEls = document.getElementById('email-body').querySelectorAll('font[size="7"]');
+        fontEls.forEach(el=>{
+            const span = document.createElement('span');
+            span.style.fontSize = EXTRA_SIZES[val];
+            span.innerHTML = el.innerHTML;
+            el.parentNode.replaceChild(span, el);
+        });
+    } else {
+        document.execCommand('fontSize',false,val);
+        // 替换 font 标签为带精确 px 的 span
+        const fontEls = document.getElementById('email-body').querySelectorAll(`font[size="${val}"]`);
+        fontEls.forEach(el=>{
+            const span = document.createElement('span');
+            span.style.fontSize = FONT_SIZE_MAP[val];
+            span.innerHTML = el.innerHTML;
+            el.parentNode.replaceChild(span, el);
+        });
+    }
+    document.getElementById('email-body').focus();
+    if(batchMode) renderRecipientPreview();
+}
+function applyLineHeight(val){const sel=window.getSelection();if(!sel.rangeCount)return;const range=sel.getRangeAt(0);let el=range.commonAncestorContainer;if(el.nodeType===3)el=el.parentNode;if(el===document.getElementById('email-body')){document.execCommand('insertHTML',false,`<div style="line-height:${val};"><br></div>`);}else{el.style.lineHeight=val;}}
+function applyIndent(){document.execCommand('insertHTML',false,'&emsp;&emsp;&emsp;&emsp;');document.getElementById('email-body').focus();}
+function insertLink(){const url=prompt('请输入链接地址：','https://');if(url){document.execCommand('createLink',false,url);document.getElementById('email-body').focus();}}
+function insertImage(){const input=document.createElement('input');input.type='file';input.accept='image/*';input.onchange=async function(){const file=this.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);try{const r=await fetch(`${API}/api/upload-image`,{method:'POST',body:fd});const j=await r.json();if(j.success){document.getElementById('email-body').focus();document.execCommand('insertHTML',false,`<img src="${j.data.url}" style="max-width:100%;height:auto;margin:4px 0;">`);toast('图片已插入','success');}else toast(j.message,'error');}catch(e){toast('上传失败','error');}};input.click();}
 function getBodyText(){const el=document.getElementById('email-body');return el.innerText||'';}
 function getBodyHTML(){return document.getElementById('email-body').innerHTML;}
 
 // ============ 个性化模式 ============
-function toggleBatchMode(){batchMode=document.getElementById('batch-mode').checked;document.getElementById('var-helper').style.display=batchMode?'flex':'none';document.getElementById('preview-section').style.display=batchMode?'block':'none';document.getElementById('send-btn').style.display=batchMode?'none':'inline-flex';document.getElementById('batch-send-btn').style.display=batchMode?'inline-flex':'none';if(batchMode){document.getElementById('email-body').setAttribute('data-placeholder','输入邮件正文，支持 {{name}}、{{email}}、{{group}}、{{文件名.txt}} 等变量');renderRecipientPreview();}else{document.getElementById('email-body').setAttribute('data-placeholder','请输入邮件正文内容...');}}
+function toggleBatchMode(){batchMode=document.getElementById('batch-mode').checked;document.getElementById('var-helper').style.display=batchMode?'flex':'none';document.getElementById('preview-section').style.display=batchMode?'block':'none';document.getElementById('send-btn').style.display=batchMode?'none':'inline-flex';document.getElementById('batch-send-btn').style.display=batchMode?'inline-flex':'none';if(batchMode){document.getElementById('email-body').setAttribute('data-placeholder','输入邮件正文，支持 {{name}}、{{email}}、{{group}}、{{自定义变量名}} 等变量');renderRecipientPreview();}else{document.getElementById('email-body').setAttribute('data-placeholder','请输入邮件正文内容...');}}
 
 function insertVariable(varName){const el=document.getElementById('email-body');el.focus();const insert=`{{${varName}}}`;document.execCommand('insertText',false,insert);if(batchMode)renderRecipientPreview();}
 
-// ============ txt 变量文件 ============
+// ============ txt 变量系统 ============
+let txtVarFiles = {}; // {变量名: [values]} — 值已加载为数组，null 表示需懒加载
+let currentEditVar = null; // 当前正在编辑的变量名
+
 async function loadTxtVars(){try{const r=await fetch(`${API}/api/txt-vars`);const j=await r.json();if(j.success&&j.data){j.data.forEach(d=>{txtVarFiles[d.name]=null;});renderTxtVarList();}}catch(e){}}
-async function uploadTxtVar(e){const file=e.target.files[0];if(!file)return;const fd=new FormData();fd.append('file',file);try{const r=await fetch(`${API}/api/txt-vars`,{method:'POST',body:fd});const j=await r.json();if(j.success){txtVarFiles[j.data.name]=null;renderTxtVarList();toast(`变量文件 ${j.data.name}.txt 已上传（${j.data.count} 行）`,'success');}else toast(j.message,'error');}catch(e){toast('上传失败','error');}e.target.value='';}
-function renderTxtVarList(){const list=document.getElementById('txt-var-list');list.innerHTML=Object.keys(txtVarFiles).map(name=>`<span class="var-btn" style="background:var(--warning-light);color:var(--warning);border-color:var(--warning-light);" onclick="insertVariable('${name}.txt')" title="插入 {{${name}.txt}}">{{${name}.txt}}</span>`).join('');}
-async function ensureTxtVarLoaded(name){if(txtVarFiles[name]===null){try{const r=await fetch(`${API}/api/txt-vars/${name}`);const j=await r.json();if(j.success)txtVarFiles[name]=j.data.values||[];else txtVarFiles[name]=[];}catch(e){txtVarFiles[name]=[];}}}
+
+async function uploadTxtVar(e){
+    const file=e.target.files[0];if(!file)return;
+    // 弹出输入变量名
+    let varName = prompt('请输入变量名（在正文中用 {{变量名}} 引用）：', file.name.replace('.txt',''));
+    if(!varName) return;
+    varName = varName.trim();
+    if(!varName){toast('变量名不能为空','error');return;}
+    const fd=new FormData();fd.append('file',file);
+    try{
+        const r=await fetch(`${API}/api/txt-vars`,{method:'POST',body:fd});
+        const j=await r.json();
+        if(j.success){
+            // 读取上传后的值
+            const rv = await fetch(`${API}/api/txt-vars/${j.data.name}`);
+            const jv = await rv.json();
+            if(jv.success){
+                // 用用户指定的变量名存储
+                txtVarFiles[varName] = jv.data.values || [];
+            } else {
+                txtVarFiles[varName] = [];
+            }
+            renderTxtVarList();
+            toast(`变量「${varName}」已导入（${j.data.count} 行）`,'success');
+        } else toast(j.message,'error');
+    }catch(e){toast('上传失败','error');}
+    e.target.value='';
+}
+
+function addNewTxtVar(){
+    let varName = prompt('请输入新变量名（在正文中用 {{变量名}} 引用）：');
+    if(!varName) return;
+    varName = varName.trim();
+    if(!varName){toast('变量名不能为空','error');return;}
+    if(txtVarFiles.hasOwnProperty(varName)){
+        toast(`变量「${varName}」已存在`,'info');
+        openVarEdit(varName);
+        return;
+    }
+    txtVarFiles[varName] = [];
+    renderTxtVarList();
+    openVarEdit(varName);
+    toast(`变量「${varName}」已创建`,'success');
+}
+
+function renderTxtVarList(){
+    const list=document.getElementById('txt-var-list');
+    const names = Object.keys(txtVarFiles);
+    if(!names.length){list.innerHTML='';return;}
+    list.innerHTML = names.map(name=>{
+        const vals = txtVarFiles[name] || [];
+        const count = vals.length || '?';
+        return `<span class="var-btn" style="background:var(--success-light);color:var(--success);border-color:var(--success-light);position:relative;padding-right:20px;cursor:pointer;" onclick="openVarEdit('${name.replace(/'/g,"\\'")}')" title="点击编辑，点击 &#215; 删除">
+            &#123;&#123;${esc(name)}&#125;&#125;
+            <span style="font-size:10px;opacity:0.7;margin-left:2px;">${count}行</span>
+            <span onclick="event.stopPropagation();deleteTxtVar('${name.replace(/'/g,"\\'")}')" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:14px;line-height:1;cursor:pointer;opacity:0.5;width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;" onmouseover="this.style.opacity='1';this.style.background='var(--danger-light)'" onmouseout="this.style.opacity='0.5';this.style.background='transparent'">&#215;</span>
+        </span>`;
+    }).join('');
+}
+
+async function openVarEdit(name){
+    currentEditVar = name;
+    const panel = document.getElementById('var-edit-panel');
+    panel.style.display = 'block';
+    document.getElementById('var-edit-title').textContent = `编辑变量：{{${name}}}`;
+    document.getElementById('var-edit-name').value = name;
+    // 确保值已加载
+    if(txtVarFiles[name]===null){
+        try{const r=await fetch(`${API}/api/txt-vars/${name}`);const j=await r.json();if(j.success)txtVarFiles[name]=j.data.values||[];else txtVarFiles[name]=[];}catch(e){txtVarFiles[name]=[];}
+    }
+    const vals = txtVarFiles[name] || [];
+    document.getElementById('var-edit-values').value = vals.join('\n');
+    updateVarEditCount();
+}
+
+function closeVarEdit(){
+    document.getElementById('var-edit-panel').style.display = 'none';
+    currentEditVar = null;
+}
+
+function onVarNameChange(){
+    const newName = document.getElementById('var-edit-name').value.trim();
+    if(!newName || !currentEditVar) return;
+    if(newName !== currentEditVar){
+        if(txtVarFiles.hasOwnProperty(newName) && newName !== currentEditVar){
+            toast(`变量名「${newName}」已被占用`,'error');
+            document.getElementById('var-edit-name').value = currentEditVar;
+            return;
+        }
+        // 重命名
+        txtVarFiles[newName] = txtVarFiles[currentEditVar];
+        delete txtVarFiles[currentEditVar];
+        // 同步到后端
+        syncVarToBackend(newName);
+        currentEditVar = newName;
+        document.getElementById('var-edit-title').textContent = `编辑变量：{{${newName}}}`;
+        renderTxtVarList();
+    }
+}
+
+function onVarValuesChange(){
+    const text = document.getElementById('var-edit-values').value;
+    const lines = text.split('\n').filter(l=>l.trim());
+    if(currentEditVar){
+        txtVarFiles[currentEditVar] = lines.map(l=>l.trim());
+        // 同步到后端
+        syncVarToBackend(currentEditVar);
+        renderTxtVarList();
+    }
+    updateVarEditCount();
+}
+
+function updateVarEditCount(){
+    const text = document.getElementById('var-edit-values').value;
+    const lines = text.split('\n').filter(l=>l.trim());
+    document.getElementById('var-edit-count').textContent = `${lines.length} 行`;
+}
+
+async function syncVarToBackend(name){
+    const values = txtVarFiles[name] || [];
+    try{
+        const fd = new FormData();
+        // 创建一个临时 Blob 文件上传
+        const blob = new Blob([values.join('\n')], {type:'text/plain'});
+        fd.append('file', blob, `${name}.txt`);
+        await fetch(`${API}/api/txt-vars`, {method:'POST', body:fd});
+    }catch(e){console.error('同步变量失败',e);}
+}
+
+async function deleteTxtVar(name){
+    if(!confirm(`确定删除变量「${name}」？`)) return;
+    delete txtVarFiles[name];
+    try{await fetch(`${API}/api/txt-vars/${name}`,{method:'DELETE'});}catch(e){}
+    if(currentEditVar === name) closeVarEdit();
+    renderTxtVarList();
+    toast(`变量「${name}」已删除`,'success');
+}
+
+// 变量替换：{{变量名}} 对每个收件人取第N行，多次出现依次取值
+async function replaceAllVariables(text, contact, recipientIndex){
+    if(!text) return '';
+    let result = text;
+    // 先替换基本变量
+    result = result.replace(/\{\{name\}\}/g, contact?contact.name:'');
+    result = result.replace(/\{\{email\}\}/g, contact?contact.email:'');
+    result = result.replace(/\{\{group\}\}/g, contact?(contact.group||''):'');
+    // 替换自定义变量 {{变量名}}
+    const allVars = Object.keys(txtVarFiles).filter(n=>!['name','email','group'].includes(n));
+    for(const varName of allVars){
+        const pattern = new RegExp(`\\{\\{${varName.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\}\\}`, 'g');
+        // 确保值已加载
+        let values = txtVarFiles[varName];
+        if(values === null){
+            try{const r=await fetch(`${API}/api/txt-vars/${varName}`);const j=await r.json();values=j.success?(j.data.values||[]):[];txtVarFiles[varName]=values;}catch(e){values=[];txtVarFiles[varName]=[];}
+        }
+        if(!values) values = [];
+        // 每次出现依次取下一个值
+        let matchCount = 0;
+        result = result.replace(pattern, ()=>{
+            const idx = recipientIndex + matchCount;
+            const val = idx < values.length ? values[idx] : (values[0] || '');
+            matchCount++;
+            return val;
+        });
+    }
+    return result;
+}
 
 // ============ 变量替换 ============
 function findContactByEmail(email){return contacts.find(c=>c.email===email)||null;}
 
 async function replaceVariables(text, contact, recipientIndex){
     if(!text) return '';
-    let result = text;
-    // 基本变量
-    result = result.replace(/\{\{name\}\}/g, contact?contact.name:'');
-    result = result.replace(/\{\{email\}\}/g, contact?contact.email:'');
-    result = result.replace(/\{\{group\}\}/g, contact?(contact.group||''):'');
-    // txt 文件变量: {{xxx.txt}} 每行一个值，按收件人顺序对应
-    const txtMatches = result.match(/\{\{([^}]+\.txt)\}\}/g);
-    if(txtMatches){
-        for(const m of txtMatches){
-            const varName = m.slice(2,-2); // 去掉 {{ }}
-            const baseName = varName.replace('.txt','');
-            await ensureTxtVarLoaded(baseName);
-            const values = txtVarFiles[baseName]||[];
-            const val = (recipientIndex < values.length) ? values[recipientIndex] : (values[0]||'');
-            result = result.replace(m, val);
-        }
-    }
-    return result;
+    return await replaceAllVariables(text, contact, recipientIndex);
 }
 
 // ============ 个性化预览（可编辑） ============
@@ -598,11 +853,27 @@ function clearCompose(){recipients=[];ccList=[];attachments=[];previewEdits={};p
 
 // ============ 黑箱登录 ============
 function updateSteps(step){currentStep=step;document.querySelectorAll('.step').forEach(s=>{const n=parseInt(s.dataset.step);s.classList.remove('active','done');if(n<step)s.classList.add('done');if(n===step)s.classList.add('active');});document.querySelectorAll('.step-line').forEach((line,i)=>{line.classList.toggle('done',i+1<step);});}
-async function startLogin(){const icon=document.getElementById('login-icon');const text=document.getElementById('login-text');const sub=document.getElementById('login-sub');const actions=document.getElementById('login-actions');icon.innerHTML='<div class="spinner"></div>';text.textContent='正在启动黑箱登录...';sub.textContent='请稍候';actions.innerHTML='<button class="btn btn-outline" disabled>登录中...</button>';document.getElementById('login-code-area').style.display='none';updateSteps(2);const codeInput=document.getElementById('code-input');if(codeInput)codeInput.value='';try{const r=await fetch(`${API}/api/login/start`,{method:'POST'});const j=await r.json();if(!j.success)text.textContent=j.message;}catch(e){toast('启动失败: '+e.message,'error');}}
+async function startLogin(){
+    const account=document.getElementById('login-account').value.trim();
+    const password=document.getElementById('login-password').value.trim();
+    const phone=document.getElementById('login-phone').value.trim();
+    if(!account||!password){toast('请填写账号和密码','error');return;}
+    const icon=document.getElementById('login-icon');const text=document.getElementById('login-text');const sub=document.getElementById('login-sub');const actions=document.getElementById('login-actions');
+    icon.innerHTML='<div class="spinner"></div>';text.textContent='正在启动黑箱登录...';sub.textContent='请稍候';actions.innerHTML='<button class="btn btn-outline" disabled>登录中...</button>';
+    document.getElementById('login-creds-area').style.display='none';document.getElementById('login-code-area').style.display='none';updateSteps(2);
+    const codeInput=document.getElementById('code-input');if(codeInput)codeInput.value='';
+    try{const r=await fetch(`${API}/api/login/start`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account,password,phone})});const j=await r.json();if(!j.success)text.textContent=j.message;}catch(e){toast('启动失败: '+e.message,'error');}
+}
+
+async function loadLoginCreds(){try{const r=await fetch(`${API}/api/login/creds`);const j=await r.json();if(j.success&&j.data){document.getElementById('login-account').value=j.data.account||'';document.getElementById('login-password').value=j.data.password||'';document.getElementById('login-phone').value=j.data.phone||'';document.getElementById('login-phone-mask').textContent=j.data.phone_display||'';}}catch(e){}}
+
+async function doLogout(){if(!confirm('确定退出登录？退出后需重新登录才能发邮件。'))return;try{await fetch(`${API}/api/logout`,{method:'POST'});document.getElementById('status-dot').className='dot dot-gray';document.getElementById('status-label').textContent='未登录';document.getElementById('logout-area').style.display='none';showLoginCredsForm();toast('已退出登录','info');}catch(e){toast('退出失败','error');}}
+
+function showLoginCredsForm(){document.getElementById('login-creds-area').style.display='block';document.getElementById('login-icon').innerHTML='&#128274;';document.getElementById('login-text').textContent='填写账号密码后点击登录，系统将自动完成登录流程';document.getElementById('login-sub').textContent='默认填充上次登录的账号密码，确认无误后点击登录';document.getElementById('login-actions').innerHTML='<button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 确认并登录</button>';document.getElementById('login-code-area').style.display='none';document.getElementById('logout-area').style.display='none';updateSteps(1);}
 
 async function checkLoginStatus(){try{const r=await fetch(`${API}/api/login/check`);const j=await r.json();if(j.logged_in){document.getElementById('status-dot').className='dot dot-green';document.getElementById('status-label').textContent='已登录';}}catch(e){}}
 
-function pollLogin(){fetch(`${API}/api/login/status`).then(r=>r.json()).then(s=>{const icon=document.getElementById('login-icon');const text=document.getElementById('login-text');const sub=document.getElementById('login-sub');const actions=document.getElementById('login-actions');const codeArea=document.getElementById('login-code-area');const dot=document.getElementById('status-dot');const label=document.getElementById('status-label');if(s.status==='logging_in'){icon.innerHTML='<div class="spinner"></div>';text.textContent=s.message||'正在自动登录...';sub.textContent='系统正在后台操作';actions.innerHTML='<button class="btn btn-outline" disabled>登录中...</button>';codeArea.style.display='none';updateSteps(2);dot.className='dot dot-yellow';label.textContent='登录中';}else if(s.status==='waiting_code'){icon.innerHTML='&#128241;';text.textContent='验证码已发送到您的手机';sub.textContent='请在下方输入6位数字验证码';actions.innerHTML='<button class="btn btn-outline" onclick="cancelLogin()">取消登录</button>';codeArea.style.display='block';updateSteps(4);setTimeout(()=>{const el=document.getElementById('code-input');if(el)el.focus();},100);dot.className='dot dot-yellow';label.textContent='等待验证码';}else if(s.status==='verifying'){icon.innerHTML='<div class="spinner"></div>';text.textContent='正在验证...';codeArea.style.display='none';updateSteps(5);dot.className='dot dot-yellow';label.textContent='验证中';}else if(s.status==='success'){icon.innerHTML='&#9989;';text.textContent='登录成功！可以正常使用邮件发送功能';sub.textContent='邮箱已通过黑箱模式自动登录完成';actions.innerHTML='<button class="btn btn-primary" onclick="startLogin()">重新登录</button>';codeArea.style.display='none';updateSteps(5);dot.className='dot dot-green';label.textContent='已登录';}else if(s.status==='failed'){icon.innerHTML='&#10060;';text.textContent=s.message||'登录失败';sub.textContent='可以尝试重新登录';actions.innerHTML='<button class="btn btn-primary" onclick="startLogin()">重新登录</button>';codeArea.style.display='none';dot.className='dot dot-gray';label.textContent='未登录';}else{checkLoginStatus();}}).catch(()=>{});}
+function pollLogin(){fetch(`${API}/api/login/status`).then(r=>r.json()).then(s=>{const icon=document.getElementById('login-icon');const text=document.getElementById('login-text');const sub=document.getElementById('login-sub');const actions=document.getElementById('login-actions');const codeArea=document.getElementById('login-code-area');const credsArea=document.getElementById('login-creds-area');const logoutArea=document.getElementById('logout-area');const dot=document.getElementById('status-dot');const label=document.getElementById('status-label');if(s.status==='logging_in'){icon.innerHTML='<div class="spinner"></div>';text.textContent=s.message||'正在自动登录...';sub.textContent='系统正在后台操作';actions.innerHTML='<button class="btn btn-outline" disabled>登录中...</button>';codeArea.style.display='none';credsArea.style.display='none';updateSteps(2);dot.className='dot dot-yellow';label.textContent='登录中';}else if(s.status==='waiting_code'){icon.innerHTML='&#128241;';text.textContent='验证码已发送到您的手机';sub.textContent='请在下方输入6位数字验证码';actions.innerHTML='<button class="btn btn-outline" onclick="cancelLogin()">取消登录</button>';codeArea.style.display='block';credsArea.style.display='none';updateSteps(4);setTimeout(()=>{const el=document.getElementById('code-input');if(el)el.focus();},100);dot.className='dot dot-yellow';label.textContent='等待验证码';}else if(s.status==='verifying'){icon.innerHTML='<div class="spinner"></div>';text.textContent='正在验证...';codeArea.style.display='none';updateSteps(5);dot.className='dot dot-yellow';label.textContent='验证中';}else if(s.status==='success'){icon.innerHTML='&#9989;';text.textContent='登录成功！可以正常使用邮件发送功能';sub.textContent='邮箱已通过黑箱模式自动登录完成';actions.innerHTML='<button class="btn btn-outline" onclick="showLoginCredsForm()">切换账号</button>';codeArea.style.display='none';credsArea.style.display='none';logoutArea.style.display='block';updateSteps(5);dot.className='dot dot-green';label.textContent='已登录';}else if(s.status==='failed'){showLoginCredsForm();icon.innerHTML='&#10060;';text.textContent=s.message||'登录失败';sub.textContent='可以尝试重新登录';dot.className='dot dot-gray';label.textContent='未登录';}else{checkLoginStatus();}}).catch(()=>{});}
 
 async function submitCode(code){if(!code||code.length<4){toast('验证码不完整','error');return;}try{const r=await fetch(`${API}/api/login/verify`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});const j=await r.json();if(!j.success)toast(j.message,'error');}catch(e){toast('提交失败','error');}}
 async function cancelLogin(){await fetch(`${API}/api/login/cancel`,{method:'POST'});updateSteps(1);document.getElementById('login-icon').innerHTML='&#128274;';document.getElementById('login-text').textContent='点击下方按钮，系统将自动完成邮箱登录流程';document.getElementById('login-sub').textContent='黑箱模式：自动填写账号密码、获取验证码';document.getElementById('login-actions').innerHTML='<button class="btn btn-primary" onclick="startLogin()" style="padding:10px 32px;">&#128272; 开始自动登录</button>';document.getElementById('login-code-area').style.display='none';document.getElementById('status-dot').className='dot dot-gray';document.getElementById('status-label').textContent='未登录';}
