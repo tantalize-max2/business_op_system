@@ -824,53 +824,15 @@ def batch_send_email():
 
         session.headers.update({'csrftoken': csrftoken})
 
-        # 通用附件（所有收件人共用）
-        common_attachment_list = []
-        common_attachment_name_list = []
+        # 通用附件（所有收件人共用） - 保留临时文件，每封邮件重新上传
+        common_tmp_files = []  # [(tmp_path, original_filename), ...]
         uploaded_files = request.files.getlist('files')
 
         for f in uploaded_files:
             if f.filename:
-                tmp_path = os.path.join(UPLOAD_DIR, f.filename)
+                tmp_path = os.path.join(UPLOAD_DIR, f'common_{int(time.time()*1000)}_{f.filename}')
                 f.save(tmp_path)
-                try:
-                    file_key = _upload_attachment(session, csrftoken, tmp_path, f.filename)
-                    if file_key:
-                        common_attachment_list.append(file_key)
-                        common_attachment_name_list.append(f.filename)
-                except Exception:
-                    pass
-                finally:
-                    try:
-                        os.remove(tmp_path)
-                    except OSError:
-                        pass
-
-        # 预上传每封邮件的个性化附件
-        per_item_attachments = {}
-        for i, item in enumerate(items):
-            per_files = request.files.getlist(f'files_{i}')
-            per_keys = []
-            per_names = []
-            for f in per_files:
-                if f.filename:
-                    tmp_path = os.path.join(UPLOAD_DIR, f.filename)
-                    f.save(tmp_path)
-                    try:
-                        file_key = _upload_attachment(session, csrftoken, tmp_path, f.filename)
-                        if file_key:
-                            per_keys.append(file_key)
-                            per_names.append(f.filename)
-                    except Exception:
-                        pass
-                    finally:
-                        try:
-                            os.remove(tmp_path)
-                        except OSError:
-                            pass
-            per_item_attachments[i] = (per_keys, per_names)
-
-        # 通用附件不再需要单独处理，已在逐封发送时合并
+                common_tmp_files.append((tmp_path, f.filename))
 
         # 逐个发送
         success_count = 0
@@ -904,10 +866,42 @@ def batch_send_email():
 
             content_b64 = base64.b64encode(html_body.encode('utf-8')).decode('utf-8')
 
-            # 合并通用附件 + 该收件人的个性化附件
-            per_keys, per_names = per_item_attachments.get(idx, ([], []))
-            all_att_keys = common_attachment_list + per_keys
-            all_att_names = common_attachment_name_list + per_names
+            # 每封邮件重新上传通用附件（避免 fileKey 被上一次发送消费掉）
+            common_keys = []
+            common_names = []
+            for tmp_path, orig_name in common_tmp_files:
+                try:
+                    file_key = _upload_attachment(session, csrftoken, tmp_path, orig_name)
+                    if file_key:
+                        common_keys.append(file_key)
+                        common_names.append(orig_name)
+                except Exception:
+                    pass
+
+            # 上传该收件人的个性化附件
+            per_files = request.files.getlist(f'files_{idx}')
+            per_keys = []
+            per_names = []
+            for f in per_files:
+                if f.filename:
+                    per_tmp = os.path.join(UPLOAD_DIR, f'per_{int(time.time()*1000)}_{f.filename}')
+                    f.save(per_tmp)
+                    try:
+                        file_key = _upload_attachment(session, csrftoken, per_tmp, f.filename)
+                        if file_key:
+                            per_keys.append(file_key)
+                            per_names.append(f.filename)
+                    except Exception:
+                        pass
+                    finally:
+                        try:
+                            os.remove(per_tmp)
+                        except OSError:
+                            pass
+
+            # 合并通用附件 + 个性化附件
+            all_att_keys = common_keys + per_keys
+            all_att_names = common_names + per_names
 
             att_list_str = ','.join(all_att_keys) if all_att_keys else ''
             att_name_str = ','.join(all_att_names) if all_att_names else ''
@@ -953,6 +947,13 @@ def batch_send_email():
         msg = f'成功发送 {success_count}/{len(items)} 封邮件'
         if fail_list:
             msg += f'，失败详情: {"; ".join(fail_list[:5])}'
+
+        # 清理通用附件临时文件
+        for tmp_path, _ in common_tmp_files:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
         return jsonify({
             'success': success_count > 0,

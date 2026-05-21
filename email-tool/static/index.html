@@ -269,7 +269,7 @@
                 </div>
                 <div class="form-group">
                     <div class="form-label">主题 <span style="color:var(--danger);">*</span></div>
-                    <input type="text" class="form-input" id="email-subject" placeholder="请输入邮件主题">
+                    <input type="text" class="form-input" id="email-subject" placeholder="请输入邮件主题" oninput="schedulePreviewUpdate()">
                 </div>
                 <div class="form-group">
                     <div class="form-label">正文</div>
@@ -326,7 +326,7 @@
                         <button class="tb-btn" title="超链接" onclick="insertLink()" style="font-size:15px;">&#128279;</button>
                         <button class="tb-btn" title="插入图片" onclick="insertImage()" style="font-size:15px;">&#128247;</button>
                     </div>
-                    <div class="rich-body" id="email-body" contenteditable="true" data-placeholder="请输入邮件正文内容..."></div>
+                    <div class="rich-body" id="email-body" contenteditable="true" data-placeholder="请输入邮件正文内容..." oninput="schedulePreviewUpdate()"></div>
                 </div>
                 <div class="form-group">
                     <div class="form-label">通用附件 <span style="color:var(--text-light);font-weight:400;">(所有收件人共用)</span></div>
@@ -438,6 +438,8 @@ let pickerChecked = [], groupPickerChecked = [];
 let batchMode = false, currentStep = 1;
 let previewEdits = {}; // {email: {subject, body}}
 let perRecipientFiles = {}; // {email: [File]}
+let previewTimer = null;
+function schedulePreviewUpdate(){if(!batchMode)return;clearTimeout(previewTimer);previewTimer=setTimeout(renderRecipientPreview,300);}
 const API = '';
 
 // ============ 初始化 ============
@@ -651,6 +653,7 @@ function onVarNameChange(){
         currentEditVar = newName;
         document.getElementById('var-edit-title').textContent = `编辑变量：{{${newName}}}`;
         renderTxtVarList();
+        schedulePreviewUpdate();
     }
 }
 
@@ -662,6 +665,7 @@ function onVarValuesChange(){
         // 同步到后端
         syncVarToBackend(currentEditVar);
         renderTxtVarList();
+        schedulePreviewUpdate();
     }
     updateVarEditCount();
 }
@@ -716,7 +720,7 @@ async function replaceAllVariables(text, contact, recipientIndex){
             const idx = recipientIndex + matchCount;
             const val = idx < values.length ? values[idx] : (values[0] || '');
             matchCount++;
-            return val;
+            return val || '{{'+varName+'}}';
         });
     }
     return result;
