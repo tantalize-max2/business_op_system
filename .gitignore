@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+
+# 运行时数据
+split-tool/data/uploads/
+split-tool/data/output/
+split-tool/data/bureau_mapping.json
+email-tool/data/uploads/
+email-tool/data/contacts.json
+email-tool/data/cookies.json
+email-tool/data/csrftoken.txt
+email-tool/data/login_creds.json
+email-tool/data/login_debug.png
+email-tool/data/templates.json
+email-tool/data/txt_vars/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
