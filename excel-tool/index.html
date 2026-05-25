@@ -39,6 +39,7 @@
     <div class="sp"></div>
     <button class="b bsm bg" id="btnClrL1">清空L1</button>
     <button class="b bsm bg" id="btnClrL2">清空L2</button>
+    <button class="b bsm bg" id="btnColMgr">👁 列管理</button>
     <button class="bp b bsm" id="btnResult">查看统计结果 →</button>
     <button class="b bsm" id="btnReup">+ 上传文件</button>
   </div>
@@ -97,11 +98,16 @@
     <button class="bp b bsm" id="btnCalc">刷新计算</button>
   </div>
   <div class="rv-body" id="rvBody">
-    <div class="rv-bar">
-      <div class="f"><label>求和列</label><select id="sumCol"><option value="">-- 无 --</option></select></div>
-    </div>
     <div id="resArea"><div style="text-align:center;padding:40px;color:var(--t3)">点击"刷新计算"查看结果</div></div>
   </div>
+</div>
+
+<!-- Column manager popup -->
+<div class="fd-ov" id="cmOv"></div>
+<div class="fd cm-popup" id="cmDd">
+  <div class="fd-h"><span class="cn">列管理</span><div class="acts"><button class="b bsm bg" id="cmShowAll">全部显示</button></div></div>
+  <div class="cm-list" id="cmList"></div>
+  <div class="fd-f"><span class="cnt" id="cmCnt">0/0</span><div style="display:flex;gap:4px"><button class="b bsm bg" id="cmX">关闭</button></div></div>
 </div>
 
 <!-- Filter dropdown -->

@@ -88,7 +88,7 @@ function handleFile(file){
       const json=XLSX.utils.sheet_to_json(ws,{defval:''});
       if(!json.length){ntf('文件为空','err');return}
       const hdr=Object.keys(json[0]);const l1={};hdr.forEach(c=>{l1[c]=newL1()});
-      S.files.push({id:++fileIdCounter,name:file.name,raw:json,hdr,l1,grps:[],gid:0,addedCols:[]});
+      S.files.push({id:++fileIdCounter,name:file.name,raw:json,hdr,l1,grps:[],gid:0,addedCols:[],sumCol:'',hiddenCols:new Set()});
       switchFile(S.files[S.files.length-1].id);ntf(`已加载 ${file.name} (${json.length} 行)`);
     }catch(err){ntf('解析失败','err')}
   };
@@ -119,35 +119,66 @@ function renderFileTabs(){
   let html='';
   S.files.forEach(f=>{
     const on=f.id===S.activeFileId?'on':'';
-    html+=`<span class="ftab ${on}" data-fid="${f.id}"><span>${esc(f.name)}</span><span class="rx" data-fid="${f.id}">✕</span></span>`;
+    html+=`<span class="ftab ${on}" data-fid="${f.id}"><span class="ftab-grip">⠿</span><span class="ftab-name">${esc(f.name)}</span><span class="rx" data-fid="${f.id}">✕</span></span>`;
   });
   div.innerHTML=html;
   div.querySelectorAll('.ftab').forEach(el=>el.addEventListener('click',e=>{
     if(e.target.classList.contains('rx')){removeFile(+e.target.dataset.fid);return}
     switchFile(+el.dataset.fid);
   }));
+  // File tab drag reorder
+  div.querySelectorAll('.ftab-grip').forEach(grip=>{
+    grip.addEventListener('mousedown',e=>{
+      e.preventDefault();e.stopPropagation();
+      const srcTab=grip.closest('.ftab'),srcFid=+srcTab.dataset.fid;
+      srcTab.classList.add('dragging');
+      document.body.style.cursor='grabbing';document.body.style.userSelect='none';
+      const onMove=ev=>{
+        const el=document.elementFromPoint(ev.clientX,ev.clientY);
+        const tgtTab=el?el.closest('.ftab'):null;
+        div.querySelectorAll('.ftab').forEach(t=>t.classList.remove('drag-over'));
+        if(tgtTab&&+tgtTab.dataset.fid!==srcFid)tgtTab.classList.add('drag-over');
+      };
+      const onUp=ev=>{
+        document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+        document.body.style.cursor='';document.body.style.userSelect='';
+        srcTab.classList.remove('dragging');
+        const el=document.elementFromPoint(ev.clientX,ev.clientY);
+        const tgtTab=el?el.closest('.ftab'):null;
+        div.querySelectorAll('.ftab').forEach(t=>t.classList.remove('drag-over'));
+        if(tgtTab&&+tgtTab.dataset.fid!==srcFid){
+          const si=S.files.findIndex(f=>f.id===srcFid),ti=S.files.findIndex(f=>f.id===+tgtTab.dataset.fid);
+          if(si>=0&&ti>=0){const tmp=S.files[si];S.files[si]=S.files[ti];S.files[ti]=tmp;renderFileTabs();ntf('文件顺序已交换')}
+        }
+      };
+      document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+    });
+  });
 }
 
 // ========== RENDER: TABLE ==========
 function renderTable(){
   const thead=document.getElementById('dth'),tbody=document.getElementById('dtb');
   const f=getActiveFile();if(!f)return;
-  const hdr=f.hdr,l1=f.l1,data=getSortedData(getFilteredData());
+  const hdr=f.hdr,l1=f.l1,data=getSortedData(getFilteredData()),hidden=f.hiddenCols;
   let hh='<tr><th style="width:34px"><div class="th-inner"><span class="th-name">#</span></div></th>';
   hdr.forEach(col=>{
+    if(hidden.has(col))return; // skip hidden columns
     const cf=l1[col];const isActive=cf&&cf.checked&&cf.checked.size<uniq(col).length;
     const isCascade=cf&&cf.cascade;const dependLabel=isCascade&&cf.dependCol?`→ ${cf.dependCol}`:'';
     const isSort=cf&&cf.sort;const sortIcon=isSort==='asc'?'▲':isSort==='desc'?'▼':'⇅';
     const hasCond=cf&&cf.condOn&&cf.condVal!=='';
     hh+=`<th data-col="${esc(col)}"><div class="th-inner">
+      <span class="th-grip" title="拖拽调换列">⠿</span>
       <span class="th-name">${esc(col)}${hasCond?' *':''}</span>
       ${isCascade?`<span class="th-dep on" data-col="${esc(col)}" title="级联: ${esc(cf.dependCol)}">${dependLabel}</span>`:`<span class="th-dep off" data-col="${esc(col)}" title="无依赖">○</span>`}
       <span class="th-fbtn ${isActive?'on':''}" data-col="${esc(col)}" title="过滤">▾</span>
       <span class="th-sort ${isSort?'on':''}" data-col="${esc(col)}" title="${hasCond?`${cf.condOp} ${cf.condVal} | `:''}排序">${sortIcon}</span>
+      <span class="th-hide" data-col="${esc(col)}" title="隐藏此列">✕</span>
     </div></th>`;
   });
   hh+='</tr>';thead.innerHTML=hh;
-  let bb='';data.forEach((r,i)=>{bb+=`<tr><td class="ti">${i+1}</td>`;hdr.forEach(c=>{bb+=`<td title="${esc(String(r[c]??''))}">${esc(String(r[c]??''))}</td>`});bb+='</tr>'});
+  let bb='';data.forEach((r,i)=>{bb+=`<tr><td class="ti">${i+1}</td>`;hdr.forEach(c=>{if(!hidden.has(c))bb+=`<td title="${esc(String(r[c]??''))}">${esc(String(r[c]??''))}</td>`});bb+='</tr>'});
   tbody.innerHTML=bb;
   // Events
   thead.querySelectorAll('.th-fbtn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openFD(b.dataset.col,b)}));
@@ -157,6 +188,38 @@ function renderTable(){
     const cf=l1[col];if(!cf.sort)cf.sort='asc';else if(cf.sort==='asc')cf.sort='desc';else cf.sort=null;
     renderTable();updHdr();
   }));
+  // Column drag reorder via th-name grip
+  thead.querySelectorAll('.th-grip').forEach(grip=>{
+    grip.addEventListener('mousedown',e=>{
+      e.preventDefault();e.stopPropagation();
+      const srcTh=grip.closest('th'),srcCol=srcTh.dataset.col;
+      srcTh.classList.add('dragging');
+      document.body.style.cursor='grabbing';document.body.style.userSelect='none';
+      const onMove=ev=>{
+        const el=document.elementFromPoint(ev.clientX,ev.clientY);
+        const tgtTh=el?el.closest('th[data-col]'):null;
+        thead.querySelectorAll('th[data-col]').forEach(t=>t.classList.remove('drag-over'));
+        if(tgtTh&&tgtTh.dataset.col!==srcCol)tgtTh.classList.add('drag-over');
+      };
+      const onUp=ev=>{
+        document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+        document.body.style.cursor='';document.body.style.userSelect='';
+        srcTh.classList.remove('dragging');
+        const el=document.elementFromPoint(ev.clientX,ev.clientY);
+        const tgtTh=el?el.closest('th[data-col]'):null;
+        thead.querySelectorAll('th[data-col]').forEach(t=>t.classList.remove('drag-over'));
+        if(tgtTh&&tgtTh.dataset.col!==srcCol){
+          const si=f.hdr.indexOf(srcCol),ti=f.hdr.indexOf(tgtTh.dataset.col);
+          if(si>=0&&ti>=0){f.hdr.splice(si,1);f.hdr.splice(ti,0,srcCol);renderTable();ntf('列顺序已调整')}
+        }
+      };
+      document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+    });
+  });
+  // Column hide
+  thead.querySelectorAll('.th-hide').forEach(btn=>btn.addEventListener('click',e=>{e.stopPropagation();
+    const col=btn.dataset.col;f.hiddenCols.add(col);renderTable();updHdr();ntf(`已隐藏 "${col}"`);
+  }));
 }
 
 function updHdr(){
@@ -164,7 +227,9 @@ function updHdr(){
   const fd=getFilteredData();
   document.getElementById('hAll').textContent=f.raw.length;
   document.getElementById('hFil').textContent=fd.length;
-  document.getElementById('hCol').textContent=f.hdr.length;
+  const visCols=f.hdr.length-f.hiddenCols.size;
+  document.getElementById('hCol').textContent=visCols+(f.hiddenCols.size?`/${f.hdr.length}`:'');
+  updColMgr();
 }
 
 // ========== FILTER DROPDOWN ==========
@@ -247,6 +312,42 @@ fdOv.addEventListener('click',closeFD);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeFD()});
 
 function closeFD(){fdOv.classList.remove('vis');fdDd.classList.remove('vis');S.l1EditCol=null;S.l1Temp=null}
+
+// ========== COLUMN MANAGER ==========
+const cmOv=document.getElementById('cmOv'),cmDd=document.getElementById('cmDd'),cmList=document.getElementById('cmList');
+
+function updColMgr(){
+  const f=getActiveFile();if(!f)return;
+  let html='';f.hdr.forEach(col=>{
+    const isHidden=f.hiddenCols.has(col);
+    html+=`<div class="cm-item${isHidden?' hidden':''}" data-col="${esc(col)}"><input type="checkbox" ${isHidden?'':'checked'}><span class="vl">${esc(col)}</span>${isHidden?'<span class="cm-tag">已隐藏</span>':''}</div>`;
+  });
+  cmList.innerHTML=html;
+  const vis=f.hdr.length-f.hiddenCols.size;
+  document.getElementById('cmCnt').textContent=`${vis}/${f.hdr.length} 可见`;
+  cmList.querySelectorAll('.cm-item').forEach(item=>item.addEventListener('click',()=>{
+    const col=item.dataset.col,cb=item.querySelector('input');
+    if(cb.disabled)return;cb.checked=!cb.checked;
+    if(cb.checked){f.hiddenCols.delete(col);item.classList.remove('hidden');item.querySelector('.cm-tag')?.remove()}
+    else{f.hiddenCols.add(col);item.classList.add('hidden');if(!item.querySelector('.cm-tag')){const tag=document.createElement('span');tag.className='cm-tag';tag.textContent='已隐藏';item.appendChild(tag)}}
+    const v=f.hdr.length-f.hiddenCols.size;document.getElementById('cmCnt').textContent=`${v}/${f.hdr.length} 可见`;
+    renderTable();updHdr();
+  }));
+}
+
+document.getElementById('btnColMgr').addEventListener('click',e=>{
+  const f=getActiveFile();if(!f)return;
+  updColMgr();
+  const rect=e.target.closest('.tb').getBoundingClientRect();
+  cmDd.style.left=Math.min(rect.right-280,window.innerWidth-290)+'px';
+  cmDd.style.top=(rect.bottom+2)+'px';
+  cmOv.classList.add('vis');cmDd.classList.add('vis');
+});
+document.getElementById('cmShowAll').addEventListener('click',()=>{
+  const f=getActiveFile();if(!f)return;f.hiddenCols.clear();updColMgr();renderTable();updHdr();ntf('全部列已显示');
+});
+document.getElementById('cmX').addEventListener('click',()=>{cmOv.classList.remove('vis');cmDd.classList.remove('vis')});
+cmOv.addEventListener('click',()=>{cmOv.classList.remove('vis');cmDd.classList.remove('vis')});
 
 document.getElementById('btnClrL1').addEventListener('click',()=>{
   const f=getActiveFile();if(!f)return;f.hdr.forEach(c=>{f.l1[c]=newL1()});renderTable();updHdr();popGCol();ntf('L1已清空');
@@ -335,27 +436,21 @@ document.getElementById('btnClrL2').addEventListener('click',()=>{
 });
 
 // ========== RESULT VIEW ==========
-function popSumCol(){
-  const sel=document.getElementById('sumCol');const v=sel.value;sel.innerHTML='<option value="">-- 无 --</option>';
-  getActiveHdr().forEach(c=>sel.innerHTML+=`<option value="${esc(c)}">${esc(c)}</option>`);if(v)sel.value=v;
-}
-
 document.getElementById('btnResult').addEventListener('click',()=>{
   document.getElementById('mainView').classList.remove('vis');document.getElementById('resultView').classList.add('vis');
-  popSumCol();calcAllStats();
+  calcAllStats();
 });
 document.getElementById('btnBack').addEventListener('click',()=>{
   document.getElementById('resultView').classList.remove('vis');document.getElementById('mainView').classList.add('vis');
 });
 document.getElementById('btnCalc').addEventListener('click',calcAllStats);
-document.getElementById('sumCol').addEventListener('change',calcAllStats);
 
 function calcAllStats(){
-  const sumCol=document.getElementById('sumCol').value;const area=document.getElementById('resArea');
+  const area=document.getElementById('resArea');
   if(!S.files.length){area.innerHTML='<div style="text-align:center;padding:40px;color:var(--t3)">请先上传文件</div>';return}
   let html='';
   S.files.forEach((file,fi)=>{
-    const l1Data=getFilteredData_forFile(file);const ctxCache={};
+    const sumCol=file.sumCol||'';const l1Data=getFilteredData_forFile(file);const ctxCache={};
     const entries=[];const groupedValsByCol={};
     file.grps.forEach(g=>{if(!groupedValsByCol[g.column])groupedValsByCol[g.column]=new Set();g.values.forEach(v=>groupedValsByCol[g.column].add(String(v)))});
     file.grps.forEach(g=>{
@@ -375,7 +470,8 @@ function calcAllStats(){
     file.addedCols.forEach(ac=>{const tc={};totalRows.forEach(r=>{const v=String(r[ac]??'');tc[v]=(tc[v]||0)+1});total['ac_'+ac]=tc});
 
     const secColor=SEC_COLORS[fi%SEC_COLORS.length];
-    html+=`<div class="rv-section"><div class="rv-section-hdr"><span class="sec-dot" style="background:${secColor}"></span>${esc(file.name)}<span class="sec-info">${file.raw.length}行 / ${file.hdr.length}列 / ${file.grps.length}分组</span></div>`;
+    let scOpts='<option value="">-- 无 --</option>';file.hdr.forEach(c=>{scOpts+=`<option value="${esc(c)}"${c===sumCol?' selected':''}>${esc(c)}</option>`});
+    html+=`<div class="rv-section"><div class="rv-section-hdr"><span class="sec-dot" style="background:${secColor}"></span>${esc(file.name)}<span class="sec-info">${file.raw.length}行 / ${file.hdr.length}列 / ${file.grps.length}分组</span><div class="rv-sum-sel"><label>求和列</label><select data-fid="${file.id}" class="rv-sc">${scOpts}</select></div></div>`;
     // Table
     html+='<table class="rt"><thead><tr><th>类别</th><th>依托</th><th>列</th><th style="text-align:right">数量</th><th style="text-align:right">占比</th>';
     if(sumCol)html+=`<th style="text-align:right">${esc(sumCol)} 求和</th>`;
@@ -406,7 +502,10 @@ function calcAllStats(){
     html+='</div>';
   });
   area.innerHTML=html;
-  // Export btn
+  area.querySelectorAll('.rv-sc').forEach(sel=>sel.addEventListener('change',e=>{
+    const fid=+e.target.dataset.fid;const file=S.files.find(f=>f.id===fid);
+    if(file){file.sumCol=e.target.value;calcAllStats()}
+  }));
   document.getElementById('exportBtn').style.display=S.files.length?'inline-flex':'none';
 }
 
@@ -430,10 +529,10 @@ function uniq_for(col,file){const s=new Set();file.raw.forEach(r=>s.add(String(r
 
 // ========== EXPORT EXCEL ==========
 document.getElementById('exportBtn').addEventListener('click',()=>{
-  const sumCol=document.getElementById('sumCol').value;
   if(!S.files.length){ntf('无数据可导出','err');return}
   const wb=XLSX.utils.book_new();
   S.files.forEach((file,fi)=>{
+    const sumCol=file.sumCol||'';
     const l1Data=getFilteredData_forFile(file);const ctxCache={};const rows=[];
     const header=['文件','类别','依托','列','数量','占比(%)'];
     if(sumCol)header.push(`${sumCol} 求和`);
@@ -444,10 +543,11 @@ document.getElementById('exportBtn').addEventListener('click',()=>{
       if(sumCol)row.push(parseFloat((ctx.reduce((a,r)=>a+(parseFloat(r[sumCol])||0),0)).toFixed(2)));
       rows.push(row);
     });
-    if(!file.grps.length){rows.push([file.name,'(未分组)','','','',l1Data.length,'100',sumCol?'0':'']);}
-    // Total
+    if(!file.grps.length){const row=[file.name,'(未分组)','','',l1Data.length,'100'];if(sumCol)row.push(0);rows.push(row)}
     const allRows=new Set();file.grps.forEach(g=>{getGroupContext(g.id,l1Data,file.grps,ctxCache).forEach(r=>allRows.add(r))});
-    rows.push([file.name,'合计','','',allRows.size,l1Data.length>0?(allRows.size/l1Data.length*100).toFixed(1):'0',sumCol?[...allRows].reduce((a,r)=>a+(parseFloat(r[sumCol])||0),0):0]);
+    const totalRow=[file.name,'合计','',allRows.size,l1Data.length>0?(allRows.size/l1Data.length*100).toFixed(1):'0'];
+    if(sumCol)totalRow.push([...allRows].reduce((a,r)=>a+(parseFloat(r[sumCol])||0),0));
+    rows.push(totalRow);
     const ws=XLSX.utils.aoa_to_sheet([header,...rows]);XLSX.utils.book_append_sheet(wb,ws,file.name.substring(0,20));
   });
   XLSX.writeFile(wb,'统计结果.xlsx');ntf('已导出 统计结果.xlsx');
@@ -455,7 +555,7 @@ document.getElementById('exportBtn').addEventListener('click',()=>{
 
 // ========== SAVE / LOAD ==========
 document.getElementById('btnSave').addEventListener('click',()=>{
-  const cfg={files:S.files.map(f=>({name:f.name,hdr:f.hdr,l1:{},grps:f.grps.map(g=>({name:g.name,color:g.color,column:g.column,values:g.values,l1Dep:g.l1Dep,parentId:g.parentId,parentRel:g.parentRel})),addedCols:f.addedCols})),sumCol:document.getElementById('sumCol').value};
+  const cfg={files:S.files.map(f=>({name:f.name,hdr:f.hdr,l1:{},grps:f.grps.map(g=>({name:g.name,color:g.color,column:g.column,values:g.values,l1Dep:g.l1Dep,parentId:g.parentId,parentRel:g.parentRel})),addedCols:f.addedCols,sumCol:f.sumCol||'',hiddenCols:[...f.hiddenCols]}))};
   S.files.forEach((_,fi)=>{const f=S.files[fi];f.hdr.forEach(col=>{const l1f=f.l1[col];cfg.files[fi].l1[col]={checked:l1f.checked?[...l1f.checked]:null,cascade:l1f.cascade||false,dependCol:l1f.dependCol||null,sort:l1f.sort||null,condOn:l1f.condOn||false,condOp:l1f.condOp||'eq',condVal:l1f.condVal||''}})});
   const blob=new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download='filter_config.json';a.click();URL.revokeObjectURL(url);ntf('配置已保存');
@@ -472,10 +572,9 @@ document.getElementById('cfgIn').addEventListener('change',e=>{
       S.files=[];S.activeFileId=null;
       cfg.files.forEach((fc,fi)=>{
         const hdr=fc.hdr||[];const l1={};const raw=[];hdr.forEach(c=>{const lf=fc.l1&&fc.l1[c];l1[c]=lf?{checked:lf.checked?new Set(lf.checked):null,cascade:lf.cascade||false,dependCol:lf.dependCol||null,sort:lf.sort||null,condOn:lf.condOn||false,condOp:lf.condOp||'eq',condVal:lf.condVal||''}:newL1()});
-        S.files.push({id:++fileIdCounter,name:fc.name,raw,hdr,l1,grps:[],gid:0,addedCols:fc.addedCols||[]});
+        S.files.push({id:++fileIdCounter,name:fc.name,raw,hdr,l1,grps:[],gid:0,addedCols:fc.addedCols||[],sumCol:fc.sumCol||'',hiddenCols:new Set(fc.hiddenCols||[])});
         if(cfg.grps)cfg.grps.forEach(g=>{S.files[fi].grps.push({id:++S.files[fi].gid,name:g.name,color:g.color,column:g.column,values:g.values,l1Dep:g.l1Dep||null,parentId:g.parentId||null,parentRel:g.parentRel||null})});
       });
-      if(cfg.sumCol)document.getElementById('sumCol').value=cfg.sumCol;
       switchFile(S.files[0].id);ntf('配置已加载');
     }catch(err){ntf('配置文件格式错误','err')}
   };
@@ -489,3 +588,27 @@ document.getElementById('upBox').addEventListener('dragover',e=>{e.preventDefaul
 document.getElementById('upBox').addEventListener('dragleave',()=>document.getElementById('upBox').classList.remove('drag'));
 document.getElementById('upBox').addEventListener('drop',e=>{e.preventDefault();document.getElementById('upBox').classList.remove('drag');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0])});
 document.getElementById('btnReup').addEventListener('click',()=>{document.getElementById('fileInput').value='';document.getElementById('fileInput').click()});
+
+// ========== L2 RESIZE ==========
+(function(){
+  const bar=document.querySelector('.l2-bar');if(!bar)return;
+  const body=document.getElementById('l2Body');
+  // Create a resize strip above the l2-bar
+  const strip=document.createElement('div');strip.className='l2-resize-strip';
+  bar.parentNode.insertBefore(strip,bar);
+  let startY,startH;
+  strip.addEventListener('mousedown',e=>{
+    if(!body.classList.contains('open'))return;
+    e.preventDefault();startY=e.clientY;startH=bar.offsetHeight;
+    strip.classList.add('active');document.body.style.cursor='ns-resize';document.body.style.userSelect='none';
+    const onMove=ev=>{
+      const diff=startY-ev.clientY;
+      bar.style.height=Math.max(80,startH+diff)+'px';
+    };
+    const onUp=()=>{
+      document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);
+      document.body.style.cursor='';document.body.style.userSelect='';strip.classList.remove('active');
+    };
+    document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+  });
+})();

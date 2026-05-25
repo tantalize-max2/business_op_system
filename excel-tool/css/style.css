@@ -126,13 +126,13 @@ body{font-family:var(--sf);background:var(--bg0);color:var(--t1);min-height:100v
 .fd-f .cnt{font-size:10px;color:var(--t3);font-family:var(--mf)}
 
 /* L2 AREA */
-.l2-bar{border-top:1px solid var(--bd);background:var(--bg2);flex-shrink:0}
+.l2-bar{border-top:1px solid var(--bd);background:var(--bg2);flex-shrink:0;min-height:32px;display:flex;flex-direction:column}
 .l2-toggle{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;cursor:pointer;user-select:none}
 .l2-toggle h3{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
 .l2-toggle .arr{transition:transform .2s;font-size:10px;color:var(--t3)}
 .l2-toggle.open .arr{transform:rotate(180deg)}
-.l2-body{display:none;padding:10px 14px;border-top:1px solid var(--bd)}
-.l2-body.open{display:block}
+.l2-body{display:none;padding:10px 14px;border-top:1px solid var(--bd);overflow-y:auto;flex:1;min-height:0}
+.l2-body.open{display:flex;flex-direction:column}
 .l2-form{display:flex;align-items:flex-end;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .l2-form .f{display:flex;flex-direction:column;gap:2px}
 .l2-form .f label{font-size:10px;color:var(--t3)}
@@ -211,3 +211,44 @@ body{font-family:var(--sf);background:var(--bg0);color:var(--t1);min-height:100v
 .ntf.show{transform:translateX(0)}
 .ntf.ok{border-left:3px solid var(--ok)}.ntf.err{border-left:3px solid var(--err)}
 .save-bar{display:flex;gap:6px;align-items:center;padding:6px 14px;border-top:1px solid var(--bd);background:var(--bg3);flex-shrink:0}
+
+/* L2 resize strip */
+.l2-resize-strip{height:6px;background:var(--bg3);cursor:ns-resize;flex-shrink:0;position:relative;border-top:1px solid var(--bd);transition:background .15s}
+.l2-resize-strip::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:40px;height:3px;border-radius:2px;background:var(--t3);opacity:.3;transition:all .15s}
+.l2-resize-strip:hover{background:var(--bg4)}.l2-resize-strip:hover::after{opacity:.7;width:60px;background:var(--ac)}
+.l2-resize-strip.active{background:var(--acg)}.l2-resize-strip.active::after{opacity:1;width:80px;background:var(--ac)}
+
+/* Column drag grip */
+.th-grip{display:inline-flex;align-items:center;justify-content:center;width:14px;height:18px;font-size:11px;color:var(--t3);cursor:grab;flex-shrink:0;opacity:.3;transition:opacity .12s;user-select:none}
+.th-grip:hover{opacity:1;color:var(--ac);cursor:grab}
+.th-grip:active{cursor:grabbing}
+.tbl th.dragging{opacity:.4!important;background:var(--acg)!important}
+.tbl th.drag-over{background:var(--acg)!important;box-shadow:inset 0 -2px 0 2px var(--ac)}
+.tbl th.drag-over *{pointer-events:none}
+
+/* Column hide button */
+.th-hide{display:inline-flex;align-items:center;justify-content:center;width:16px;height:18px;font-size:9px;color:var(--t3);cursor:pointer;flex-shrink:0;opacity:.15;transition:opacity .12s}
+.th-hide:hover{opacity:1;color:var(--err)}
+
+/* File tab grip */
+.ftab-grip{font-size:9px;cursor:grab;opacity:.3;margin-right:2px;user-select:none}
+.ftab-grip:hover{opacity:.8;color:var(--ac)}
+.ftab-name{pointer-events:none}
+.ftab.dragging{opacity:.4!important}
+.ftab.drag-over{box-shadow:0 -2px 0 2px var(--ac)}
+
+/* Column manager popup */
+.cm-popup{min-width:200px;max-width:320px}
+.cm-list{overflow-y:auto;flex:1;max-height:240px;padding:2px 0}
+.cm-item{display:flex;align-items:center;gap:6px;padding:4px 10px;cursor:pointer;transition:background .08s;font-size:11px}
+.cm-item:hover{background:var(--bg4)}
+.cm-item.hidden{opacity:.5}
+.cm-item input[type=checkbox]{accent-color:var(--ac);width:13px;height:13px;cursor:pointer;flex-shrink:0}
+.cm-item .vl{flex:1;font-family:var(--mf);color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cm-tag{font-size:9px;color:var(--err);background:var(--errbg);padding:1px 5px;border-radius:2px;font-family:var(--mf)}
+
+/* Per-file sumCol select in result */
+.rv-sum-sel{margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0}
+.rv-sum-sel label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.3px}
+.rv-sum-sel select{background:var(--bg);border:1px solid var(--bd);border-radius:3px;padding:3px 8px;color:var(--t1);font:11px var(--sf);outline:none}
+.rv-sum-sel select:focus{border-color:var(--ac)}
