@@ -1,29 +1,10 @@
 [
   {
-    "id": 1779071938678,
-    "name": "模板1",
-    "subject": "abc",
-    "body": "test2"
-  },
-  {
-    "id": 1779096363720,
-    "name": "周报模板",
-    "subject": "zhoubao",
-    "body": "你好"
-  },
-  {
-    "id": 1779198641233,
-    "name": "aaa",
-    "subject": "",
-    "body": "{{group}}{{name}}"
-  },
-  {
     "id": 1779200037602,
     "name": "bb",
-    "subject": "a",
+    "subject": "asd",
     "body": "{{test2.txt}}",
     "to": [
-      "2012204737@qq.com",
       "3334355244@qq.com"
     ],
     "cc": []

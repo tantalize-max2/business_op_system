@@ -25,14 +25,15 @@ function newL1(){return{checked:null,cascade:false,dependCol:null,sort:null,cond
 
 function getDepChain(col,f){
   const chain=[];let cur=col;const visited=new Set();
-  while(cur){if(visited.has(cur))break;visited.add(cur);const pf=S.l1[cur];
-    if(pf&&pf.cascade&&pf.dependCol){chain.unshift(pf.dependCol);cur=pf.dependCol}else break}
+  while(cur){if(visited.has(cur))break;visited.add(cur);
+    if(f&&f.cascade&&f.dependCol){chain.unshift(f.dependCol);const af=getActiveFile();cur=f.dependCol;f=af?af.l1[cur]:null}
+    else break}
   return chain;
 }
 function getDataFilteredForCol(col){
-  const f=getActiveFile().l1[col];const chain=getDepChain(col,f);
+  const af=getActiveFile();if(!af)return[];const f=af.l1[col];const chain=getDepChain(col,f);
   let data=getActiveRaw();
-  for(const c of chain){const pf=S.l1[c];if(pf&&pf.checked&&pf.checked.size<uniq(c).length)data=data.filter(r=>pf.checked.has(String(r[c]??'')))}
+  for(const c of chain){const pf=af.l1[c];if(pf&&pf.checked&&pf.checked.size<uniq(c).length)data=data.filter(r=>pf.checked.has(String(r[c]??'')))}
   return data;
 }
 
@@ -152,7 +153,7 @@ function renderTable(){
   thead.querySelectorAll('.th-fbtn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openFD(b.dataset.col,b)}));
   thead.querySelectorAll('.th-dep').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openFD(b.dataset.col,b,true)}));
   thead.querySelectorAll('.th-sort').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();
-    const col=b.dataset.col,l1=getActiveFile().l1;S.getActiveHdr().forEach(c=>{if(c!==col)l1[c].sort=null});
+    const col=b.dataset.col,l1=getActiveFile().l1;getActiveHdr().forEach(c=>{if(c!==col)l1[c].sort=null});
     const cf=l1[col];if(!cf.sort)cf.sort='asc';else if(cf.sort==='asc')cf.sort='desc';else cf.sort=null;
     renderTable();updHdr();
   }));
@@ -446,7 +447,7 @@ document.getElementById('exportBtn').addEventListener('click',()=>{
     if(!file.grps.length){rows.push([file.name,'(未分组)','','','',l1Data.length,'100',sumCol?'0':'']);}
     // Total
     const allRows=new Set();file.grps.forEach(g=>{getGroupContext(g.id,l1Data,file.grps,ctxCache).forEach(r=>allRows.add(r))});
-    rows.push([file.name,'合计','','',allRows.size,l1Data.length>0?(allRows.size/l1Data.length*100).toFixed(1):'0',sumCol?parseFloat(allRows.size?[...allRows].reduce((a,r)=>a+(parseFloat(r[sumCol])||0),0):0:0]);
+    rows.push([file.name,'合计','','',allRows.size,l1Data.length>0?(allRows.size/l1Data.length*100).toFixed(1):'0',sumCol?[...allRows].reduce((a,r)=>a+(parseFloat(r[sumCol])||0),0):0]);
     const ws=XLSX.utils.aoa_to_sheet([header,...rows]);XLSX.utils.book_append_sheet(wb,ws,file.name.substring(0,20));
   });
   XLSX.writeFile(wb,'统计结果.xlsx');ntf('已导出 统计结果.xlsx');
@@ -454,7 +455,7 @@ document.getElementById('exportBtn').addEventListener('click',()=>{
 
 // ========== SAVE / LOAD ==========
 document.getElementById('btnSave').addEventListener('click',()=>{
-  const cfg={files:S.files.map(f=>({name:f.name,hdr:f.hdr,l1:{},grps:f.grps.map(g=>({name:g.name,color:g.column,values:g.values,l1Dep:g.l1Dep,parentId:g.parentId,parentRel:g.parentRel})),addedCols:f.addedCols})),sumCol:document.getElementById('sumCol').value};
+  const cfg={files:S.files.map(f=>({name:f.name,hdr:f.hdr,l1:{},grps:f.grps.map(g=>({name:g.name,color:g.color,column:g.column,values:g.values,l1Dep:g.l1Dep,parentId:g.parentId,parentRel:g.parentRel})),addedCols:f.addedCols})),sumCol:document.getElementById('sumCol').value};
   S.files.forEach((_,fi)=>{const f=S.files[fi];f.hdr.forEach(col=>{const l1f=f.l1[col];cfg.files[fi].l1[col]={checked:l1f.checked?[...l1f.checked]:null,cascade:l1f.cascade||false,dependCol:l1f.dependCol||null,sort:l1f.sort||null,condOn:l1f.condOn||false,condOp:l1f.condOp||'eq',condVal:l1f.condVal||''}})});
   const blob=new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);
   const a=document.createElement('a');a.href=url;a.download='filter_config.json';a.click();URL.revokeObjectURL(url);ntf('配置已保存');
