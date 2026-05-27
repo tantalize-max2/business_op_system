@@ -77,11 +77,15 @@
       <button class="btn btn-ghost btn-sm" id="btnClrL1">清空过滤</button>
       <button class="btn btn-ghost btn-sm" id="btnColMgr">列管理</button>
       <button class="btn btn-ghost btn-sm" id="btnReup">+ 文件</button>
+      <div class="tb-sep"></div>
+      <select id="preprocessColSel" style="background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:5px 8px;color:var(--t1);font:11px var(--sf);outline:none;max-width:120px" title="预处理拆分列"></select>
+      <button class="btn btn-ghost btn-sm" id="btnPreprocess" title="预处理：拆分逗号分隔多人名，按分局优先级选择">预处理</button>
       <div class="tb-spacer"></div>
       <button class="btn btn-ghost btn-sm" id="btnBackUpload"><span class="arr">&larr;</span> 返回</button>
       <button class="btn btn-outline btn-sm" id="btnSkipSplit">跳过拆分 <span class="arr">&rarr;</span></button>
       <button class="btn btn-primary btn-sm" id="goSplit">分局拆分 <span class="arr">&rarr;</span></button>
     </div>
+    <div class="preprocess-result" id="preprocessResult" style="display:none"></div>
     <div class="table-wrap" id="tableWrap">
       <table class="data-table" id="dataTable">
         <thead id="dth"></thead>
@@ -116,9 +120,7 @@
         <div class="split-col-sel">
           <label>拆分列</label>
           <select id="splitColSel"><option value="">-- 选择拆分列 --</option></select>
-          <button class="btn btn-ghost btn-sm" id="btnPreprocess" title="预处理：拆分逗号分隔多人名，按分局优先级选择">预处理</button>
         </div>
-        <div class="preprocess-result" id="preprocessResult" style="display:none"></div>
         <div class="bureau-list" id="bureauList"></div>
         <div class="add-bureau-row">
           <input type="text" id="newBureauName" placeholder="输入新分局名称...">

@@ -196,7 +196,9 @@ body {
 .btn-success { color:var(--ok); border-color:rgba(52,211,153,.3); background:var(--okbg); }
 .btn-success:hover { background:var(--ok); color:#fff; }
 .btn-warn { color:var(--wn); border-color:rgba(251,191,36,.3); background:var(--wnbg); }
-.btn-warn:hover { background:var(--wn); color:#1a1600; }
+.btn.btn-warn:hover { background:var(--wn); color:#1a1a1a; border-color:var(--wn); }
+[data-theme="dark"] .btn.btn-warn:hover { color:#1a1600; }
+[data-theme="light"] .btn.btn-warn:hover { color:#fff; background:#b45309; border-color:#b45309; }
 .btn-danger { color:var(--err); border-color:rgba(248,113,113,.3); background:var(--errbg); }
 .btn-danger:hover { background:var(--err); color:#fff; }
 .btn-sm { padding:5px 14px; font-size:11px; }
@@ -398,13 +400,15 @@ body {
 .split-col-sel label { font-size:12px; color:var(--t3); font-weight:600; white-space:nowrap; }
 .split-col-sel select { flex:1; background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:6px 10px; color:var(--t1); font:12px var(--sf); outline:none; }
 .split-col-sel select:focus { border-color:var(--ac); }
-.preprocess-result { background:var(--bg3); border:1px solid var(--bd); border-radius:10px; padding:12px 14px; margin-bottom:12px; font-size:12px; line-height:1.8; }
+.preprocess-result { background:var(--bg3); border:1px solid var(--bd); border-radius:10px; padding:12px 14px; margin-bottom:8px; font-size:12px; line-height:1.8; }
 .preprocess-result .pp-stat { display:inline-flex; align-items:center; gap:4px; margin-right:14px; }
 .preprocess-result .pp-stat .pp-val { font-weight:700; font-family:var(--mf); }
 .preprocess-result .pp-empty { color:var(--err); }
 .preprocess-result .pp-multi { color:var(--wn); }
 .preprocess-result .pp-ok { color:var(--ok); }
 .preprocess-result .pp-detail { margin-top:8px; color:var(--t3); font-size:11px; max-height:120px; overflow-y:auto; }
+/* L1 过滤页的预处理列选择器 */
+#preprocessColSel { max-width:130px; }
 .bureau-list { display:flex; flex-direction:column; gap:8px; }
 .bureau-card { background:var(--bg3); border:1px solid var(--bd); border-radius:12px; overflow:hidden; transition:all .2s; }
 .bureau-card:hover { border-color:var(--bd2); }

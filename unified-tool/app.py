@@ -24,8 +24,10 @@ CORS(app)
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 UPLOAD_DIR = os.path.join(DATA_DIR, 'uploads')
 OUTPUT_DIR = os.path.join(DATA_DIR, 'output')
+CONFIGS_DIR = os.path.join(DATA_DIR, 'configs')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(CONFIGS_DIR, exist_ok=True)
 
 MAPPING_FILE = os.path.join(DATA_DIR, 'bureau_mapping.json')
 
@@ -138,6 +140,96 @@ def save_mapping_api():
 def reset_mapping():
     save_mapping(DEFAULT_MAPPING.copy())
     return jsonify({'message': '已重置为默认映射'})
+
+
+# ============ 配置管理 API ============
+
+def _config_path(name):
+    """安全获取配置文件路径，防止路径穿越"""
+    safe_name = re.sub(r'[^\w\u4e00-\u9fff\-\.]', '_', name)
+    return os.path.join(CONFIGS_DIR, f"{safe_name}.json")
+
+
+@app.route('/api/configs', methods=['GET'])
+def list_configs():
+    """列出所有已保存配置"""
+    configs = []
+    for fname in os.listdir(CONFIGS_DIR):
+        if not fname.endswith('.json'):
+            continue
+        fpath = os.path.join(CONFIGS_DIR, fname)
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            configs.append({
+                'name': data.get('name', fname[:-5]),
+                'sig': data.get('sig', ''),
+                'savedAt': data.get('savedAt', 0),
+                'fileNames': [fd.get('name', '') for fd in data.get('cfg', {}).get('files', [])]
+            })
+        except:
+            pass
+    configs.sort(key=lambda c: c.get('savedAt', 0), reverse=True)
+    return jsonify(configs)
+
+
+@app.route('/api/configs', methods=['POST'])
+def save_config():
+    """保存配置"""
+    data = request.json or {}
+    name = data.get('name', '').strip()
+    cfg = data.get('cfg')
+    sig = data.get('sig', '')
+    if not name:
+        return jsonify({'error': '配置名称不能为空'}), 400
+    if not cfg:
+        return jsonify({'error': '配置数据不能为空'}), 400
+    config_data = {
+        'name': name,
+        'sig': sig,
+        'cfg': cfg,
+        'savedAt': data.get('savedAt', datetime.now().timestamp() * 1000)
+    }
+    fpath = _config_path(name)
+    # 限制最多20个配置
+    existing = [f for f in os.listdir(CONFIGS_DIR) if f.endswith('.json')]
+    if len(existing) >= 20 and not os.path.exists(fpath):
+        # 删除最旧的
+        all_configs = []
+        for ef in existing:
+            ep = os.path.join(CONFIGS_DIR, ef)
+            try:
+                with open(ep, 'r', encoding='utf-8') as f:
+                    d = json.load(f)
+                all_configs.append((ef, d.get('savedAt', 0)))
+            except:
+                all_configs.append((ef, 0))
+        all_configs.sort(key=lambda x: x[1])
+        os.remove(os.path.join(CONFIGS_DIR, all_configs[0][0]))
+    with open(fpath, 'w', encoding='utf-8') as f:
+        json.dump(config_data, f, ensure_ascii=False)
+    return jsonify({'message': '配置已保存', 'name': name})
+
+
+@app.route('/api/configs/<path:name>', methods=['GET'])
+def get_config(name):
+    """获取指定配置"""
+    fpath = _config_path(name)
+    if not os.path.exists(fpath):
+        return jsonify({'error': '配置不存在'}), 404
+    with open(fpath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return jsonify(data)
+
+
+@app.route('/api/configs/<path:name>', methods=['DELETE'])
+def delete_config(name):
+    """删除指定配置"""
+    fpath = _config_path(name)
+    if not os.path.exists(fpath):
+        return jsonify({'error': '配置不存在'}), 404
+    os.remove(fpath)
+    return jsonify({'message': '配置已删除'})
 
 
 @app.route('/api/split-filtered', methods=['POST'])

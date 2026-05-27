@@ -24,3 +24,6 @@ email-tool/data/txt_vars/
 # OS
 Thumbs.db
 .DS_Store
+
+# Config data
+unified-tool/data/configs/

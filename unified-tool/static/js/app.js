@@ -28,84 +28,13 @@ function toggleTheme() {
 
 // ========== 刷新持久化 ==========
 function saveState() {
+  // 只保存mappingData，不再保存文件状态（每次启动应为空白）
   try {
-    const serializable = {
-      activeFileId: S.activeFileId,
-      currentStep: S.currentStep,
-      mappingData: S.mappingData,
-      splitResult: S.splitResult,
-      files: S.files.map(f => ({
-        id: f.id,
-        name: f.name,
-        hdr: f.hdr,
-        l1: {},
-        grps: f.grps,
-        gid: f.gid,
-        addedCols: f.addedCols,
-        sumCol: f.sumCol,
-        hiddenCols: [...f.hiddenCols]
-      }))
-    };
-    // 序列化 l1 (Set → Array)
-    S.files.forEach((f, fi) => {
-      f.hdr.forEach(col => {
-        const l1f = f.l1[col];
-        serializable.files[fi].l1[col] = {
-          checked: l1f.checked ? [...l1f.checked] : null,
-          cascade: l1f.cascade || false,
-          dependCol: l1f.dependCol || null,
-          sort: l1f.sort || null,
-          condOn: l1f.condOn || false,
-          condOp: l1f.condOp || 'eq',
-          condVal: l1f.condVal || ''
-        };
-      });
-    });
-    localStorage.setItem('ba-state', JSON.stringify(serializable));
-  } catch (e) { /* quota exceeded, ignore */ }
+    localStorage.setItem('ba-state', JSON.stringify({ mappingData: S.mappingData }));
+  } catch (e) { /* ignore */ }
 }
 
-function loadState() {
-  try {
-    const saved = localStorage.getItem('ba-state');
-    if (!saved) return false;
-    const data = JSON.parse(saved);
-    if (!data.files || !data.files.length) return false;
-    S.currentStep = data.currentStep || 'upload';
-    S.mappingData = data.mappingData || {};
-    S.splitResult = data.splitResult || null;
-    S.files = data.files.map(fc => {
-      const hdr = fc.hdr || [];
-      const l1 = {};
-      hdr.forEach(c => {
-        const lf = fc.l1 && fc.l1[c];
-        l1[c] = lf ? {
-          checked: lf.checked ? new Set(lf.checked) : null,
-          cascade: lf.cascade || false,
-          dependCol: lf.dependCol || null,
-          sort: lf.sort || null,
-          condOn: lf.condOn || false,
-          condOp: lf.condOp || 'eq',
-          condVal: lf.condVal || ''
-        } : newL1();
-      });
-      const grps = (fc.grps || []).map(g => ({
-        id: g.id, name: g.name, color: g.color, column: g.column,
-        values: g.values || [], l1Dep: g.l1Dep || null,
-        parentId: g.parentId || null, parentRel: g.parentRel || null
-      }));
-      return {
-        id: fc.id, name: fc.name, raw: [], hdr, l1, grps,
-        gid: fc.gid || 0, addedCols: fc.addedCols || [],
-        sumCol: fc.sumCol || '', hiddenCols: new Set(fc.hiddenCols || []),
-        rawFileData: null
-      };
-    });
-    fileIdCounter = Math.max(...S.files.map(f => f.id), 0);
-    S.activeFileId = data.activeFileId || S.files[0].id;
-    return true;
-  } catch (e) { return false; }
-}
+// loadState 已移除：每次启动为空白，不再恢复旧文件状态
 
 // 定时自动保存 + 关键操作后保存
 let _saveTimer = null;
@@ -131,8 +60,9 @@ const S = {
   selGColor: 'blue',
   selGVals: [],
   splitResult: null,
+  splitFileId: null,      // 执行拆分时的文件ID，splitMatchedRows 只对该文件生效
   mappingData: {},
-  splitMatchedRows: null,  // Set<row ref> - 拆分后匹配的行引用集合
+  splitMatchedRows: null,  // Set<row ref> - 拆分后匹配的行引用集合（仅对 splitFileId 文件有效）
 };
 
 const CM = {
@@ -145,13 +75,12 @@ const CM = {
 };
 const SEC_COLORS = ['#4c8bf5','#2dd4a0','#f0a030','#a78bfa','#22c8dc','#f05050','#ec4899','#84cc16'];
 
-// ========== 拆分列选择器 ==========
+// ========== 拆分列选择器 & 预处理列选择器 ==========
 function populateSplitColSel() {
   const sel = document.getElementById('splitColSel');
-  if (!sel) return;
-  const f = getActiveFile();
   const cur = sel.value;
   sel.innerHTML = '<option value="">-- 选择拆分列 --</option>';
+  const f = getActiveFile();
   if (f) {
     let hasExactMatch = false;
     f.hdr.forEach(c => { if (c === '客户经理') hasExactMatch = true; });
@@ -165,6 +94,35 @@ function populateSplitColSel() {
     });
   }
   if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+  // 同步预处理列选择器
+  syncPreprocessColSel();
+}
+
+function syncPreprocessColSel() {
+  const sel = document.getElementById('preprocessColSel');
+  if (!sel) return;
+  const cur = sel.value || document.getElementById('splitColSel')?.value;
+  sel.innerHTML = '<option value="">预处理列</option>';
+  const f = getActiveFile();
+  if (f) {
+    let hasExactMatch = false;
+    f.hdr.forEach(c => { if (c === '客户经理') hasExactMatch = true; });
+    f.hdr.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      if (hasExactMatch ? (c === '客户经理') : c.includes('客户经理')) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+  if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
+// 预处理列选择变化时同步到拆分列
+function onPreprocessColChange() {
+  const pSel = document.getElementById('preprocessColSel');
+  const sSel = document.getElementById('splitColSel');
+  if (pSel && sSel && pSel.value) sSel.value = pSel.value;
 }
 
 function getSplitCol() {
@@ -416,32 +374,22 @@ function handleFile(file) {
       const json = XLSX.utils.sheet_to_json(ws, {defval: ''});
       if (!json.length) { ntf('文件为空', 'error'); return; }
       const hdr = Object.keys(json[0]);
-      // 检查是否有同名的配置已保存但需要重连数据
-      const existing = S.files.find(f => f.name === file.name && f._needsReupload && hdrSignature(f.hdr) === hdrSignature(hdr));
-      if (existing) {
-        // 重连：填充数据但保留配置
-        existing.raw = json;
-        existing.rawFileData = rawBuffer;
-        delete existing._needsReupload;
-        ntf(`已加载数据并恢复配置 ${file.name} (${json.length} 行)`);
-      } else {
-        const l1 = {};
-        hdr.forEach(c => { l1[c] = newL1(); });
-        S.files.push({
-          id: ++fileIdCounter,
-          name: file.name,
-          raw: json,
-          hdr,
-          l1,
-          grps: [],
-          gid: 0,
-          addedCols: [],
-          sumCol: '',
-          hiddenCols: new Set(),
-          rawFileData: rawBuffer
-        });
-        ntf(`已加载 ${file.name} (${json.length} 行)`);
-      }
+      const l1 = {};
+      hdr.forEach(c => { l1[c] = newL1(); });
+      S.files.push({
+        id: ++fileIdCounter,
+        name: file.name,
+        raw: json,
+        hdr,
+        l1,
+        grps: [],
+        gid: 0,
+        addedCols: [],
+        sumCol: '',
+        hiddenCols: new Set(),
+        rawFileData: rawBuffer
+      });
+      ntf(`已加载 ${file.name} (${json.length} 行)`);
       renderFileList();
       debouncedSave();
     } catch (err) { ntf('解析失败: ' + err.message, 'error'); }
@@ -495,6 +443,7 @@ function renderFileTabs() {
     renderFileTabs();
     renderTable();
     updHdr();
+    syncPreprocessColSel();
   }));
 }
 
@@ -1028,7 +977,7 @@ function renderL2Preview() {
   if (!f || !f.raw.length) { div.style.display = 'none'; return; }
   div.style.display = 'block';
   let l1Data = getFilteredData();
-  if (S.splitMatchedRows && S.splitMatchedRows.size > 0) {
+  if (S.splitMatchedRows && S.splitFileId === S.activeFileId && S.splitMatchedRows.size > 0) {
     l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
   }
   const previewRows = l1Data.slice(0, 3);
@@ -1212,8 +1161,8 @@ function calcAllStats() {
     if (!file.raw.length) return; // 跳过无数据文件
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
-    // 如果已执行拆分，排除未匹配行
-    if (S.splitMatchedRows && S.splitMatchedRows.size > 0) {
+    // 如果已执行拆分且该文件是拆分文件，排除未匹配行
+    if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
       l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
     }
     const ctxCache = {};
@@ -1301,8 +1250,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   S.files.forEach(file => {
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
-    // 如果已执行拆分，排除未匹配行
-    if (S.splitMatchedRows && S.splitMatchedRows.size > 0) {
+    // 如果已执行拆分且该文件是拆分文件，排除未匹配行
+    if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
       l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
     }
     const ctxCache = {};
@@ -1336,39 +1285,66 @@ function hdrSignature(hdr) {
   return [...hdr].sort().join('|');
 }
 
-function saveGlobalConfig() {
+function buildConfigData() {
   const cfg = {files: S.files.map(f => ({name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentId: g.parentId, parentRel: g.parentRel})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]}))};
   S.files.forEach((_, fi) => {
     const f = S.files[fi];
     f.hdr.forEach(col => {
-      const l1f = f.l1[col];
-      cfg.files[fi].l1[col] = {checked: l1f.checked ? [...l1f.checked] : null, cascade: l1f.cascade || false, dependCol: l1f.dependCol || null, sort: l1f.sort || null, condOn: l1f.condOn || false, condOp: l1f.condOp || 'eq', condVal: l1f.condVal || ''};
+      cfg.files[fi].l1[col] = {checked: f.l1[col].checked ? [...f.l1[col].checked] : null, cascade: f.l1[col].cascade || false, dependCol: f.l1[col].dependCol || null, sort: f.l1[col].sort || null, condOn: f.l1[col].condOn || false, condOp: f.l1[col].condOp || 'eq', condVal: f.l1[col].condVal || ''};
     });
   });
+  return cfg;
+}
+
+function saveGlobalConfig() {
+  const cfg = buildConfigData();
   const sig = hdrSignature(S.files.map(f => f.hdr).flat());
-  try {
-    let configs = JSON.parse(localStorage.getItem('ba-configs') || '{}');
-    const configName = `config_${new Date().toLocaleString('zh-CN').replace(/[\/:]/g, '-')}`;
-    configs[configName] = {sig, cfg, savedAt: Date.now()};
-    const keys = Object.keys(configs);
-    if (keys.length > 20) {
-      keys.sort((a, b) => configs[a].savedAt - configs[b].savedAt);
-      keys.slice(0, keys.length - 20).forEach(k => delete configs[k]);
-    }
-    localStorage.setItem('ba-configs', JSON.stringify(configs));
-  } catch (e) { /* ignore */ }
-  ntf('配置已保存');
+  // 弹出命名对话框
+  showConfigNameDialog(name => {
+    if (!name) return;
+    fetch('/api/configs', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name, cfg, sig, savedAt: Date.now() })
+    }).then(r => r.json()).then(data => {
+      if (data.error) { ntf(data.error, 'error'); return; }
+      ntf('配置已保存');
+    }).catch(() => ntf('保存失败', 'error'));
+  });
+}
+
+function showConfigNameDialog(callback) {
+  const overlay = document.createElement('div');
+  overlay.className = 'fd-overlay vis';
+  const dd = document.createElement('div');
+  dd.className = 'fd-dropdown vis';
+  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:360px;';
+  const defaultName = `配置_${new Date().toLocaleString('zh-CN').replace(/[\/:]/g, '-')}`;
+  dd.innerHTML = `
+    <div class="fd-head"><span class="fd-cn">保存配置</span></div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+      <label style="font-size:12px;color:var(--t3)">配置名称</label>
+      <input id="cfgNameInput" value="${esc(defaultName)}" style="background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;color:var(--t1);font:13px var(--sf);outline:none;width:100%">
+    </div>
+    <div class="fd-foot"><span></span><div class="fd-btns">
+      <button class="btn btn-ghost btn-xs" id="cfgNameCancel">取消</button>
+      <button class="btn btn-primary btn-xs" id="cfgNameOk">保存</button>
+    </div></div>`;
+  document.body.appendChild(overlay);
+  document.body.appendChild(dd);
+  const input = dd.querySelector('#cfgNameInput');
+  input.focus();
+  input.select();
+  const close = () => { overlay.remove(); dd.remove(); };
+  dd.querySelector('#cfgNameCancel').addEventListener('click', close);
+  overlay.addEventListener('click', close);
+  const confirm = () => { const v = input.value.trim(); if (v) { close(); callback(v); } };
+  dd.querySelector('#cfgNameOk').addEventListener('click', confirm);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
 }
 
 function exportConfig() {
-  const cfg = {files: S.files.map(f => ({name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentId: g.parentId, parentRel: g.parentRel})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]}))};
-  S.files.forEach((_, fi) => {
-    const f = S.files[fi];
-    f.hdr.forEach(col => {
-      const l1f = f.l1[col];
-      cfg.files[fi].l1[col] = {checked: l1f.checked ? [...l1f.checked] : null, cascade: l1f.cascade || false, dependCol: l1f.dependCol || null, sort: l1f.sort || null, condOn: l1f.condOn || false, condOp: l1f.condOp || 'eq', condVal: l1f.condVal || ''};
-    });
-  });
+  const cfg = buildConfigData();
   const blob = new Blob([JSON.stringify(cfg, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'filter_config.json'; a.click();
@@ -1379,61 +1355,102 @@ function exportConfig() {
 document.getElementById('btnSave').addEventListener('click', saveGlobalConfig);
 document.getElementById('btnExport').addEventListener('click', exportConfig);
 
-document.getElementById('btnLoad').addEventListener('click', () => {
-  let configs = {};
-  try { configs = JSON.parse(localStorage.getItem('ba-configs') || '{}'); } catch (e) {}
-  const keys = Object.keys(configs);
-  if (!keys.length) {
-    ntf('无已保存配置', 'warn');
-    return;
+document.getElementById('btnLoad').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/configs');
+    const configs = await res.json();
+    if (!configs.length) {
+      ntf('无已保存配置', 'warn');
+      return;
+    }
+    showConfigPicker(configs);
+  } catch (e) {
+    ntf('加载配置列表失败', 'error');
   }
-  // 按表头匹配筛选
-  const currentSigs = S.files.map(f => hdrSignature(f.hdr));
-  const matched = keys.filter(k => {
-    const cfgSigs = configs[k].cfg.files.map(f => hdrSignature(f.hdr));
-    return cfgSigs.some(cs => currentSigs.includes(cs));
-  });
-  if (matched.length === 0) {
-    ntf('无匹配当前文件的配置', 'warn');
-    return;
-  }
-  showConfigPicker(matched, configs);
 });
 
-function showConfigPicker(matchedKeys, configs) {
-  // 创建选择弹窗
+function showConfigPicker(configs) {
+  // 显示全部配置，匹配的高亮可选，不匹配的灰显禁选
+  const currentSigs = S.files.map(f => hdrSignature(f.hdr));
   const overlay = document.createElement('div');
   overlay.className = 'fd-overlay vis';
   const dd = document.createElement('div');
   dd.className = 'fd-dropdown vis';
-  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:400px;max-height:500px;';
+  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:440px;max-height:560px;';
   let html = `<div class="fd-head"><span class="fd-cn">选择配置</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" id="cfgFileImport">从文件导入</button></div></div>`;
-  html += '<div class="fd-value-list" style="max-height:320px">';
-  matchedKeys.forEach(k => {
-    const c = configs[k];
+  html += '<div class="fd-value-list" style="max-height:360px">';
+  const matchedCount = configs.filter(c => {
+    const cfgSigs = c.sig ? c.sig.split('|') : [];
+    return currentSigs.some(cs => {
+      const parts = cs.split('|').sort();
+      return cfgSigs.length === parts.length && cfgSigs.every((s, i) => s === parts[i]);
+    });
+  }).length;
+  configs.forEach(c => {
     const date = new Date(c.savedAt).toLocaleString('zh-CN');
-    const fileNames = c.cfg.files.map(f => esc(f.name)).join(', ');
-    html += `<div class="fd-item" data-cfg-key="${esc(k)}" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 14px">
-      <div style="font-weight:600;font-size:12px">${esc(k)}</div>
+    const fileNames = (c.fileNames || []).map(n => esc(n)).join(', ');
+    // 检查表头是否匹配
+    const cfgSigParts = c.sig ? c.sig.split('|').sort() : [];
+    const isMatched = currentSigs.some(cs => {
+      const parts = cs.split('|').sort();
+      return cfgSigParts.length === parts.length && cfgSigParts.every((s, i) => s === parts[i]);
+    });
+    const dimStyle = isMatched ? '' : 'opacity:.4;pointer-events:none;';
+    const matchBadge = isMatched ? '<span style="color:var(--ok);font-size:9px;margin-left:6px">匹配</span>' : '<span style="color:var(--t3);font-size:9px;margin-left:6px">表头不匹配</span>';
+    html += `<div class="fd-item" data-cfg-name="${esc(c.name)}" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 14px;${dimStyle}">
+      <div style="display:flex;align-items:center;width:100%;justify-content:space-between">
+        <div style="font-weight:600;font-size:12px">${esc(c.name)}${matchBadge}</div>
+        <button class="btn btn-danger btn-xs cfg-del-btn" data-cfg-name="${esc(c.name)}" style="flex-shrink:0;${isMatched ? '' : 'pointer-events:auto;opacity:1;'}">删除</button>
+      </div>
       <div style="font-size:10px;color:var(--t3)">${date} - ${fileNames}</div>
     </div>`;
   });
   html += '</div>';
-  html += '<div class="fd-foot"><span class="fd-cnt">' + matchedKeys.length + ' 个匹配</span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="cfgCancel">取消</button></div></div>';
+  html += `<div class="fd-foot"><span class="fd-cnt">${matchedCount}/${configs.length} 个匹配</span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="cfgCancel">取消</button></div></div>`;
   dd.innerHTML = html;
   document.body.appendChild(overlay);
   document.body.appendChild(dd);
 
-  overlay.addEventListener('click', () => { overlay.remove(); dd.remove(); });
-  dd.querySelector('#cfgCancel').addEventListener('click', () => { overlay.remove(); dd.remove(); });
-  dd.querySelector('#cfgFileImport').addEventListener('click', () => { overlay.remove(); dd.remove(); document.getElementById('cfgIn').click(); });
-  dd.querySelectorAll('.fd-item').forEach(item => item.addEventListener('click', () => {
-    const key = item.dataset.cfgKey;
-    const cfg = configs[key].cfg;
-    applyConfig(cfg);
-    overlay.remove();
-    dd.remove();
-  }));
+  const closeDialog = () => { overlay.remove(); dd.remove(); };
+  overlay.addEventListener('click', closeDialog);
+  dd.querySelector('#cfgCancel').addEventListener('click', closeDialog);
+  dd.querySelector('#cfgFileImport').addEventListener('click', () => { closeDialog(); document.getElementById('cfgIn').click(); });
+  // 删除按钮
+  dd.querySelectorAll('.cfg-del-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const name = btn.dataset.cfgName;
+      try {
+        const res = await fetch(`/api/configs/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.error) { ntf(data.error, 'error'); return; }
+        ntf(`已删除配置: ${name}`);
+        // 移除对应行
+        const item = btn.closest('.fd-item');
+        if (item) item.remove();
+        // 更新计数
+        const remaining = dd.querySelectorAll('.fd-item').length;
+        const matchedRemaining = [...dd.querySelectorAll('.fd-item')].filter(el => !el.style.opacity || el.style.opacity !== '0.4').length;
+        const cntEl = dd.querySelector('.fd-cnt');
+        if (cntEl) cntEl.textContent = `${matchedRemaining}/${remaining} 个匹配`;
+        if (remaining === 0) closeDialog();
+      } catch (err) { ntf('删除失败', 'error'); }
+    });
+  });
+  // 点击配置项（只对匹配的生效）
+  dd.querySelectorAll('.fd-item').forEach(item => {
+    if (item.style.opacity === '0.4') return; // 不匹配的不可点击
+    item.addEventListener('click', async () => {
+      const name = item.dataset.cfgName;
+      try {
+        const res = await fetch(`/api/configs/${encodeURIComponent(name)}`);
+        const data = await res.json();
+        if (data.error) { ntf(data.error, 'error'); return; }
+        applyConfig(data.cfg);
+        closeDialog();
+      } catch (err) { ntf('加载配置失败', 'error'); }
+    });
+  });
 }
 
 function applyConfig(cfg) {
@@ -1629,6 +1646,7 @@ async function doSplit() {
         }
       });
       S.splitMatchedRows = matchedSet;
+      S.splitFileId = f.id;
     }
     renderSplitResults();
     debouncedSave();
@@ -1690,6 +1708,7 @@ document.getElementById('goFilter1').addEventListener('click', () => {
   S.activeFileId = S.files[0].id;
   switchStep('filter1');
   initActiveFile();
+  syncPreprocessColSel();
 });
 
 function initActiveFile() {
@@ -1734,8 +1753,10 @@ document.getElementById('goFilter2FromSplit').addEventListener('click', () => sw
 document.getElementById('btnPreprocess').addEventListener('click', () => {
   const f = getActiveFile();
   if (!f || !f.raw.length) { ntf('请先上传文件', 'error'); return; }
-  const col = getSplitCol();
-  if (!col) { ntf('请先选择拆分列', 'error'); return; }
+  // 优先使用预处理列选择器，其次使用拆分列选择器
+  const pSel = document.getElementById('preprocessColSel');
+  const col = (pSel && pSel.value) || getSplitCol();
+  if (!col) { ntf('请先选择预处理列', 'error'); return; }
   const mapping = S.mappingData;
   if (!Object.keys(mapping).length) { ntf('映射数据为空', 'error'); return; }
 
@@ -1807,6 +1828,7 @@ document.getElementById('btnPreprocess').addEventListener('click', () => {
   }
   // 重算 splitMatchedRows（数据已变）
   S.splitMatchedRows = null;
+  S.splitFileId = null;
   S.splitResult = null;
   document.getElementById('splitResults').style.display = 'none';
   debouncedSave();
@@ -1843,24 +1865,22 @@ upZone.addEventListener('drop', e => {
 
 // 初始化
 document.getElementById('sbStats').style.display = 'none';
+document.getElementById('preprocessColSel').addEventListener('change', onPreprocessColChange);
 
 // 主题切换
 document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 applyThemeUI(document.documentElement.getAttribute('data-theme') || 'dark');
 
-// 恢复持久化状态
+// 恢复持久化状态（不恢复文件列表，每次启动为空白）
 (function restoreState() {
-  if (loadState()) {
-    // 清除无数据的文件（raw为空需要重新上传）
-    const emptyFiles = S.files.filter(f => !f.raw.length);
-    if (emptyFiles.length) {
-      // 保留配置信息但标记需要重新上传
-      S.files.forEach(f => { if (!f.raw.length) f._needsReupload = true; });
+  try {
+    const saved = localStorage.getItem('ba-state');
+    if (saved) {
+      const data = JSON.parse(saved);
+      S.mappingData = data.mappingData || {};
+      S.splitResult = null; // 不恢复拆分结果（需要重新执行）
     }
-    renderFileList();
-    switchStep(S.currentStep);
-    if (emptyFiles.length) {
-      ntf('已恢复配置，请重新上传文件以加载数据', 'warn');
-    }
-  }
+  } catch (e) {}
+  // 清除旧的文件状态，确保启动时为空白
+  localStorage.removeItem('ba-state');
 })();
