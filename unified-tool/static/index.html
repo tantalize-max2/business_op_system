@@ -111,6 +111,12 @@
             <button class="btn btn-ghost btn-sm" id="resetMapping">恢复默认</button>
           </div>
         </div>
+        <div class="split-col-sel">
+          <label>拆分列</label>
+          <select id="splitColSel"><option value="">-- 选择拆分列 --</option></select>
+          <button class="btn btn-ghost btn-sm" id="btnPreprocess" title="预处理：拆分逗号分隔多人名，按分局优先级选择">预处理</button>
+        </div>
+        <div class="preprocess-result" id="preprocessResult" style="display:none"></div>
         <div class="bureau-list" id="bureauList"></div>
         <div class="add-bureau-row">
           <input type="text" id="newBureauName" placeholder="输入新分局名称...">
@@ -155,6 +161,8 @@
         <span class="l2-arr">&#9660;</span>
       </div>
       <div class="l2-body" id="l2Body">
+        <div class="l2-file-tabs" id="l2FileTabs"></div>
+        <div class="l2-preview" id="l2Preview" style="display:none"></div>
         <div class="l2-form">
           <div class="f"><label>列</label><select id="gCol"><option value="">-- 选择列 --</option></select></div>
           <div class="f"><label>分组名</label><input id="gName" placeholder="如：一组"></div>

@@ -155,6 +155,7 @@ def split_filtered():
     file_data_b64 = data.get('fileDataBase64', '')
     filtered_indices = data.get('filteredRowIndices', [])
     mapping = data.get('mapping') or load_mapping()
+    split_column = data.get('splitColumn', '')
 
     if not file_data_b64:
         return jsonify({'error': '缺少文件数据'}), 400
@@ -199,6 +200,11 @@ def split_filtered():
     # 只在过滤后的行中进行匹配
     filtered_set = set(filtered_indices) if filtered_indices else set(range(len(df)))
 
+    if not split_column:
+        return jsonify({'error': '未指定拆分列'}), 400
+    if split_column not in df.columns:
+        return jsonify({'error': f'拆分列 "{split_column}" 不存在于数据中'}), 400
+
     bureau_rows = {bureau: [] for bureau in mapping.keys()}
     unmatched_rows = []
     header_row = 1
@@ -211,15 +217,7 @@ def split_filtered():
             continue
         excel_row = index + 2  # 转为Excel行号(1-based, +1表头)
 
-        if '客户经理' in df.columns:
-            manager_name_raw = df.iloc[index]['客户经理']
-        elif 'AB1_客户经理' in df.columns:
-            manager_name_raw = df.iloc[index]['AB1_客户经理']
-        else:
-            unmatched_rows.append(excel_row)
-            unmatched_count += 1
-            continue
-
+        manager_name_raw = df.iloc[index][split_column]
         manager_name_clean = clean_name(manager_name_raw)
         matched = False
         for bureau, managers in mapping.items():

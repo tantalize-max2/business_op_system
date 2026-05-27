@@ -26,6 +26,101 @@ function toggleTheme() {
   applyThemeUI(next);
 }
 
+// ========== 刷新持久化 ==========
+function saveState() {
+  try {
+    const serializable = {
+      activeFileId: S.activeFileId,
+      currentStep: S.currentStep,
+      mappingData: S.mappingData,
+      splitResult: S.splitResult,
+      files: S.files.map(f => ({
+        id: f.id,
+        name: f.name,
+        hdr: f.hdr,
+        l1: {},
+        grps: f.grps,
+        gid: f.gid,
+        addedCols: f.addedCols,
+        sumCol: f.sumCol,
+        hiddenCols: [...f.hiddenCols]
+      }))
+    };
+    // 序列化 l1 (Set → Array)
+    S.files.forEach((f, fi) => {
+      f.hdr.forEach(col => {
+        const l1f = f.l1[col];
+        serializable.files[fi].l1[col] = {
+          checked: l1f.checked ? [...l1f.checked] : null,
+          cascade: l1f.cascade || false,
+          dependCol: l1f.dependCol || null,
+          sort: l1f.sort || null,
+          condOn: l1f.condOn || false,
+          condOp: l1f.condOp || 'eq',
+          condVal: l1f.condVal || ''
+        };
+      });
+    });
+    localStorage.setItem('ba-state', JSON.stringify(serializable));
+  } catch (e) { /* quota exceeded, ignore */ }
+}
+
+function loadState() {
+  try {
+    const saved = localStorage.getItem('ba-state');
+    if (!saved) return false;
+    const data = JSON.parse(saved);
+    if (!data.files || !data.files.length) return false;
+    S.currentStep = data.currentStep || 'upload';
+    S.mappingData = data.mappingData || {};
+    S.splitResult = data.splitResult || null;
+    S.files = data.files.map(fc => {
+      const hdr = fc.hdr || [];
+      const l1 = {};
+      hdr.forEach(c => {
+        const lf = fc.l1 && fc.l1[c];
+        l1[c] = lf ? {
+          checked: lf.checked ? new Set(lf.checked) : null,
+          cascade: lf.cascade || false,
+          dependCol: lf.dependCol || null,
+          sort: lf.sort || null,
+          condOn: lf.condOn || false,
+          condOp: lf.condOp || 'eq',
+          condVal: lf.condVal || ''
+        } : newL1();
+      });
+      const grps = (fc.grps || []).map(g => ({
+        id: g.id, name: g.name, color: g.color, column: g.column,
+        values: g.values || [], l1Dep: g.l1Dep || null,
+        parentId: g.parentId || null, parentRel: g.parentRel || null
+      }));
+      return {
+        id: fc.id, name: fc.name, raw: [], hdr, l1, grps,
+        gid: fc.gid || 0, addedCols: fc.addedCols || [],
+        sumCol: fc.sumCol || '', hiddenCols: new Set(fc.hiddenCols || []),
+        rawFileData: null
+      };
+    });
+    fileIdCounter = Math.max(...S.files.map(f => f.id), 0);
+    S.activeFileId = data.activeFileId || S.files[0].id;
+    return true;
+  } catch (e) { return false; }
+}
+
+// 定时自动保存 + 关键操作后保存
+let _saveTimer = null;
+function debouncedSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveState, 800);
+}
+
+// 重写 ntf 以在操作后触发保存
+const _origNtf = ntf;
+ntf = function(m, t) {
+  _origNtf(m, t);
+  debouncedSave();
+};
+
 // ========== 全局状态 ==========
 const S = {
   files: [],       // [{id, name, raw:[], hdr:[], l1:{}, grps:[], gid:0, addedCols:[], sumCol:'', hiddenCols:Set, rawFileData:ArrayBuffer}]
@@ -37,6 +132,7 @@ const S = {
   selGVals: [],
   splitResult: null,
   mappingData: {},
+  splitMatchedRows: null,  // Set<row ref> - 拆分后匹配的行引用集合
 };
 
 const CM = {
@@ -48,6 +144,31 @@ const CM = {
   red:    {d:'#f05050', t:'t-red'}
 };
 const SEC_COLORS = ['#4c8bf5','#2dd4a0','#f0a030','#a78bfa','#22c8dc','#f05050','#ec4899','#84cc16'];
+
+// ========== 拆分列选择器 ==========
+function populateSplitColSel() {
+  const sel = document.getElementById('splitColSel');
+  if (!sel) return;
+  const f = getActiveFile();
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">-- 选择拆分列 --</option>';
+  if (f) {
+    f.hdr.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      // 自动检测匹配"客户经理"的列并默认选中
+      if (c.includes('客户经理')) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+  if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
+function getSplitCol() {
+  const sel = document.getElementById('splitColSel');
+  return sel ? sel.value : '';
+}
 
 // ========== 工具函数 ==========
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -75,6 +196,7 @@ function getActiveHdr() { const f = getActiveFile(); return f ? f.hdr : []; }
 // ========== 步骤导航 ==========
 function switchStep(step) {
   S.currentStep = step;
+  debouncedSave();
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('step' + capitalize(step)).classList.add('active');
   document.querySelectorAll('.sb-item').forEach(n => n.classList.remove('active'));
@@ -291,23 +413,34 @@ function handleFile(file) {
       const json = XLSX.utils.sheet_to_json(ws, {defval: ''});
       if (!json.length) { ntf('文件为空', 'error'); return; }
       const hdr = Object.keys(json[0]);
-      const l1 = {};
-      hdr.forEach(c => { l1[c] = newL1(); });
-      S.files.push({
-        id: ++fileIdCounter,
-        name: file.name,
-        raw: json,
-        hdr,
-        l1,
-        grps: [],
-        gid: 0,
-        addedCols: [],
-        sumCol: '',
-        hiddenCols: new Set(),
-        rawFileData: rawBuffer
-      });
+      // 检查是否有同名的配置已保存但需要重连数据
+      const existing = S.files.find(f => f.name === file.name && f._needsReupload && hdrSignature(f.hdr) === hdrSignature(hdr));
+      if (existing) {
+        // 重连：填充数据但保留配置
+        existing.raw = json;
+        existing.rawFileData = rawBuffer;
+        delete existing._needsReupload;
+        ntf(`已加载数据并恢复配置 ${file.name} (${json.length} 行)`);
+      } else {
+        const l1 = {};
+        hdr.forEach(c => { l1[c] = newL1(); });
+        S.files.push({
+          id: ++fileIdCounter,
+          name: file.name,
+          raw: json,
+          hdr,
+          l1,
+          grps: [],
+          gid: 0,
+          addedCols: [],
+          sumCol: '',
+          hiddenCols: new Set(),
+          rawFileData: rawBuffer
+        });
+        ntf(`已加载 ${file.name} (${json.length} 行)`);
+      }
       renderFileList();
-      ntf(`已加载 ${file.name} (${json.length} 行)`);
+      debouncedSave();
     } catch (err) { ntf('解析失败: ' + err.message, 'error'); }
   };
   reader.readAsArrayBuffer(file);
@@ -319,6 +452,7 @@ function removeFile(id) {
     S.activeFileId = S.files.length ? S.files[0].id : null;
   }
   renderFileList();
+  debouncedSave();
 }
 
 function renderFileList() {
@@ -361,7 +495,12 @@ function renderFileTabs() {
   }));
 }
 
-// ========== 渲染: 数据表格 ==========
+// ========== 渲染: 数据表格（含虚拟滚动） ==========
+const VIRTUAL_ROW_H = 29; // 估算每行高度
+const VIRTUAL_BUFFER = 15; // 上下缓冲行数
+let _lastScrollTop = 0;
+let _rafPending = false;
+
 function renderTable() {
   const thead = document.getElementById('dth'), tbody = document.getElementById('dtb');
   const f = getActiveFile();
@@ -389,16 +528,70 @@ function renderTable() {
   hh += '</tr>';
   thead.innerHTML = hh;
 
-  let bb = '';
-  data.forEach((r, i) => {
-    bb += `<tr><td class="ti">${i + 1}</td>`;
-    hdr.forEach(c => { if (!hidden.has(c)) bb += `<td title="${esc(String(r[c] ?? ''))}">${esc(String(r[c] ?? ''))}</td>`; });
-    bb += '</tr>';
-  });
-  tbody.innerHTML = bb;
+  // 虚拟滚动：大数据只渲染可见行
+  const totalRows = data.length;
+  if (totalRows > 200) {
+    renderVirtualTable(data, hdr, hidden, tbody, totalRows);
+  } else {
+    let bb = '';
+    data.forEach((r, i) => {
+      bb += `<tr data-ridx="${i}"><td class="ti">${i + 1}</td>`;
+      hdr.forEach(c => { if (!hidden.has(c)) bb += `<td data-col="${esc(c)}" data-ridx="${i}" title="${esc(String(r[c] ?? ''))}">${esc(String(r[c] ?? ''))}</td>`; });
+      bb += '</tr>';
+    });
+    tbody.innerHTML = bb;
+  }
 
   bindTableEvents(thead, f);
 }
+
+function renderVirtualTable(data, hdr, hidden, tbody, totalRows) {
+  const wrap = document.getElementById('tableWrap');
+  const scrollTop = wrap.scrollTop;
+  const viewH = wrap.clientHeight;
+  const totalH = totalRows * VIRTUAL_ROW_H;
+  // 计算可见范围
+  const startIdx = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_H) - VIRTUAL_BUFFER);
+  const endIdx = Math.min(totalRows, Math.ceil((scrollTop + viewH) / VIRTUAL_ROW_H) + VIRTUAL_BUFFER);
+
+  const frag = document.createDocumentFragment();
+  // 顶部占位
+  const spacerTop = document.createElement('tr');
+  spacerTop.innerHTML = `<td colspan="99" style="height:${startIdx * VIRTUAL_ROW_H}px;padding:0;border:none"></td>`;
+  frag.appendChild(spacerTop);
+
+  for (let i = startIdx; i < endIdx; i++) {
+    const r = data[i];
+    const tr = document.createElement('tr');
+    tr.dataset.ridx = i;
+    let cells = `<td class="ti">${i + 1}</td>`;
+    hdr.forEach(c => { if (!hidden.has(c)) cells += `<td data-col="${esc(c)}" data-ridx="${i}" title="${esc(String(r[c] ?? ''))}">${esc(String(r[c] ?? ''))}</td>`; });
+    tr.innerHTML = cells;
+    frag.appendChild(tr);
+  }
+  // 底部占位
+  const spacerBottom = document.createElement('tr');
+  spacerBottom.innerHTML = `<td colspan="99" style="height:${(totalRows - endIdx) * VIRTUAL_ROW_H}px;padding:0;border:none"></td>`;
+  frag.appendChild(spacerBottom);
+
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+}
+
+// 虚拟滚动监听
+document.getElementById('tableWrap').addEventListener('scroll', function() {
+  const f = getActiveFile();
+  if (!f) return;
+  const data = getSortedData(getFilteredData());
+  if (data.length <= 200) return;
+  if (_rafPending) return;
+  _rafPending = true;
+  requestAnimationFrame(() => {
+    _rafPending = false;
+    const tbody = document.getElementById('dtb');
+    renderVirtualTable(data, f.hdr, f.hiddenCols, tbody, data.length);
+  });
+});
 
 function bindTableEvents(thead, f) {
   thead.querySelectorAll('.th-fbtn').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openFD(b.dataset.col, b); }));
@@ -455,6 +648,57 @@ function bindTableEvents(thead, f) {
     updHdr();
     ntf(`已隐藏 "${col}"`);
   }));
+  // 双击编辑单元格
+  const tbody = document.getElementById('dtb');
+  tbody.addEventListener('dblclick', e => {
+    const td = e.target.closest('td[data-col]');
+    if (!td || td.classList.contains('ti')) return;
+    if (td.querySelector('input')) return; // 已在编辑
+    const col = td.dataset.col;
+    const ridx = +td.dataset.ridx;
+    const filtered = getSortedData(getFilteredData());
+    const row = filtered[ridx];
+    if (!row) return;
+    const oldVal = String(row[col] ?? '');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = oldVal;
+    input.className = 'cell-edit-input';
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+    const finish = (save) => {
+      if (save) {
+        const newVal = input.value;
+        if (newVal !== oldVal) {
+          row[col] = newVal;
+          td.title = newVal;
+          debouncedSave();
+        }
+      }
+      td.textContent = String(row[col] ?? '');
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+      else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+    });
+  });
+
+  // 列悬停高亮：鼠标在 th 上时，高亮整列
+  thead.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('mouseenter', () => {
+      const col = th.dataset.col;
+      th.classList.add('col-highlight');
+      tbody.querySelectorAll(`td[data-col="${CSS.escape(col)}"]`).forEach(td => td.classList.add('col-highlight'));
+    });
+    th.addEventListener('mouseleave', () => {
+      const col = th.dataset.col;
+      th.classList.remove('col-highlight');
+      tbody.querySelectorAll(`td[data-col="${CSS.escape(col)}"]`).forEach(td => td.classList.remove('col-highlight'));
+    });
+  });
 }
 
 function updHdr() {
@@ -715,6 +959,54 @@ document.getElementById('btnClrL1').addEventListener('click', () => {
   ntf('L1已清空');
 });
 
+// ========== L2 逐文件预览 ==========
+function renderL2FileTabs() {
+  const div = document.getElementById('l2FileTabs');
+  if (!div) return;
+  if (!S.files.length) { div.innerHTML = ''; document.getElementById('l2Preview').style.display = 'none'; return; }
+  let html = '';
+  S.files.forEach(f => {
+    const on = f.id === S.activeFileId ? 'on' : '';
+    html += `<span class="l2-ftab ${on}" data-fid="${f.id}">${esc(f.name)}</span>`;
+  });
+  div.innerHTML = html;
+  div.querySelectorAll('.l2-ftab').forEach(el => el.addEventListener('click', () => {
+    S.activeFileId = +el.dataset.fid;
+    renderL2FileTabs();
+    renderTable();
+    updHdr();
+    popGCol();
+    renderGrpCards();
+  }));
+  renderL2Preview();
+}
+
+function renderL2Preview() {
+  const div = document.getElementById('l2Preview');
+  const f = getActiveFile();
+  if (!f || !f.raw.length) { div.style.display = 'none'; return; }
+  div.style.display = 'block';
+  let l1Data = getFilteredData();
+  if (S.splitMatchedRows && S.splitMatchedRows.size > 0) {
+    l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
+  }
+  const previewRows = l1Data.slice(0, 3);
+  const hidden = f.hiddenCols;
+  const visCols = f.hdr.filter(c => !hidden.has(c));
+  let html = `<div class="l2-preview-title">${esc(f.name)} - ${l1Data.length} 行数据预览</div>`;
+  html += '<table class="l2-preview-table"><thead><tr>';
+  visCols.forEach(c => html += `<th>${esc(c)}</th>`);
+  html += '</tr></thead><tbody>';
+  previewRows.forEach(r => {
+    html += '<tr>';
+    visCols.forEach(c => html += `<td title="${esc(String(r[c] ?? ''))}">${esc(String(r[c] ?? ''))}</td>`);
+    html += '</tr>';
+  });
+  if (!previewRows.length) html += '<tr><td colspan="99" style="text-align:center;color:var(--t3)">无数据</td></tr>';
+  html += '</tbody></table>';
+  div.innerHTML = html;
+}
+
 // ========== L2 分组 ==========
 function popGCol() {
   const sel = document.getElementById('gCol');
@@ -874,7 +1166,11 @@ function calcAllStats() {
   let html = '';
   S.files.forEach((file, fi) => {
     const sumCol = file.sumCol || '';
-    const l1Data = getFilteredData_forFile(file);
+    let l1Data = getFilteredData_forFile(file);
+    // 如果已执行拆分，排除未匹配行
+    if (S.splitMatchedRows && S.splitMatchedRows.size > 0) {
+      l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
+    }
     const ctxCache = {};
     const entries = [];
     const groupedValsByCol = {};
@@ -959,7 +1255,11 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   const wb = XLSX.utils.book_new();
   S.files.forEach(file => {
     const sumCol = file.sumCol || '';
-    const l1Data = getFilteredData_forFile(file);
+    let l1Data = getFilteredData_forFile(file);
+    // 如果已执行拆分，排除未匹配行
+    if (S.splitMatchedRows && S.splitMatchedRows.size > 0) {
+      l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
+    }
     const ctxCache = {};
     const rows = [];
     const header = ['文件', '类别', '依托', '列', '数量', '占比(%)'];
@@ -985,8 +1285,13 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   ntf('已导出 统计结果.xlsx');
 });
 
-// ========== 保存/加载配置 ==========
-document.getElementById('btnSave').addEventListener('click', () => {
+// ========== 保存/加载配置（全局版） ==========
+function hdrSignature(hdr) {
+  // 用排序后的表头 join 作为签名，不依赖列顺序
+  return [...hdr].sort().join('|');
+}
+
+function saveGlobalConfig() {
   const cfg = {files: S.files.map(f => ({name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentId: g.parentId, parentRel: g.parentRel})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]}))};
   S.files.forEach((_, fi) => {
     const f = S.files[fi];
@@ -995,14 +1300,127 @@ document.getElementById('btnSave').addEventListener('click', () => {
       cfg.files[fi].l1[col] = {checked: l1f.checked ? [...l1f.checked] : null, cascade: l1f.cascade || false, dependCol: l1f.dependCol || null, sort: l1f.sort || null, condOn: l1f.condOn || false, condOp: l1f.condOp || 'eq', condVal: l1f.condVal || ''};
     });
   });
+  // 保存到 localStorage（按全局key）
+  const sig = hdrSignature(S.files.map(f => f.hdr).flat());
+  try {
+    let configs = JSON.parse(localStorage.getItem('ba-configs') || '{}');
+    const configName = `config_${new Date().toLocaleString('zh-CN').replace(/[\/:]/g, '-')}`;
+    configs[configName] = {sig, cfg, savedAt: Date.now()};
+    // 最多保留 20 条
+    const keys = Object.keys(configs);
+    if (keys.length > 20) {
+      keys.sort((a, b) => configs[a].savedAt - configs[b].savedAt);
+      keys.slice(0, keys.length - 20).forEach(k => delete configs[k]);
+    }
+    localStorage.setItem('ba-configs', JSON.stringify(configs));
+  } catch (e) { /* ignore */ }
+  // 同时下载文件备份
   const blob = new Blob([JSON.stringify(cfg, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'filter_config.json'; a.click();
   URL.revokeObjectURL(url);
-  ntf('配置已保存');
+  ntf('配置已保存（本地+文件）');
+}
+
+document.getElementById('btnSave').addEventListener('click', saveGlobalConfig);
+
+document.getElementById('btnLoad').addEventListener('click', () => {
+  // 查找与当前文件表头匹配的已保存配置
+  let configs = {};
+  try { configs = JSON.parse(localStorage.getItem('ba-configs') || '{}'); } catch (e) {}
+  const keys = Object.keys(configs);
+  
+  if (!keys.length) {
+    // 没有已保存配置，回退到文件上传
+    document.getElementById('cfgIn').click();
+    return;
+  }
+
+  // 检查与当前文件的匹配度
+  const currentSigs = S.files.map(f => hdrSignature(f.hdr));
+  const matched = keys.filter(k => {
+    const cfgSigs = configs[k].cfg.files.map(f => hdrSignature(f.hdr));
+    return cfgSigs.some(cs => currentSigs.includes(cs));
+  });
+
+  if (matched.length === 0) {
+    document.getElementById('cfgIn').click();
+    return;
+  }
+
+  // 显示配置选择弹窗
+  showConfigPicker(matched, configs);
 });
 
-document.getElementById('btnLoad').addEventListener('click', () => document.getElementById('cfgIn').click());
+function showConfigPicker(matchedKeys, configs) {
+  // 创建选择弹窗
+  const overlay = document.createElement('div');
+  overlay.className = 'fd-overlay vis';
+  const dd = document.createElement('div');
+  dd.className = 'fd-dropdown vis';
+  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:400px;max-height:500px;';
+  let html = `<div class="fd-head"><span class="fd-cn">选择配置</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" id="cfgFileImport">从文件导入</button></div></div>`;
+  html += '<div class="fd-value-list" style="max-height:320px">';
+  matchedKeys.forEach(k => {
+    const c = configs[k];
+    const date = new Date(c.savedAt).toLocaleString('zh-CN');
+    const fileNames = c.cfg.files.map(f => esc(f.name)).join(', ');
+    html += `<div class="fd-item" data-cfg-key="${esc(k)}" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 14px">
+      <div style="font-weight:600;font-size:12px">${esc(k)}</div>
+      <div style="font-size:10px;color:var(--t3)">${date} - ${fileNames}</div>
+    </div>`;
+  });
+  html += '</div>';
+  html += '<div class="fd-foot"><span class="fd-cnt">' + matchedKeys.length + ' 个匹配</span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="cfgCancel">取消</button></div></div>';
+  dd.innerHTML = html;
+  document.body.appendChild(overlay);
+  document.body.appendChild(dd);
+
+  overlay.addEventListener('click', () => { overlay.remove(); dd.remove(); });
+  dd.querySelector('#cfgCancel').addEventListener('click', () => { overlay.remove(); dd.remove(); });
+  dd.querySelector('#cfgFileImport').addEventListener('click', () => { overlay.remove(); dd.remove(); document.getElementById('cfgIn').click(); });
+  dd.querySelectorAll('.fd-item').forEach(item => item.addEventListener('click', () => {
+    const key = item.dataset.cfgKey;
+    const cfg = configs[key].cfg;
+    applyConfig(cfg);
+    overlay.remove();
+    dd.remove();
+  }));
+}
+
+function applyConfig(cfg) {
+  if (!cfg.files || !cfg.files.length) { ntf('配置文件格式错误', 'error'); return; }
+  cfg.files.forEach((fc, fi) => {
+    // 按表头匹配找到对应的当前文件
+    const fcSig = hdrSignature(fc.hdr);
+    const targetFile = S.files.find(f => hdrSignature(f.hdr) === fcSig);
+    if (!targetFile) return;
+    
+    const l1 = {};
+    fc.hdr.forEach(c => {
+      const lf = fc.l1 && fc.l1[c];
+      l1[c] = lf ? {checked: lf.checked ? new Set(lf.checked) : null, cascade: lf.cascade || false, dependCol: lf.dependCol || null, sort: lf.sort || null, condOn: lf.condOn || false, condOp: lf.condOp || 'eq', condVal: lf.condVal || ''} : newL1();
+    });
+    // 同时保留当前文件中存在但配置中不存在的列
+    targetFile.hdr.forEach(c => { if (!l1[c]) l1[c] = newL1(); });
+    targetFile.l1 = l1;
+    targetFile.hiddenCols = new Set(fc.hiddenCols || []);
+    targetFile.addedCols = fc.addedCols || [];
+    targetFile.sumCol = fc.sumCol || '';
+    
+    if (fc.grps) {
+      targetFile.grps = [];
+      targetFile.gid = 0;
+      fc.grps.forEach(g => {
+        targetFile.grps.push({id: ++targetFile.gid, name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep || null, parentId: g.parentId || null, parentRel: g.parentRel || null});
+      });
+    }
+  });
+  initActiveFile();
+  ntf('配置已应用');
+}
+
+// 文件导入回退
 document.getElementById('cfgIn').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -1010,23 +1428,7 @@ document.getElementById('cfgIn').addEventListener('change', e => {
   reader.onload = ev => {
     try {
       const cfg = JSON.parse(ev.target.result);
-      if (!cfg.files || !cfg.files.length) { ntf('配置文件格式错误', 'error'); return; }
-      S.files = [];
-      S.activeFileId = null;
-      cfg.files.forEach((fc, fi) => {
-        const hdr = fc.hdr || [];
-        const l1 = {};
-        hdr.forEach(c => {
-          const lf = fc.l1 && fc.l1[c];
-          l1[c] = lf ? {checked: lf.checked ? new Set(lf.checked) : null, cascade: lf.cascade || false, dependCol: lf.dependCol || null, sort: lf.sort || null, condOn: lf.condOn || false, condOp: lf.condOp || 'eq', condVal: lf.condVal || ''} : newL1();
-        });
-        S.files.push({id: ++fileIdCounter, name: fc.name, raw: [], hdr, l1, grps: [], gid: 0, addedCols: fc.addedCols || [], sumCol: fc.sumCol || '', hiddenCols: new Set(fc.hiddenCols || []), rawFileData: null});
-        if (fc.grps) fc.grps.forEach(g => {
-          S.files[fi].grps.push({id: ++S.files[fi].gid, name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep || null, parentId: g.parentId || null, parentRel: g.parentRel || null});
-        });
-      });
-      S.activeFileId = S.files[0].id;
-      ntf('配置已加载（需重新上传文件获取数据）');
+      applyConfig(cfg);
     } catch (err) { ntf('配置文件格式错误', 'error'); }
   };
   reader.readAsText(file);
@@ -1125,11 +1527,15 @@ async function saveMapping() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(S.mappingData)
   });
+  debouncedSave();
 }
 
 async function doSplit() {
   const f = getActiveFile();
-  if (!f || !f.rawFileData) { ntf('请先上传文件', 'error'); return; }
+  if (!f || !f.rawFileData || !f.raw.length) { ntf('请先上传文件并加载数据（刷新页面后需重新上传）', 'error'); return; }
+
+  const splitCol = getSplitCol();
+  if (!splitCol) { ntf('请选择拆分列', 'error'); return; }
 
   const overlay = document.getElementById('progressOverlay');
   overlay.style.display = 'flex';
@@ -1153,14 +1559,31 @@ async function doSplit() {
         fileName: f.name,
         fileDataBase64: b64,
         filteredRowIndices: filteredIndices,
-        mapping: S.mappingData
+        mapping: S.mappingData,
+        splitColumn: splitCol
       })
     });
     const data = await res.json();
     if (!res.ok) { ntf(data.error, 'error'); overlay.style.display = 'none'; return; }
 
     S.splitResult = data;
+    // 计算拆分后匹配的行集合（用于L2统计时排除未匹配行）
+    const splitColName = getSplitCol();
+    if (splitColName && S.mappingData) {
+      const matchedSet = new Set();
+      f.raw.forEach(row => {
+        const val = String(row[splitColName] ?? '').trim();
+        for (const members of Object.values(S.mappingData)) {
+          if (members.some(m => m === val)) {
+            matchedSet.add(row);
+            break;
+          }
+        }
+      });
+      S.splitMatchedRows = matchedSet;
+    }
     renderSplitResults();
+    debouncedSave();
     ntf(`拆分完成！匹配 ${data.matched} 行，未匹配 ${data.unmatched} 行`);
   } catch (err) {
     ntf('拆分失败: ' + err.message, 'error');
@@ -1227,6 +1650,7 @@ function initActiveFile() {
   updHdr();
   popGCol();
   renderGrpCards();
+  renderL2FileTabs();
 }
 
 // 一级过滤区导航
@@ -1234,6 +1658,7 @@ document.getElementById('btnBackUpload').addEventListener('click', () => switchS
 document.getElementById('goSplit').addEventListener('click', () => {
   switchStep('split');
   loadMapping();
+  populateSplitColSel();
 });
 document.getElementById('btnSkipSplit').addEventListener('click', () => switchStep('filter2'));
 document.getElementById('btnReup').addEventListener('click', () => {
@@ -1246,6 +1671,76 @@ document.getElementById('btnReup').addEventListener('click', () => {
 document.getElementById('btnBackFilter1').addEventListener('click', () => switchStep('filter1'));
 document.getElementById('btnDoSplit').addEventListener('click', doSplit);
 document.getElementById('goFilter2FromSplit').addEventListener('click', () => switchStep('filter2'));
+
+// ========== 姓名预处理 ==========
+document.getElementById('btnPreprocess').addEventListener('click', () => {
+  const f = getActiveFile();
+  if (!f || !f.raw.length) { ntf('请先上传文件', 'error'); return; }
+  const col = getSplitCol();
+  if (!col) { ntf('请先选择拆分列', 'error'); return; }
+  const mapping = S.mappingData;
+  if (!Object.keys(mapping).length) { ntf('映射数据为空', 'error'); return; }
+
+  let emptyCount = 0;
+  let multiCount = 0;
+  let processedCount = 0;
+  const details = [];
+
+  f.raw.forEach((r, i) => {
+    const raw = String(r[col] ?? '').trim();
+    if (!raw) {
+      emptyCount++;
+      return;
+    }
+    // 按常见分隔符拆分
+    const names = raw.split(/[,，、;；\s]+/).map(n => n.trim()).filter(n => n);
+    if (names.length <= 1) return; // 单人名无需处理
+
+    multiCount++;
+    // 查找每个名字匹配的分局及优先级
+    let bestName = names[0];
+    let bestPriority = -1;
+    let bestBureau = '';
+    names.forEach(name => {
+      for (const [bureau, members] of Object.entries(mapping)) {
+        if (members.includes(name)) {
+          const priority = members.indexOf(name) === 0 ? 2 : 1;
+          if (priority > bestPriority) {
+            bestPriority = priority;
+            bestName = name;
+            bestBureau = bureau;
+          }
+        }
+      }
+    });
+    if (bestPriority > 0) {
+      r[col] = bestName;
+      processedCount++;
+      details.push(`行${i+2}: "${raw}" → "${bestName}" (${bestBureau}, 优先级${bestPriority})`);
+    } else {
+      // 无人匹配，保留第一个名字
+      r[col] = names[0];
+      details.push(`行${i+2}: "${raw}" → "${names[0]}" (无人匹配分局, 保留首个)`);
+    }
+  });
+
+  // 显示结果
+  const div = document.getElementById('preprocessResult');
+  div.style.display = 'block';
+  div.innerHTML = `
+    <div style="margin-bottom:6px;font-weight:600">预处理结果</div>
+    <span class="pp-stat pp-ok"><span class="pp-val">${processedCount}</span>条已处理</span>
+    <span class="pp-stat pp-multi"><span class="pp-val">${multiCount}</span>条多人名</span>
+    <span class="pp-stat pp-empty"><span class="pp-val">${emptyCount}</span>条为空</span>
+    <div class="pp-detail">${details.map(d => `<div>${esc(d)}</div>`).join('')}</div>
+  `;
+  if (emptyCount > 0) {
+    ntf(`预处理完成：${emptyCount} 条为空值`, 'warn');
+  } else {
+    ntf(`预处理完成：${processedCount} 条已处理`);
+  }
+  debouncedSave();
+});
 
 // 二级统计区导航
 document.getElementById('btnBackFromL2').addEventListener('click', () => {
@@ -1277,3 +1772,20 @@ document.getElementById('sbStats').style.display = 'none';
 // 主题切换
 document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 applyThemeUI(document.documentElement.getAttribute('data-theme') || 'dark');
+
+// 恢复持久化状态
+(function restoreState() {
+  if (loadState()) {
+    // 清除无数据的文件（raw为空需要重新上传）
+    const emptyFiles = S.files.filter(f => !f.raw.length);
+    if (emptyFiles.length) {
+      // 保留配置信息但标记需要重新上传
+      S.files.forEach(f => { if (!f.raw.length) f._needsReupload = true; });
+    }
+    renderFileList();
+    switchStep(S.currentStep);
+    if (emptyFiles.length) {
+      ntf('已恢复配置，请重新上传文件以加载数据', 'warn');
+    }
+  }
+})();
