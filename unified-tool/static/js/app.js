@@ -153,12 +153,14 @@ function populateSplitColSel() {
   const cur = sel.value;
   sel.innerHTML = '<option value="">-- 选择拆分列 --</option>';
   if (f) {
+    let hasExactMatch = false;
+    f.hdr.forEach(c => { if (c === '客户经理') hasExactMatch = true; });
     f.hdr.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c;
       opt.textContent = c;
-      // 自动检测匹配"客户经理"的列并默认选中
-      if (c.includes('客户经理')) opt.selected = true;
+      // 精确匹配"客户经理"列优先，否则匹配包含"客户经理"的列
+      if (hasExactMatch ? (c === '客户经理') : c.includes('客户经理')) opt.selected = true;
       sel.appendChild(opt);
     });
   }
@@ -1064,35 +1066,9 @@ document.getElementById('l2Tog').addEventListener('click', () => {
 document.getElementById('gCol').addEventListener('change', e => {
   S.selGVals = [];
   const col = e.target.value;
-  if (col) {
-    renderVP2(col); showL2BaseInfo(col); popDepGrp();
-    // 自动创建"全部"分组，统计该列所有值的数量
-    autoAddAllGroup(col);
-  }
+  if (col) { renderVP2(col); showL2BaseInfo(col); popDepGrp(); }
   else { document.getElementById('vp2').innerHTML = ''; document.getElementById('l2BaseInfo').style.display = 'none'; }
 });
-
-function autoAddAllGroup(col) {
-  const f = getActiveFile();
-  if (!f) return;
-  // 检查是否已经有该列的"全部"分组
-  const existing = f.grps.find(g => g.column === col && g.name === '全部' && !g.parentId);
-  if (existing) return;
-  // 只在没有该列的任何分组时自动添加
-  const hasColGrp = f.grps.some(g => g.column === col);
-  if (hasColGrp) return;
-  const allVals = uniq(col);
-  const l1f = f.l1[col];
-  f.grps.push({
-    id: ++f.gid, name: '全部', color: 'blue', column: col, values: allVals,
-    l1Dep: {col, cascade: l1f.cascade || false, dependCol: l1f.dependCol || null, filtered: l1f.checked && l1f.checked.size < allVals.length},
-    parentId: null, parentRel: null
-  });
-  renderVP2(col);
-  renderGrpCards();
-  popDepGrp();
-  ntf('已自动添加"全部"分组');
-}
 
 function popDepGrp() {
   const sel = document.getElementById('gDepGrp'), f = getActiveFile();
@@ -1369,13 +1345,11 @@ function saveGlobalConfig() {
       cfg.files[fi].l1[col] = {checked: l1f.checked ? [...l1f.checked] : null, cascade: l1f.cascade || false, dependCol: l1f.dependCol || null, sort: l1f.sort || null, condOn: l1f.condOn || false, condOp: l1f.condOp || 'eq', condVal: l1f.condVal || ''};
     });
   });
-  // 保存到 localStorage（按全局key）
   const sig = hdrSignature(S.files.map(f => f.hdr).flat());
   try {
     let configs = JSON.parse(localStorage.getItem('ba-configs') || '{}');
     const configName = `config_${new Date().toLocaleString('zh-CN').replace(/[\/:]/g, '-')}`;
     configs[configName] = {sig, cfg, savedAt: Date.now()};
-    // 最多保留 20 条
     const keys = Object.keys(configs);
     if (keys.length > 20) {
       keys.sort((a, b) => configs[a].savedAt - configs[b].savedAt);
@@ -1383,41 +1357,46 @@ function saveGlobalConfig() {
     }
     localStorage.setItem('ba-configs', JSON.stringify(configs));
   } catch (e) { /* ignore */ }
-  // 同时下载文件备份
+  ntf('配置已保存');
+}
+
+function exportConfig() {
+  const cfg = {files: S.files.map(f => ({name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentId: g.parentId, parentRel: g.parentRel})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]}))};
+  S.files.forEach((_, fi) => {
+    const f = S.files[fi];
+    f.hdr.forEach(col => {
+      const l1f = f.l1[col];
+      cfg.files[fi].l1[col] = {checked: l1f.checked ? [...l1f.checked] : null, cascade: l1f.cascade || false, dependCol: l1f.dependCol || null, sort: l1f.sort || null, condOn: l1f.condOn || false, condOp: l1f.condOp || 'eq', condVal: l1f.condVal || ''};
+    });
+  });
   const blob = new Blob([JSON.stringify(cfg, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'filter_config.json'; a.click();
   URL.revokeObjectURL(url);
-  ntf('配置已保存（本地+文件）');
+  ntf('配置已导出');
 }
 
 document.getElementById('btnSave').addEventListener('click', saveGlobalConfig);
+document.getElementById('btnExport').addEventListener('click', exportConfig);
 
 document.getElementById('btnLoad').addEventListener('click', () => {
-  // 查找与当前文件表头匹配的已保存配置
   let configs = {};
   try { configs = JSON.parse(localStorage.getItem('ba-configs') || '{}'); } catch (e) {}
   const keys = Object.keys(configs);
-  
   if (!keys.length) {
-    // 没有已保存配置，回退到文件上传
-    document.getElementById('cfgIn').click();
+    ntf('无已保存配置', 'warn');
     return;
   }
-
-  // 检查与当前文件的匹配度
+  // 按表头匹配筛选
   const currentSigs = S.files.map(f => hdrSignature(f.hdr));
   const matched = keys.filter(k => {
     const cfgSigs = configs[k].cfg.files.map(f => hdrSignature(f.hdr));
     return cfgSigs.some(cs => currentSigs.includes(cs));
   });
-
   if (matched.length === 0) {
-    document.getElementById('cfgIn').click();
+    ntf('无匹配当前文件的配置', 'warn');
     return;
   }
-
-  // 显示配置选择弹窗
   showConfigPicker(matched, configs);
 });
 
