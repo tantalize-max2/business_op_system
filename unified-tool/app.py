@@ -360,6 +360,46 @@ def split_filtered():
         'filename': f"行业商机数据汇总_{current_date}.xlsx"
     })
 
+    # 行业/商业分类汇总
+    INDUSTRY_BUREAUS = [
+        "政法应急政企分局", "国有平台政企分局", "金融证券政企分局", "工业能源政企分局",
+        "政务政企分局", "高新天府软件园智改数转服务局", "软件科研政企分局",
+        "高新孵化园智改数转服务局", "新经济政企分局", "健康医疗政企分局",
+        "高新天府生命科技园智改数转服务局"
+    ]
+    COMMERCIAL_BUREAUS = [
+        "校园分局", "新川商客分局", "金融城商客分局", "肖芳商客分局",
+        "东苑商客分局", "天府国际商客分局", "大源商客分局", "新会展商客分局",
+        "连锁商客分局", "环球商客分局", "天府新谷商客分局", "西信商客分局", "府城商客分局"
+    ]
+
+    def make_category_summary(category_name, category_bureaus):
+        """生成行业/商业汇总文件，每个分局一个sheet"""
+        cat_wb = Workbook()
+        if 'Sheet' in cat_wb.sheetnames:
+            del cat_wb['Sheet']
+        cat_rows = 0
+        for bureau_name in category_bureaus:
+            row_indices = bureau_rows.get(bureau_name, [])
+            if row_indices:
+                sheet_name = bureau_name[:31]
+                target_sheet = cat_wb.create_sheet(title=sheet_name)
+                all_rows = [header_row] + row_indices
+                copy_sheet_with_format(source_sheet, target_sheet, all_rows)
+                cat_rows += len(row_indices)
+        if cat_rows:
+            safe_cat = re.sub(r'[\/\\:*?"<>|]', '_', category_name)
+            cat_file = os.path.join(output_folder, f"{safe_cat}_{current_date}.xlsx")
+            cat_wb.save(cat_file)
+            generated_files.append({
+                'bureau': f'- {category_name} -',
+                'rows': cat_rows,
+                'filename': f"{safe_cat}_{current_date}.xlsx"
+            })
+
+    make_category_summary("行业数据汇总", INDUSTRY_BUREAUS)
+    make_category_summary("商业数据汇总", COMMERCIAL_BUREAUS)
+
     # 未匹配名单
     if unmatched_rows:
         unmatched_wb = Workbook()
