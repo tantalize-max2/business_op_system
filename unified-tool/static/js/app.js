@@ -690,27 +690,27 @@ function bindTableEvents(thead, f) {
     });
   }
 
-  // 列悬停高亮：通过动态样式表实现，虚拟滚动兼容（只绑定一次）
+  // 行悬停高亮：通过动态样式表实现，虚拟滚动兼容（只绑定一次）
   let _hoverStyle = document.getElementById('_hoverColStyle');
   if (!_hoverStyle) { _hoverStyle = document.createElement('style'); _hoverStyle.id = '_hoverColStyle'; document.head.appendChild(_hoverStyle); }
   const dataTable = document.getElementById('dataTable');
   if (!dataTable._hoverBound) {
     dataTable._hoverBound = true;
     dataTable.addEventListener('mouseover', e => {
-      const th = e.target.closest('th[data-col]');
       const td = e.target.closest('td[data-col]');
-      const col = th ? th.dataset.col : (td ? td.dataset.col : null);
-      if (col) {
-        const ecol = CSS.escape(col);
-        _hoverStyle.textContent = `.data-table th[data-col="${ecol}"]{background:var(--acg)!important;transform:translateY(-2px);box-shadow:0 4px 12px rgba(99,102,241,.25);z-index:21}.data-table td[data-col="${ecol}"]{background:var(--acg)!important;transform:scale(1.03)}`;
+      if (td) {
+        const ridx = td.dataset.ridx;
+        if (ridx != null) {
+          _hoverStyle.textContent = `.data-table tr[data-ridx="${ridx}"] td{background:var(--acg)!important;transition:background .08s}`;
+        }
       }
     });
     dataTable.addEventListener('mouseout', e => {
       if (!e.relatedTarget || !dataTable.contains(e.relatedTarget)) {
         _hoverStyle.textContent = '';
       } else {
-        const next = e.relatedTarget.closest ? e.relatedTarget.closest('[data-col]') : null;
-        if (!next) _hoverStyle.textContent = '';
+        const nextTd = e.relatedTarget.closest ? e.relatedTarget.closest('td[data-col]') : null;
+        if (!nextTd) _hoverStyle.textContent = '';
       }
     });
   }
@@ -1064,9 +1064,35 @@ document.getElementById('l2Tog').addEventListener('click', () => {
 document.getElementById('gCol').addEventListener('change', e => {
   S.selGVals = [];
   const col = e.target.value;
-  if (col) { renderVP2(col); showL2BaseInfo(col); popDepGrp(); }
+  if (col) {
+    renderVP2(col); showL2BaseInfo(col); popDepGrp();
+    // 自动创建"全部"分组，统计该列所有值的数量
+    autoAddAllGroup(col);
+  }
   else { document.getElementById('vp2').innerHTML = ''; document.getElementById('l2BaseInfo').style.display = 'none'; }
 });
+
+function autoAddAllGroup(col) {
+  const f = getActiveFile();
+  if (!f) return;
+  // 检查是否已经有该列的"全部"分组
+  const existing = f.grps.find(g => g.column === col && g.name === '全部' && !g.parentId);
+  if (existing) return;
+  // 只在没有该列的任何分组时自动添加
+  const hasColGrp = f.grps.some(g => g.column === col);
+  if (hasColGrp) return;
+  const allVals = uniq(col);
+  const l1f = f.l1[col];
+  f.grps.push({
+    id: ++f.gid, name: '全部', color: 'blue', column: col, values: allVals,
+    l1Dep: {col, cascade: l1f.cascade || false, dependCol: l1f.dependCol || null, filtered: l1f.checked && l1f.checked.size < allVals.length},
+    parentId: null, parentRel: null
+  });
+  renderVP2(col);
+  renderGrpCards();
+  popDepGrp();
+  ntf('已自动添加"全部"分组');
+}
 
 function popDepGrp() {
   const sel = document.getElementById('gDepGrp'), f = getActiveFile();
@@ -1099,7 +1125,7 @@ function renderVP2(col) {
     html += `<div class="${cls}" data-v="${esc(v)}">${esc(!isIn ? v + ' (L1外)' : v)}</div>`;
   });
   pk.innerHTML = html;
-  pk.querySelectorAll('.vp2-i:not(.grp)').forEach(el => el.addEventListener('click', () => {
+  pk.querySelectorAll('.vp2-i').forEach(el => el.addEventListener('click', () => {
     const v = el.dataset.v;
     if (S.selGVals.includes(v)) { S.selGVals = S.selGVals.filter(x => x !== v); el.classList.remove('sel'); }
     else { S.selGVals.push(v); el.classList.add('sel'); }
@@ -1789,12 +1815,17 @@ document.getElementById('btnPreprocess').addEventListener('click', () => {
   `;
   // 重新生成 rawFileData 以便拆分使用新数据
   try {
-    const ws = XLSX.utils.json_to_sheet(f.raw, {header: f.hdr});
+    const ws = XLSX.utils.json_to_sheet(f.raw);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-    const buf = XLSX.write(wb, {type: 'array', bookType: 'xlsx'});
+    const binStr = XLSX.write(wb, {type: 'binary', bookType: 'xlsx'});
+    // binary string → ArrayBuffer
+    const buf = new Uint8Array(binStr.length);
+    for (let i = 0; i < binStr.length; i++) buf[i] = binStr.charCodeAt(i) & 0xFF;
     f.rawFileData = buf.buffer;
-  } catch(e) { /* 生成失败不影响已有数据 */ }
+  } catch(e) {
+    console.warn('预处理: 重新生成文件数据失败', e);
+  }
   // 重算 splitMatchedRows（数据已变）
   S.splitMatchedRows = null;
   S.splitResult = null;
