@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商机数据综合分析平台</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============ SIDEBAR ============ -->
+<aside class="sidebar" id="sidebar">
+  <div class="sb-logo">
+    <div class="sb-logo-icon">BA</div>
+    <div class="sb-logo-text">商机分析</div>
+  </div>
+  <nav class="sb-nav">
+    <div class="sb-item active" data-step="upload" id="navUpload">
+      <span class="sb-num">1</span><span class="sb-label">上传文件</span>
+    </div>
+    <div class="sb-item" data-step="filter1" id="navFilter1">
+      <span class="sb-num">2</span><span class="sb-label">一级过滤</span>
+    </div>
+    <div class="sb-item" data-step="split" id="navSplit">
+      <span class="sb-num">3</span><span class="sb-label">分局拆分</span>
+    </div>
+    <div class="sb-item" data-step="filter2" id="navFilter2">
+      <span class="sb-num">4</span><span class="sb-label">二级统计</span>
+    </div>
+  </nav>
+  <div class="sb-footer">
+    <div class="theme-toggle" id="themeToggle" title="切换亮/暗模式">
+      <span class="t-icon" id="themeIcon">&#9790;</span>
+      <span id="themeLabel">暗色</span>
+    </div>
+    <div class="sb-stats" id="sbStats" style="display:none">
+      <div class="sb-stat"><span class="sb-sv" id="sAll">0</span><span class="sb-sl">总行</span></div>
+      <div class="sb-stat"><span class="sb-sv" id="sFil">0</span><span class="sb-sl">筛选</span></div>
+      <div class="sb-stat"><span class="sb-sv" id="sCol">0</span><span class="sb-sl">列</span></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAIN CONTENT ============ -->
+<main class="main-content">
+
+  <!-- ====== STEP 1: UPLOAD ====== -->
+  <section class="step-panel active" id="stepUpload">
+    <div class="step-header">
+      <h1 class="step-title">上传文件</h1>
+      <p class="step-desc">支持 .xlsx / .xls / .csv，可同时上传多个文件</p>
+    </div>
+    <div class="upload-zone" id="upZone">
+      <div class="up-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+      </div>
+      <div class="up-text">拖拽文件到此处，或 <em>点击选择</em></div>
+      <div class="up-hint">支持多文件同时上传</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple>
+    </div>
+    <div class="file-list" id="fileList"></div>
+    <div class="step-actions" id="uploadActions" style="display:none">
+      <button class="btn btn-primary" id="goFilter1">下一步：一级过滤 <span class="arr">&rarr;</span></button>
+    </div>
+  </section>
+
+  <!-- ====== STEP 2: L1 FILTER ====== -->
+  <section class="step-panel" id="stepFilter1">
+    <div class="step-header">
+      <h1 class="step-title">一级过滤</h1>
+      <p class="step-desc">点击列头筛选按钮设置过滤条件，支持级联、条件筛选和排序</p>
+    </div>
+    <div class="toolbar" id="toolbar">
+      <div class="file-tabs" id="fileTabs"></div>
+      <div class="tb-sep"></div>
+      <button class="btn btn-ghost btn-sm" id="btnClrL1">清空过滤</button>
+      <button class="btn btn-ghost btn-sm" id="btnColMgr">列管理</button>
+      <button class="btn btn-ghost btn-sm" id="btnReup">+ 文件</button>
+      <div class="tb-spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="btnBackUpload"><span class="arr">&larr;</span> 返回</button>
+      <button class="btn btn-outline btn-sm" id="btnSkipSplit">跳过拆分 <span class="arr">&rarr;</span></button>
+      <button class="btn btn-primary btn-sm" id="goSplit">分局拆分 <span class="arr">&rarr;</span></button>
+    </div>
+    <div class="table-wrap" id="tableWrap">
+      <table class="data-table" id="dataTable">
+        <thead id="dth"></thead>
+        <tbody id="dtb"></tbody>
+      </table>
+    </div>
+    <div class="save-bar">
+      <button class="btn btn-success btn-sm" id="btnSave">保存配置</button>
+      <button class="btn btn-ghost btn-sm" id="btnLoad">加载配置</button>
+      <input type="file" id="cfgIn" accept=".json" style="display:none">
+    </div>
+  </section>
+
+  <!-- ====== STEP 3: SPLIT ====== -->
+  <section class="step-panel" id="stepSplit">
+    <div class="step-header">
+      <h1 class="step-title">分局拆分</h1>
+      <p class="step-desc">基于一级过滤后的数据，按客户经理匹配分局进行拆分</p>
+    </div>
+    <div class="split-layout">
+      <div class="split-mapping">
+        <div class="mapping-header">
+          <h3>分局人员配置</h3>
+          <div class="mapping-actions">
+            <button class="btn btn-ghost btn-sm" id="collapseAll">折叠</button>
+            <button class="btn btn-ghost btn-sm" id="expandAll">展开</button>
+            <button class="btn btn-ghost btn-sm" id="resetMapping">恢复默认</button>
+          </div>
+        </div>
+        <div class="bureau-list" id="bureauList"></div>
+        <div class="add-bureau-row">
+          <input type="text" id="newBureauName" placeholder="输入新分局名称...">
+          <button class="btn btn-primary btn-sm" id="addBureauBtn">添加</button>
+        </div>
+      </div>
+      <div class="split-results" id="splitResults" style="display:none">
+        <div class="split-stats" id="splitStats">
+          <div class="split-stat green"><span class="ss-val" id="matchedCount">0</span><span class="ss-lbl">已匹配</span></div>
+          <div class="split-stat red"><span class="ss-val" id="unmatchedCount">0</span><span class="ss-lbl">未匹配</span></div>
+          <div class="split-stat"><span class="ss-val" id="splitFileCount">0</span><span class="ss-lbl">文件数</span></div>
+        </div>
+        <div id="unmatchedCard" style="display:none" class="card-sm warn">
+          <div class="card-sm-title">未匹配客户经理</div>
+          <div class="tag-list" id="unmatchedManagers"></div>
+        </div>
+        <div class="split-files-grid" id="splitFilesGrid"></div>
+        <div class="step-actions">
+          <button class="btn btn-primary btn-sm" id="downloadAllBtn">打包下载全部</button>
+        </div>
+      </div>
+    </div>
+    <div class="step-actions split-bottom">
+      <button class="btn btn-ghost btn-sm" id="btnBackFilter1"><span class="arr">&larr;</span> 返回过滤</button>
+      <div class="tb-spacer"></div>
+      <button class="btn btn-warn btn-sm" id="btnDoSplit">执行拆分</button>
+      <button class="btn btn-primary" id="goFilter2FromSplit">下一步：二级统计 <span class="arr">&rarr;</span></button>
+    </div>
+  </section>
+
+  <!-- ====== STEP 4: L2 FILTER & RESULTS ====== -->
+  <section class="step-panel" id="stepFilter2">
+    <div class="step-header">
+      <h1 class="step-title">二级组合统计</h1>
+      <p class="step-desc">创建分组、设置依赖关系，查看统计分析结果</p>
+    </div>
+
+    <!-- L2 Panel -->
+    <div class="l2-section" id="l2Section">
+      <div class="l2-toggle" id="l2Tog">
+        <h3>二级组合分组 <span class="badge-l2">L2</span></h3>
+        <span class="l2-arr">&#9660;</span>
+      </div>
+      <div class="l2-body" id="l2Body">
+        <div class="l2-form">
+          <div class="f"><label>列</label><select id="gCol"><option value="">-- 选择列 --</option></select></div>
+          <div class="f"><label>分组名</label><input id="gName" placeholder="如：一组"></div>
+          <div class="f"><label>颜色</label>
+            <div class="gcolors" id="gCols">
+              <div class="gco c-blue sel" data-c="blue"></div>
+              <div class="gco c-green" data-c="green"></div>
+              <div class="gco c-orange" data-c="orange"></div>
+              <div class="gco c-purple" data-c="purple"></div>
+              <div class="gco c-cyan" data-c="cyan"></div>
+              <div class="gco c-red" data-c="red"></div>
+            </div>
+          </div>
+          <div class="f" id="l2DepF"><label>依托分组</label><select id="gDepGrp"><option value="">-- 无(独立) --</option></select></div>
+          <div class="f" id="l2RelF" style="display:none"><label>关联</label><select id="gDepRel"><option value="AND">AND 交集</option><option value="OR">OR 并集</option></select></div>
+          <button class="btn btn-primary btn-sm" id="btnAddGrp">创建分组</button>
+          <button class="btn btn-ghost btn-sm" id="btnClrL2">清空L2</button>
+        </div>
+        <div class="l2-base-info" id="l2BaseInfo" style="display:none"></div>
+        <div class="vp2" id="vp2"></div>
+        <div class="grp-cards" id="grpCards"></div>
+      </div>
+    </div>
+
+    <div class="step-actions l2-top-actions">
+      <button class="btn btn-ghost btn-sm" id="btnBackFromL2"><span class="arr">&larr;</span> 返回</button>
+      <div class="tb-spacer"></div>
+      <button class="btn btn-primary" id="btnResult">查看统计结果 <span class="arr">&rarr;</span></button>
+    </div>
+
+    <!-- Result view (inline) -->
+    <div class="result-area" id="resultArea" style="display:none">
+      <div class="result-toolbar">
+        <button class="btn btn-ghost btn-sm" id="btnBackFromResult"><span class="arr">&larr;</span> 返回分组</button>
+        <div class="tb-spacer"></div>
+        <button class="btn btn-warn btn-sm" id="exportBtn" style="display:none">导出Excel</button>
+        <button class="btn btn-primary btn-sm" id="btnCalc">刷新计算</button>
+      </div>
+      <div id="resContent"><div class="empty-hint">点击"查看统计结果"查看分析</div></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ FILTER DROPDOWN ============ -->
+<div class="fd-overlay" id="fdOv"></div>
+<div class="fd-dropdown" id="fdDd">
+  <div class="fd-head"><span class="fd-cn" id="fdCn">-</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" id="fdAll">全选</button><button class="btn btn-ghost btn-xs" id="fdNone">全不选</button></div></div>
+  <div class="fd-cas">
+    <div class="fd-cas-row"><input type="checkbox" class="fd-cas-cb" id="fdCascade"><label for="fdCascade">依赖前置列</label><select id="fdDepCol" style="display:none"></select></div>
+    <div class="fd-cas-info" id="fdCasInfo" style="display:none"></div>
+  </div>
+  <div class="fd-sort"><label>排序</label><span class="sbtn on" data-s="">无</span><span class="sbtn" data-s="asc">升序</span><span class="sbtn" data-s="desc">降序</span></div>
+  <div class="fd-cond">
+    <div class="fd-cond-row"><input type="checkbox" class="cb-on" id="fdCondOn"><label for="fdCondOn">条件筛选</label></div>
+    <div class="fd-cond-row" id="fdCondRow" style="display:none">
+      <select id="fdCondOp"><option value="eq">等于</option><option value="neq">不等于</option><option value="gt">大于</option><option value="lt">小于</option><option value="gte">&ge;</option><option value="lte">&le;</option><option value="sw">开头是</option><option value="ew">结尾是</option><option value="contains">包含</option></select>
+      <input id="fdCondVal" placeholder="输入值...">
+    </div>
+  </div>
+  <div class="fd-search"><input id="fdSe" placeholder="搜索..."></div>
+  <div class="fd-value-list" id="fdL"></div>
+  <div class="fd-foot"><span class="fd-cnt" id="fdCnt">0/0</span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="fdX">取消</button><button class="btn btn-primary btn-xs" id="fdOk">应用</button></div></div>
+</div>
+
+<!-- ============ COLUMN MANAGER ============ -->
+<div class="fd-overlay" id="cmOv"></div>
+<div class="fd-dropdown cm-popup" id="cmDd">
+  <div class="fd-head"><span class="fd-cn">列管理</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" id="cmShowAll">全部显示</button></div></div>
+  <div class="cm-list" id="cmList"></div>
+  <div class="fd-foot"><span class="fd-cnt" id="cmCnt">0</span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="cmX">关闭</button></div></div>
+</div>
+
+<!-- ============ PROGRESS OVERLAY ============ -->
+<div class="progress-overlay" id="progressOverlay" style="display:none">
+  <div class="progress-card">
+    <div class="spinner"></div>
+    <div class="progress-text">正在执行拆分，请稍候...</div>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast"></div>
+
+<!-- ============ SCRIPTS ============ -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
