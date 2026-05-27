@@ -400,13 +400,20 @@ body {
 .split-col-sel label { font-size:12px; color:var(--t3); font-weight:600; white-space:nowrap; }
 .split-col-sel select { flex:1; background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:6px 10px; color:var(--t1); font:12px var(--sf); outline:none; }
 .split-col-sel select:focus { border-color:var(--ac); }
-.preprocess-result { background:var(--bg3); border:1px solid var(--bd); border-radius:10px; padding:12px 14px; margin-bottom:8px; font-size:12px; line-height:1.8; }
-.preprocess-result .pp-stat { display:inline-flex; align-items:center; gap:4px; margin-right:14px; }
+.preprocess-result { background:var(--bg3); border:1px solid var(--bd); border-radius:10px; padding:0; margin-bottom:8px; font-size:12px; line-height:1.8; overflow:hidden; }
+.preprocess-result .pp-toggle { display:flex; align-items:center; gap:8px; padding:10px 14px; cursor:pointer; user-select:none; transition:background .15s; }
+.preprocess-result .pp-toggle:hover { background:var(--acg); }
+.preprocess-result .pp-stats-line { display:flex; gap:6px; flex:1; }
+.preprocess-result .pp-arr { font-size:9px; color:var(--t3); transition:transform .2s; }
+.preprocess-result .pp-body { display:none; border-top:1px solid var(--bd); padding:10px 14px; }
+.preprocess-result.open .pp-body { display:block; }
+.preprocess-result.open .pp-arr { transform:rotate(180deg); }
+.preprocess-result .pp-stat { display:inline-flex; align-items:center; gap:4px; margin-right:8px; }
 .preprocess-result .pp-stat .pp-val { font-weight:700; font-family:var(--mf); }
 .preprocess-result .pp-empty { color:var(--err); }
 .preprocess-result .pp-multi { color:var(--wn); }
 .preprocess-result .pp-ok { color:var(--ok); }
-.preprocess-result .pp-detail { margin-top:8px; color:var(--t3); font-size:11px; max-height:120px; overflow-y:auto; }
+.preprocess-result .pp-detail { color:var(--t3); font-size:11px; max-height:160px; overflow-y:auto; }
 /* L1 过滤页的预处理列选择器 */
 #preprocessColSel { max-width:130px; }
 .bureau-list { display:flex; flex-direction:column; gap:8px; }
@@ -517,6 +524,13 @@ body {
 .gc-rel.rel-and { background:var(--acg); color:var(--ac); }
 .gc-rel.rel-or { background:var(--wnbg); color:var(--wn); }
 .l2-top-actions { display:flex; gap:8px; align-items:center; margin-bottom:14px; }
+
+/* L2 数据条数信息 */
+.l2-data-info { display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:6px 14px; background:var(--acg); border:1px solid var(--bd); border-radius:10px; font-size:12px; }
+.l2-data-info .ldi-label { color:var(--t3); }
+.l2-data-info .ldi-val { font-weight:700; font-family:var(--mf); color:var(--ok); font-size:14px; }
+.l2-data-info .ldi-unit { color:var(--t2); }
+.l2-data-info .ldi-total { color:var(--t3); font-size:11px; }
 
 /* ================================================================
    RESULT AREA

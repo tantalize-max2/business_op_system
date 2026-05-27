@@ -950,10 +950,19 @@ document.getElementById('btnClrL1').addEventListener('click', () => {
 });
 
 // ========== L2 逐文件预览 ==========
+function updateL2DataInfo(totalRows, filteredRows) {
+  const el = document.getElementById('l2DataInfo');
+  if (!el) return;
+  if (!totalRows) { el.style.display = 'none'; return; }
+  el.style.display = 'inline-flex';
+  const splitNote = (S.splitMatchedRows && S.splitFileId) ? ' (已拆分过滤)' : '';
+  el.innerHTML = `<span class="ldi-label">当前数据</span><span class="ldi-val">${filteredRows}</span><span class="ldi-unit">条</span><span class="ldi-total">/ 共${totalRows}条${splitNote}</span>`;
+}
+
 function renderL2FileTabs() {
   const div = document.getElementById('l2FileTabs');
   if (!div) return;
-  if (!S.files.length) { div.innerHTML = ''; document.getElementById('l2Preview').style.display = 'none'; return; }
+  if (!S.files.length) { div.innerHTML = ''; document.getElementById('l2Preview').style.display = 'none'; updateL2DataInfo(0, 0); return; }
   let html = '';
   S.files.forEach(f => {
     const on = f.id === S.activeFileId ? 'on' : '';
@@ -974,12 +983,14 @@ function renderL2FileTabs() {
 function renderL2Preview() {
   const div = document.getElementById('l2Preview');
   const f = getActiveFile();
-  if (!f || !f.raw.length) { div.style.display = 'none'; return; }
+  if (!f || !f.raw.length) { div.style.display = 'none'; updateL2DataInfo(0, 0); return; }
   div.style.display = 'block';
   let l1Data = getFilteredData();
   if (S.splitMatchedRows && S.splitFileId === S.activeFileId && S.splitMatchedRows.size > 0) {
     l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
   }
+  // 更新数据条数信息
+  updateL2DataInfo(f.raw.length, l1Data.length);
   const previewRows = l1Data.slice(0, 3);
   const hidden = f.hiddenCols;
   const visCols = f.hdr.filter(c => !hidden.has(c));
@@ -1803,16 +1814,27 @@ document.getElementById('btnPreprocess').addEventListener('click', () => {
     }
   });
 
-  // 显示结果
+  // 显示结果（可折叠）
   const div = document.getElementById('preprocessResult');
   div.style.display = 'block';
+  div.className = 'preprocess-result open';
   div.innerHTML = `
-    <div style="margin-bottom:6px;font-weight:600">预处理结果</div>
-    <span class="pp-stat pp-ok"><span class="pp-val">${processedCount}</span>条已处理</span>
-    <span class="pp-stat pp-multi"><span class="pp-val">${multiCount}</span>条多人名</span>
-    <span class="pp-stat pp-empty"><span class="pp-val">${emptyCount}</span>条为空</span>
-    <div class="pp-detail">${details.map(d => `<div>${esc(d)}</div>`).join('')}</div>
+    <div class="pp-toggle" id="ppToggle">
+      <span style="font-weight:600">预处理结果</span>
+      <span class="pp-stats-line">
+        <span class="pp-stat pp-ok"><span class="pp-val">${processedCount}</span>条已处理</span>
+        <span class="pp-stat pp-multi"><span class="pp-val">${multiCount}</span>条多人名</span>
+        <span class="pp-stat pp-empty"><span class="pp-val">${emptyCount}</span>条为空</span>
+      </span>
+      <span class="pp-arr">&#9660;</span>
+    </div>
+    <div class="pp-body">
+      <div class="pp-detail">${details.map(d => `<div>${esc(d)}</div>`).join('')}</div>
+    </div>
   `;
+  div.querySelector('#ppToggle').addEventListener('click', () => {
+    div.classList.toggle('open');
+  });
   // 重新生成 rawFileData 以便拆分使用新数据
   try {
     const ws = XLSX.utils.json_to_sheet(f.raw);
