@@ -1676,6 +1676,47 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
+// ========== 拆分后自动创建分局分组 ==========
+const GROUP_COLORS = ['blue', 'green', 'orange', 'purple', 'cyan', 'red'];
+
+function autoCreateBureauGroups() {
+  if (!S.splitResult || !S.splitResult.files) return;
+  const f = getActiveFile();
+  if (!f) return;
+  const splitCol = getSplitCol();
+  if (!splitCol) return;
+
+  // 只在有拆分结果且当前没有分组时自动创建（避免重复）
+  if (f.grps.length > 0) return;
+
+  const bureausWithRows = S.splitResult.files.filter(bf => bf.bureau && bf.bureau !== '- 汇总文件 -' && bf.bureau !== '- 未匹配名单 -' && bf.rows > 0);
+  if (!bureausWithRows.length) return;
+
+  let colorIdx = 0;
+  bureausWithRows.forEach(bf => {
+    const bureauName = bf.bureau;
+    const managers = S.mappingData[bureauName] || [];
+    if (!managers.length) return;
+    const l1f = f.l1[splitCol];
+    f.grps.push({
+      id: ++f.gid,
+      name: bureauName,
+      color: GROUP_COLORS[colorIdx % GROUP_COLORS.length],
+      column: splitCol,
+      values: [...managers],
+      l1Dep: {col: splitCol, cascade: l1f && l1f.cascade, dependCol: l1f && l1f.dependCol, filtered: l1f && l1f.checked && l1f.checked.size < uniq(splitCol).length},
+      parentId: null,
+      parentRel: null
+    });
+    colorIdx++;
+  });
+
+  renderGrpCards();
+  popDepGrp();
+  renderL2Preview();
+  if (f.grps.length) ntf(`已自动创建 ${f.grps.length} 个分局分组`);
+}
+
 function renderSplitResults() {
   const data = S.splitResult;
   if (!data) return;
@@ -1758,7 +1799,10 @@ document.getElementById('btnReup').addEventListener('click', () => {
 // 拆分区导航
 document.getElementById('btnBackFilter1').addEventListener('click', () => switchStep('filter1'));
 document.getElementById('btnDoSplit').addEventListener('click', doSplit);
-document.getElementById('goFilter2FromSplit').addEventListener('click', () => switchStep('filter2'));
+document.getElementById('goFilter2FromSplit').addEventListener('click', () => {
+  switchStep('filter2');
+  autoCreateBureauGroups();
+});
 
 // ========== 姓名预处理 ==========
 document.getElementById('btnPreprocess').addEventListener('click', () => {
