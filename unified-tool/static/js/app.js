@@ -374,11 +374,12 @@ function getGroupContext(gid, l1Data, grps, cache) {
   if (cache[gid]) return cache[gid];
   const g = grps.find(x => x.id === gid);
   let ctx;
+  const valSet = new Set(g.values.map(v => String(v).trim()));
   if (!g.parentId) {
-    ctx = l1Data.filter(r => g.values.includes(String(r[g.column] ?? '')));
+    ctx = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
   } else {
     const parentCtx = getGroupContext(g.parentId, l1Data, grps, cache);
-    const selfMatch = l1Data.filter(r => g.values.includes(String(r[g.column] ?? '')));
+    const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
     if (g.parentRel === 'AND') {
       const ps = new Set(parentCtx);
       ctx = selfMatch.filter(r => ps.has(r));
@@ -648,9 +649,11 @@ function bindTableEvents(thead, f) {
     updHdr();
     ntf(`已隐藏 "${col}"`);
   }));
-  // 双击编辑单元格
+  // 双击编辑单元格（只绑定一次）
   const tbody = document.getElementById('dtb');
-  tbody.addEventListener('dblclick', e => {
+  if (!tbody._editBound) {
+    tbody._editBound = true;
+    tbody.addEventListener('dblclick', e => {
     const td = e.target.closest('td[data-col]');
     if (!td || td.classList.contains('ti')) return;
     if (td.querySelector('input')) return; // 已在编辑
@@ -684,21 +687,33 @@ function bindTableEvents(thead, f) {
       if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
       else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
     });
-  });
+    });
+  }
 
-  // 列悬停高亮：鼠标在 th 上时，高亮整列
-  thead.querySelectorAll('th[data-col]').forEach(th => {
-    th.addEventListener('mouseenter', () => {
-      const col = th.dataset.col;
-      th.classList.add('col-highlight');
-      tbody.querySelectorAll(`td[data-col="${CSS.escape(col)}"]`).forEach(td => td.classList.add('col-highlight'));
+  // 列悬停高亮：通过动态样式表实现，虚拟滚动兼容（只绑定一次）
+  let _hoverStyle = document.getElementById('_hoverColStyle');
+  if (!_hoverStyle) { _hoverStyle = document.createElement('style'); _hoverStyle.id = '_hoverColStyle'; document.head.appendChild(_hoverStyle); }
+  const dataTable = document.getElementById('dataTable');
+  if (!dataTable._hoverBound) {
+    dataTable._hoverBound = true;
+    dataTable.addEventListener('mouseover', e => {
+      const th = e.target.closest('th[data-col]');
+      const td = e.target.closest('td[data-col]');
+      const col = th ? th.dataset.col : (td ? td.dataset.col : null);
+      if (col) {
+        const ecol = CSS.escape(col);
+        _hoverStyle.textContent = `.data-table th[data-col="${ecol}"]{background:var(--acg)!important;transform:translateY(-2px);box-shadow:0 4px 12px rgba(99,102,241,.25);z-index:21}.data-table td[data-col="${ecol}"]{background:var(--acg)!important;transform:scale(1.03)}`;
+      }
     });
-    th.addEventListener('mouseleave', () => {
-      const col = th.dataset.col;
-      th.classList.remove('col-highlight');
-      tbody.querySelectorAll(`td[data-col="${CSS.escape(col)}"]`).forEach(td => td.classList.remove('col-highlight'));
+    dataTable.addEventListener('mouseout', e => {
+      if (!e.relatedTarget || !dataTable.contains(e.relatedTarget)) {
+        _hoverStyle.textContent = '';
+      } else {
+        const next = e.relatedTarget.closest ? e.relatedTarget.closest('[data-col]') : null;
+        if (!next) _hoverStyle.textContent = '';
+      }
     });
-  });
+  }
 }
 
 function updHdr() {
@@ -831,12 +846,36 @@ function renderFDList(search) {
 document.getElementById('fdSe').addEventListener('input', e => renderFDList(e.target.value));
 document.getElementById('fdCascade').addEventListener('change', () => {
   const ds = document.getElementById('fdDepCol');
-  ds.style.display = document.getElementById('fdCascade').checked ? 'block' : 'none';
-  if (!document.getElementById('fdCascade').checked) ds.value = '';
+  const checked = document.getElementById('fdCascade').checked;
+  ds.style.display = checked ? 'block' : 'none';
+  if (checked && !ds.value) {
+    // 自动默认选择前一列
+    const hdr = getActiveHdr();
+    const colIdx = hdr.indexOf(S.l1EditCol);
+    if (colIdx > 0) ds.value = hdr[colIdx - 1];
+  }
+  if (!checked) ds.value = '';
   updateCasInfo();
   recomputeFDVals();
+  // 勾选级联后自动选中范围内的值
+  if (checked && ds.value) autoSelectCascadeScope();
 });
-document.getElementById('fdDepCol').addEventListener('change', () => { updateCasInfo(); recomputeFDVals(); });
+document.getElementById('fdDepCol').addEventListener('change', () => { updateCasInfo(); recomputeFDVals(); autoSelectCascadeScope(); });
+
+function autoSelectCascadeScope() {
+  // 自动将级联范围内的值设为勾选，范围外的取消
+  const cascade = document.getElementById('fdCascade').checked;
+  const dependCol = document.getElementById('fdDepCol').value;
+  if (!cascade || !dependCol) return;
+  const col = S.l1EditCol;
+  const baseData = getDataFilteredForCol(col);
+  const scopeSet = new Set();
+  baseData.forEach(r => scopeSet.add(String(r[col] ?? '')));
+  S.l1Temp.checked.forEach((_, k) => {
+    S.l1Temp.checked.set(k, scopeSet.has(k));
+  });
+  renderFDList(document.getElementById('fdSe').value);
+}
 document.getElementById('fdAll').addEventListener('click', () => {
   const col = S.l1EditCol;
   const baseData = S.l1Temp.cascade && S.l1Temp.dependCol ? getDataFilteredForCol(col) : getActiveRaw();
@@ -1163,8 +1202,12 @@ document.getElementById('btnCalc').addEventListener('click', calcAllStats);
 function calcAllStats() {
   const area = document.getElementById('resContent');
   if (!S.files.length) { area.innerHTML = '<div class="empty-hint">请先上传文件</div>'; return; }
+  // 检查是否有数据
+  const hasData = S.files.some(f => f.raw.length > 0);
+  if (!hasData) { area.innerHTML = '<div class="empty-hint">文件数据未加载，请重新上传文件后刷新</div>'; return; }
   let html = '';
   S.files.forEach((file, fi) => {
+    if (!file.raw.length) return; // 跳过无数据文件
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
     // 如果已执行拆分，排除未匹配行
@@ -1659,7 +1702,17 @@ document.getElementById('goSplit').addEventListener('click', () => {
   switchStep('split');
   loadMapping();
   populateSplitColSel();
+  updSplitActiveFile();
 });
+
+function updSplitActiveFile() {
+  const el = document.getElementById('splitActiveFile');
+  const f = getActiveFile();
+  if (!el || !f) return;
+  const fd = getFilteredData();
+  el.style.display = 'inline-flex';
+  el.innerHTML = `<span>当前拆分文件:</span><span class="saf-name">${esc(f.name)}</span><span class="saf-meta">${fd.length} 行 / ${f.hdr.length} 列</span>`;
+}
 document.getElementById('btnSkipSplit').addEventListener('click', () => switchStep('filter2'));
 document.getElementById('btnReup').addEventListener('click', () => {
   const input = document.getElementById('fileInput');
@@ -1734,12 +1787,24 @@ document.getElementById('btnPreprocess').addEventListener('click', () => {
     <span class="pp-stat pp-empty"><span class="pp-val">${emptyCount}</span>条为空</span>
     <div class="pp-detail">${details.map(d => `<div>${esc(d)}</div>`).join('')}</div>
   `;
-  if (emptyCount > 0) {
-    ntf(`预处理完成：${emptyCount} 条为空值`, 'warn');
-  } else {
-    ntf(`预处理完成：${processedCount} 条已处理`);
-  }
+  // 重新生成 rawFileData 以便拆分使用新数据
+  try {
+    const ws = XLSX.utils.json_to_sheet(f.raw, {header: f.hdr});
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const buf = XLSX.write(wb, {type: 'array', bookType: 'xlsx'});
+    f.rawFileData = buf.buffer;
+  } catch(e) { /* 生成失败不影响已有数据 */ }
+  // 重算 splitMatchedRows（数据已变）
+  S.splitMatchedRows = null;
+  S.splitResult = null;
+  document.getElementById('splitResults').style.display = 'none';
   debouncedSave();
+  if (emptyCount > 0) {
+    ntf(`预处理完成：${processedCount} 条已处理，${emptyCount} 条为空值`, 'warn');
+  } else {
+    ntf(`预处理完成：${processedCount} 条已处理，数据已更新`);
+  }
 });
 
 // 二级统计区导航

@@ -122,6 +122,7 @@ body {
 .sb-item:hover { color:var(--t2); background:var(--acg); }
 .sb-item.active { color:var(--ac); background:var(--acg); border-left-color:var(--ac); }
 .sb-item.active .sb-num { background:var(--gradient-ac); color:#fff; box-shadow:0 3px 10px rgba(99,102,241,.35); }
+[data-theme="light"] .sb-item.active .sb-num { color:#fff; }
 .sb-num {
   width: 24px; height: 24px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
@@ -129,6 +130,7 @@ body {
   background: var(--bg3); color: var(--t3);
   flex-shrink: 0; transition: all .18s;
 }
+[data-theme="light"] .sb-num { color: var(--t2); background: var(--bg4); }
 .sb-label { white-space: nowrap; }
 .sb-footer { border-top:1px solid var(--bd); padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
 
@@ -165,6 +167,9 @@ body {
   -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
 }
 .step-desc { font-size:14px; color:var(--t3); }
+.split-active-file { display:inline-flex; align-items:center; gap:8px; margin-top:8px; padding:6px 14px; background:var(--acg); border:1px solid var(--bd); border-radius:10px; font-size:12px; color:var(--cy); font-family:var(--mf); }
+.split-active-file .saf-name { font-weight:600; color:var(--t1); }
+.split-active-file .saf-meta { color:var(--t3); }
 .step-actions { display:flex; gap:10px; align-items:center; margin-top:20px; }
 
 /* ================================================================
@@ -281,12 +286,16 @@ body {
   box-shadow: 0 4px 12px rgba(99,102,241,.2);
   z-index: 21;
 }
-.data-table th.col-highlight {
-  background: var(--acg);
+/* 通过 table data-hover-col 属性整列高亮（虚拟滚动兼容） */
+@supports selector([data-hover-col]) {
+  .data-table[data-hover-col] th {
+    transition: transform .15s, box-shadow .15s, background .12s;
+  }
+  .data-table[data-hover-col] td {
+    transition: transform .12s, background .12s;
+  }
 }
-.data-table td.col-highlight {
-  background: var(--acg) !important;
-}
+/* 需要用JS动态写规则避免CSS属性选择器转义问题 → 见JS方案 */
 .th-inner { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; gap:3px; }
 .th-name { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.3px; color:var(--t2); overflow:hidden; text-overflow:ellipsis; }
 .th-fbtn { display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; font-size:10px; color:var(--t3); cursor:pointer; transition:all .15s; flex-shrink:0; }
@@ -473,7 +482,7 @@ body {
 .gco { width:20px; height:20px; border-radius:50%; cursor:pointer; border:2px solid transparent; transition:all .15s; }
 .gco:hover { transform:scale(1.2); }
 .gco.sel { border-color:#fff; box-shadow:0 0 0 2px var(--bg), 0 0 8px rgba(99,102,241,.4); }
-[data-theme="light"] .gco.sel { box-shadow:0 0 0 2px var(--bg3), 0 0 8px rgba(79,70,229,.3); }
+[data-theme="light"] .gco.sel { border-color:var(--bg3); box-shadow:0 0 0 2px var(--bg3), 0 0 8px rgba(79,70,229,.3); }
 .gco.c-blue { background:#6366f1; } .gco.c-green { background:#34d399; } .gco.c-orange { background:#fbbf24; }
 .gco.c-purple { background:#a78bfa; } .gco.c-cyan { background:#22d3ee; } .gco.c-red { background:#f87171; }
 .vp2 { display:flex; flex-wrap:wrap; gap:4px; margin:8px 0; max-height:100px; overflow-y:auto; }
