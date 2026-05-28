@@ -1216,7 +1216,7 @@ function renderGrpCards() {
       // 1级分组：可折叠容器，包含子分组
       const childGrps = (g.childGroupIds || []).map(cid => f.grps.find(x => x.id === cid)).filter(Boolean);
       const childCount = childGrps.length;
-      html += `<div class="gc-l1-card" data-l1id="${g.id}">
+      html += `<div class="gc-l1-card" data-l1id="${g.id}" draggable="true">
         <div class="gc-l1-header" data-toggle-l1="${g.id}">
           <span class="gc-dot" style="background:${cm.d}"></span>
           <span class="gc-n">${esc(g.name)}</span>
@@ -1228,7 +1228,7 @@ function renderGrpCards() {
         <div class="gc-l1-body" data-l1body="${g.id}">`;
       childGrps.forEach(cg => {
         const ccm = CM[cg.color] || CM.blue;
-        html += `<div class="gc gc-nested">
+        html += `<div class="gc gc-nested" draggable="true" data-gid="${cg.id}">
           <div class="gc-h"><span class="gc-dot" style="background:${ccm.d}"></span><span class="gc-n">${esc(cg.name)}</span><span class="gc-col">${esc(cg.column)}</span><button class="btn btn-danger btn-xs" data-del="${cg.id}">✕</button></div>
           <div class="gc-vs">${cg.values.slice(0, 8).map(v => `<span class="gc-v ${ccm.t}">${esc(v)}</span>`).join('')}${cg.values.length > 8 ? `<span class="gc-v gc-more">+${cg.values.length - 8}</span>` : ''}</div>
         </div>`;
@@ -1252,7 +1252,7 @@ function renderGrpCards() {
           return `<span class="gc-rel ${rc}">${c.parentRel}</span> ${esc(c.name)}`;
         }).join(' · ') + '</div>';
       }
-      html += `<div class="gc"><div class="gc-h"><span class="gc-dot" style="background:${cm.d}"></span><span class="gc-n">${esc(g.name)}</span><span class="gc-col">${esc(g.column)} ${l1Info}</span><button class="btn btn-danger btn-xs" data-del="${g.id}">✕</button></div><div class="gc-vs">${g.values.slice(0, 8).map(v => `<span class="gc-v ${cm.t}">${esc(v)}</span>`).join('')}${g.values.length > 8 ? `<span class="gc-v gc-more">+${g.values.length - 8}</span>` : ''}</div>${depHtml}${chHtml}</div>`;
+      html += `<div class="gc" draggable="true" data-gid="${g.id}"><div class="gc-h"><span class="gc-dot" style="background:${cm.d}"></span><span class="gc-n">${esc(g.name)}</span><span class="gc-col">${esc(g.column)} ${l1Info}</span><button class="btn btn-danger btn-xs" data-del="${g.id}">✕</button></div><div class="gc-vs">${g.values.slice(0, 8).map(v => `<span class="gc-v ${cm.t}">${esc(v)}</span>`).join('')}${g.values.length > 8 ? `<span class="gc-v gc-more">+${g.values.length - 8}</span>` : ''}</div>${depHtml}${chHtml}</div>`;
     }
     // 属于1级分组的子分组：已在上面嵌套渲染，跳过
   });
@@ -1291,6 +1291,150 @@ function renderGrpCards() {
     popDepGrp();
     ntf('分组已删除');
   }));
+
+  // 拖拽排序 & 拖入1级分组
+  bindGrpDrag(div);
+}
+
+/* ===== 分组拖拽：排序 + 拖入1级分组 ===== */
+let _dragGid = null;
+function bindGrpDrag(container) {
+  // 2级分组卡片作为拖拽源
+  container.querySelectorAll('[data-gid]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      _dragGid = +el.dataset.gid;
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('gc-dragging');
+      container.querySelectorAll('.gc-l1-body').forEach(b => b.classList.add('gc-l1-drop-hint'));
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('gc-dragging');
+      _dragGid = null;
+      container.querySelectorAll('.gc-l1-drop-hint').forEach(b => b.classList.remove('gc-l1-drop-hint'));
+      container.querySelectorAll('.gc-drop-over').forEach(b => b.classList.remove('gc-drop-over'));
+      container.querySelectorAll('.gc-reorder-over').forEach(b => b.classList.remove('gc-reorder-over'));
+    });
+  });
+  // 1级分组容器作为拖拽源
+  container.querySelectorAll('.gc-l1-card[draggable]').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      _dragGid = +el.dataset.l1id;
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('gc-dragging');
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('gc-dragging');
+      _dragGid = null;
+      container.querySelectorAll('.gc-reorder-over').forEach(b => b.classList.remove('gc-reorder-over'));
+    });
+  });
+
+  // 1级分组body作为drop zone（拖入子分组）
+  container.querySelectorAll('.gc-l1-body').forEach(body => {
+    body.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      body.classList.add('gc-drop-over');
+    });
+    body.addEventListener('dragleave', () => body.classList.remove('gc-drop-over'));
+    body.addEventListener('drop', e => {
+      e.preventDefault();
+      body.classList.remove('gc-drop-over');
+      if (_dragGid == null) return;
+      const l1id = +body.dataset.l1body;
+      const f = getActiveFile();
+      const l1 = f.grps.find(x => x.id === l1id);
+      const g = f.grps.find(x => x.id === _dragGid);
+      if (!l1 || !g || g.level === 1) return; // 不允许1级分组嵌套
+      if (l1.childGroupIds && l1.childGroupIds.includes(g.id)) return; // 已在该1级分组中
+      // 从其他1级分组的childGroupIds中移除
+      f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1g => {
+        l1g.childGroupIds = l1g.childGroupIds.filter(id => id !== g.id);
+      });
+      if (!l1.childGroupIds) l1.childGroupIds = [];
+      l1.childGroupIds.push(g.id);
+      renderGrpCards();
+      ntf(`已将「${g.name}」移入1级分组「${l1.name}」`);
+    });
+  });
+
+  // 顶级卡片之间拖拽排序（仅2级分组之间，1级分组容器通过header排序）
+  const topGcs = container.querySelectorAll(':scope > .gc');
+  topGcs.forEach(el => {
+    el.addEventListener('dragover', e => {
+      if (_dragGid == null) return;
+      const f = getActiveFile();
+      const dragG = f.grps.find(x => x.id === _dragGid);
+      if (!dragG || dragG.level === 1) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('gc-reorder-over');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('gc-reorder-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('gc-reorder-over');
+      if (_dragGid == null) return;
+      const f = getActiveFile();
+      const dragG = f.grps.find(x => x.id === _dragGid);
+      if (!dragG || dragG.level === 1) return;
+      const targetGid = +(el.dataset.gid || el.querySelector('[data-gid]')?.dataset.gid);
+      if (!targetGid || targetGid === _dragGid) return;
+      const targetG = f.grps.find(x => x.id === targetGid);
+      if (!targetG) return;
+      // 从原1级分组中移除
+      f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1 => {
+        l1.childGroupIds = l1.childGroupIds.filter(id => id !== _dragGid);
+      });
+      // 在grps数组中交换位置
+      const iFrom = f.grps.indexOf(dragG);
+      const iTo = f.grps.indexOf(targetG);
+      if (iFrom < 0 || iTo < 0) return;
+      f.grps.splice(iFrom, 1);
+      f.grps.splice(iTo, 0, dragG);
+      renderGrpCards();
+      ntf('分组顺序已调整');
+    });
+  });
+
+  // 1级分组容器之间拖拽排序
+  const topL1s = container.querySelectorAll(':scope > .gc-l1-card');
+  topL1s.forEach(el => {
+    el.addEventListener('dragover', e => {
+      if (_dragGid == null) return;
+      const f = getActiveFile();
+      const dragG = f.grps.find(x => x.id === _dragGid);
+      if (!dragG || dragG.level !== 1) return;
+      // 避免与1级body内部的drop zone冲突
+      if (e.target.closest('.gc-l1-body')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('gc-reorder-over');
+    });
+    el.addEventListener('dragleave', e => {
+      if (!e.target.closest('.gc-l1-body')) el.classList.remove('gc-reorder-over');
+    });
+    el.addEventListener('drop', e => {
+      if (e.target.closest('.gc-l1-body')) return;
+      e.preventDefault();
+      el.classList.remove('gc-reorder-over');
+      if (_dragGid == null) return;
+      const f = getActiveFile();
+      const dragG = f.grps.find(x => x.id === _dragGid);
+      if (!dragG || dragG.level !== 1) return;
+      const targetGid = +el.dataset.l1id;
+      if (!targetGid || targetGid === _dragGid) return;
+      const targetG = f.grps.find(x => x.id === targetGid);
+      if (!targetG) return;
+      const iFrom = f.grps.indexOf(dragG);
+      const iTo = f.grps.indexOf(targetG);
+      if (iFrom < 0 || iTo < 0) return;
+      f.grps.splice(iFrom, 1);
+      f.grps.splice(iTo, 0, dragG);
+      renderGrpCards();
+      ntf('分组顺序已调整');
+    });
+  });
 }
 
 document.getElementById('btnClrL2').addEventListener('click', () => {
@@ -1716,7 +1860,7 @@ function renderMapping() {
   let html = '';
   keys.forEach((bureau, i) => {
     const managers = S.mappingData[bureau];
-    html += `<div class="bureau-card" data-index="${i}">
+    html += `<div class="bureau-card" data-index="${i}" data-bureau="${esc(bureau)}" draggable="true">
       <div class="bureau-header" onclick="toggleBureau(this)">
         <div style="display:flex;align-items:center;gap:10px;">
           <span class="arrow">▶</span>
@@ -1739,9 +1883,48 @@ function renderMapping() {
     </div>`;
   });
   list.innerHTML = html;
+  bindBureauDrag(list);
 }
 
-function toggleBureau(header) { header.closest('.bureau-card').classList.toggle('open'); }
+/* ===== 分局拖拽排序 ===== */
+let _dragBureau = null;
+function bindBureauDrag(container) {
+  container.querySelectorAll('.bureau-card').forEach(card => {
+    card.addEventListener('dragstart', e => {
+      _dragBureau = card.dataset.bureau;
+      e.dataTransfer.effectAllowed = 'move';
+      card.classList.add('bureau-dragging');
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('bureau-dragging');
+      _dragBureau = null;
+      container.querySelectorAll('.bureau-reorder-over').forEach(c => c.classList.remove('bureau-reorder-over'));
+    });
+    card.addEventListener('dragover', e => {
+      if (!_dragBureau) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      card.classList.add('bureau-reorder-over');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('bureau-reorder-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('bureau-reorder-over');
+      if (!_dragBureau || _dragBureau === card.dataset.bureau) return;
+      const keys = Object.keys(S.mappingData);
+      const iFrom = keys.indexOf(_dragBureau);
+      const iTo = keys.indexOf(card.dataset.bureau);
+      if (iFrom < 0 || iTo < 0) return;
+      // 重建有序对象
+      const entries = Object.entries(S.mappingData);
+      const [moved] = entries.splice(iFrom, 1);
+      entries.splice(iTo, 0, moved);
+      S.mappingData = Object.fromEntries(entries);
+      renderMapping();
+      ntf('分局顺序已调整');
+    });
+  });
+}
 document.getElementById('collapseAll').addEventListener('click', () => document.querySelectorAll('.bureau-card').forEach(c => c.classList.remove('open')));
 document.getElementById('expandAll').addEventListener('click', () => document.querySelectorAll('.bureau-card').forEach(c => c.classList.add('open')));
 
