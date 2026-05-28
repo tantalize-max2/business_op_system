@@ -504,8 +504,8 @@ body {
 .vp2-i.l1out { opacity:.55; border-style:dashed; }
 .vp2-i.l1out:hover { opacity:.85; border-color:var(--wn); color:var(--wn); }
 .vp2-i.l1out.sel { opacity:1; background:var(--wn); border-color:var(--wn); color:#fff; border-style:solid; }
-.grp-cards { display:flex; flex-wrap:wrap; gap:8px; }
-.gc { background:var(--bg); border:1px solid var(--bd); border-radius:12px; padding:10px 12px; min-width:200px; max-width:300px; transition:all .15s; }
+.grp-cards { display:flex; flex-direction:column; gap:8px; }
+.gc { background:var(--bg); border:1px solid var(--bd); border-radius:12px; padding:10px 12px; transition:all .15s; }
 .gc:hover { border-color:var(--ac); box-shadow:var(--sh2); }
 .gc-h { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
 .gc-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
@@ -522,7 +522,18 @@ body {
 .gc-dep { font-size:9px; color:var(--cy); font-family:var(--mf); margin-top:5px; display:flex; align-items:center; gap:3px; }
 .gc-dep .dep-arrow { color:var(--wn); }
 .gc-lv1 { font-size:9px; padding:1px 6px; border-radius:4px; font-weight:600; font-family:var(--mf); background:var(--gradient-ac); color:#fff; margin-left:4px; }
-.gc-l1 { border-width:2px; }
+/* 1级分组折叠卡片 */
+.gc-l1-card { background:var(--bg2); border:2px solid var(--bd); border-radius:14px; overflow:hidden; margin-bottom:4px; }
+.gc-l1-header { display:flex; align-items:center; gap:8px; padding:12px 16px; cursor:pointer; user-select:none; transition:background .15s; }
+.gc-l1-header:hover { background:var(--acg); }
+.gc-l1-count { font-size:10px; color:var(--t3); font-family:var(--mf); flex:1; }
+.gc-l1-arrow { font-size:9px; color:var(--t3); transition:transform .2s; }
+.gc-l1-card-open .gc-l1-arrow { transform:rotate(180deg); }
+.gc-l1-body { display:none; padding:0 12px 12px; }
+.gc-l1-body-open { display:flex; flex-direction:column; gap:6px; }
+.gc-nested { border-left:3px solid var(--bd); border-radius:8px; }
+/* 值标签"更多" */
+.gc-more { background:var(--bg3) !important; color:var(--t3) !important; border:1px dashed var(--bd) !important; }
 .gc-rel { font-size:9px; padding:2px 6px; border-radius:4px; font-weight:600; font-family:var(--mf); }
 .gc-rel.rel-and { background:var(--acg); color:var(--ac); }
 .gc-rel.rel-or { background:var(--wnbg); color:var(--wn); }

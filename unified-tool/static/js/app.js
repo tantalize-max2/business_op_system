@@ -1202,48 +1202,94 @@ function renderGrpCards() {
   if (!f) return;
   const div = document.getElementById('grpCards');
   if (!f.grps.length) { div.innerHTML = ''; return; }
+
+  // 找出被1级分组包含的子分组ID（这些会嵌套在1级分组内展示）
+  const childOfL1 = new Set();
+  f.grps.filter(g => g.level === 1 && g.childGroupIds).forEach(g => g.childGroupIds.forEach(id => childOfL1.add(id)));
+
   let html = '';
   f.grps.forEach(g => {
     const cm = CM[g.color] || CM.blue;
     const l1Info = g.l1Dep ? `L1:${esc(g.l1Dep.col)}` : '';
-    let depHtml = '';
-    if (g.parentId) {
-      const pg = f.grps.find(x => x.id === g.parentId);
-      if (pg) {
-        const rc = g.parentRel === 'AND' ? 'rel-and' : 'rel-or';
-        depHtml = `<div class="gc-dep"><span class="dep-arrow">↑</span> <span class="gc-rel ${rc}">${g.parentRel}</span> ${esc(pg.name)}</div>`;
-      }
-    }
-    const children = f.grps.filter(x => x.parentId === g.id);
-    let chHtml = '';
-    if (children.length) {
-      chHtml = '<div class="gc-dep"><span style="color:var(--t3)">↓</span> ' + children.map(c => {
-        const rc = c.parentRel === 'AND' ? 'rel-and' : 'rel-or';
-        return `<span class="gc-rel ${rc}">${c.parentRel}</span> ${esc(c.name)}`;
-      }).join(' · ') + '</div>';
-    }
-    // 1级分组显示子分组列表
-    let childGrpsHtml = '';
-    if (g.level === 1 && g.childGroupIds && g.childGroupIds.length) {
-      const childNames = g.childGroupIds.map(cid => {
-        const cg = f.grps.find(x => x.id === cid);
-        return cg ? esc(cg.name) : '?';
+
+    if (g.level === 1) {
+      // 1级分组：可折叠容器，包含子分组
+      const childGrps = (g.childGroupIds || []).map(cid => f.grps.find(x => x.id === cid)).filter(Boolean);
+      const childCount = childGrps.length;
+      html += `<div class="gc-l1-card" data-l1id="${g.id}">
+        <div class="gc-l1-header" data-toggle-l1="${g.id}">
+          <span class="gc-dot" style="background:${cm.d}"></span>
+          <span class="gc-n">${esc(g.name)}</span>
+          <span class="gc-lv1">1级</span>
+          <span class="gc-l1-count">${childCount}个子分组</span>
+          <span class="gc-l1-arrow">&#9660;</span>
+          <button class="btn btn-danger btn-xs" data-del="${g.id}" onclick="event.stopPropagation()">✕</button>
+        </div>
+        <div class="gc-l1-body" data-l1body="${g.id}">`;
+      childGrps.forEach(cg => {
+        const ccm = CM[cg.color] || CM.blue;
+        html += `<div class="gc gc-nested">
+          <div class="gc-h"><span class="gc-dot" style="background:${ccm.d}"></span><span class="gc-n">${esc(cg.name)}</span><span class="gc-col">${esc(cg.column)}</span><button class="btn btn-danger btn-xs" data-del="${cg.id}">✕</button></div>
+          <div class="gc-vs">${cg.values.slice(0, 8).map(v => `<span class="gc-v ${ccm.t}">${esc(v)}</span>`).join('')}${cg.values.length > 8 ? `<span class="gc-v gc-more">+${cg.values.length - 8}</span>` : ''}</div>
+        </div>`;
       });
-      childGrpsHtml = `<div class="gc-vs">${childNames.map(n => `<span class="gc-v ${cm.t}">${n}</span>`).join('')}</div>`;
+      html += `</div></div>`;
+    } else if (!childOfL1.has(g.id)) {
+      // 不属于1级分组的普通分组
+      let depHtml = '';
+      if (g.parentId) {
+        const pg = f.grps.find(x => x.id === g.parentId);
+        if (pg) {
+          const rc = g.parentRel === 'AND' ? 'rel-and' : 'rel-or';
+          depHtml = `<div class="gc-dep"><span class="dep-arrow">↑</span> <span class="gc-rel ${rc}">${g.parentRel}</span> ${esc(pg.name)}</div>`;
+        }
+      }
+      const children = f.grps.filter(x => x.parentId === g.id);
+      let chHtml = '';
+      if (children.length) {
+        chHtml = '<div class="gc-dep"><span style="color:var(--t3)">↓</span> ' + children.map(c => {
+          const rc = c.parentRel === 'AND' ? 'rel-and' : 'rel-or';
+          return `<span class="gc-rel ${rc}">${c.parentRel}</span> ${esc(c.name)}`;
+        }).join(' · ') + '</div>';
+      }
+      html += `<div class="gc"><div class="gc-h"><span class="gc-dot" style="background:${cm.d}"></span><span class="gc-n">${esc(g.name)}</span><span class="gc-col">${esc(g.column)} ${l1Info}</span><button class="btn btn-danger btn-xs" data-del="${g.id}">✕</button></div><div class="gc-vs">${g.values.slice(0, 8).map(v => `<span class="gc-v ${cm.t}">${esc(v)}</span>`).join('')}${g.values.length > 8 ? `<span class="gc-v gc-more">+${g.values.length - 8}</span>` : ''}</div>${depHtml}${chHtml}</div>`;
     }
-    const levelBadge = g.level === 1 ? '<span class="gc-lv1">1级</span>' : '';
-    html += `<div class="gc${g.level === 1 ? ' gc-l1' : ''}"><div class="gc-h"><span class="gc-dot" style="background:${cm.d}"></span><span class="gc-n">${esc(g.name)}</span>${levelBadge}<span class="gc-col">${g.level !== 1 ? esc(g.column) + ' ' + l1Info : ''}</span><button class="btn btn-danger btn-xs" data-del="${g.id}">✕</button></div>${g.level !== 1 ? `<div class="gc-vs">${g.values.map(v => `<span class="gc-v ${cm.t}">${esc(v)}</span>`).join('')}</div>` : ''}${childGrpsHtml}${depHtml}${chHtml}</div>`;
+    // 属于1级分组的子分组：已在上面嵌套渲染，跳过
   });
   div.innerHTML = html;
-  div.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
-    const delId = +b.dataset.del;
-    f.grps.forEach(g => { if (g.parentId === delId) g.parentId = null; });
-    f.grps = f.grps.filter(g => g.id !== delId);
-    const col = document.getElementById('gCol').value;
-    if (col) { renderVP2(col); showL2BaseInfo(col); }
+
+  // 绑定1级分组折叠/展开
+  div.querySelectorAll('.gc-l1-header').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const l1id = hdr.dataset.toggleL1;
+      const body = div.querySelector(`[data-l1body="${l1id}"]`);
+      const card = hdr.closest('.gc-l1-card');
+      if (body) {
+        body.classList.toggle('gc-l1-body-open');
+        card.classList.toggle('gc-l1-card-open');
+      }
+    });
+  });
+
+  // 绑定删除
+  div.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const gid = +b.dataset.del;
+    const f = getActiveFile();
+    const g = f.grps.find(x => x.id === gid);
+    if (g && g.level === 1) {
+      // 删除1级分组时，子分组变为独立分组
+      f.grps = f.grps.filter(x => x.id !== gid);
+    } else {
+      // 删除子分组时，从1级分组的childGroupIds中也移除
+      f.grps = f.grps.filter(x => x.id !== gid);
+      f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1 => {
+        l1.childGroupIds = l1.childGroupIds.filter(id => id !== gid);
+      });
+    }
     renderGrpCards();
     popDepGrp();
-    ntf('已删除');
+    ntf('分组已删除');
   }));
 }
 
@@ -1441,19 +1487,21 @@ function hdrSignature(hdr) {
 }
 
 function buildConfigData() {
-  const cfg = {files: S.files.map(f => ({name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentId: g.parentId, parentRel: g.parentRel, level: g.level || null, childGroupIds: g.childGroupIds || null})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]}))};
-  S.files.forEach((_, fi) => {
-    const f = S.files[fi];
-    f.hdr.forEach(col => {
-      cfg.files[fi].l1[col] = {checked: f.l1[col].checked ? [...f.l1[col].checked] : null, cascade: f.l1[col].cascade || false, dependCol: f.l1[col].dependCol || null, sort: f.l1[col].sort || null, condOn: f.l1[col].condOn || false, condOp: f.l1[col].condOp || 'eq', condVal: f.l1[col].condVal || ''};
-    });
+  // 只保存当前活跃文件的配置
+  const f = getActiveFile();
+  if (!f) return {files: []};
+  const fc = {name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentId: g.parentId, parentRel: g.parentRel, level: g.level || null, childGroupIds: g.childGroupIds || null})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]};
+  f.hdr.forEach(col => {
+    fc.l1[col] = {checked: f.l1[col].checked ? [...f.l1[col].checked] : null, cascade: f.l1[col].cascade || false, dependCol: f.l1[col].dependCol || null, sort: f.l1[col].sort || null, condOn: f.l1[col].condOn || false, condOp: f.l1[col].condOp || 'eq', condVal: f.l1[col].condVal || ''};
   });
-  return cfg;
+  return {files: [fc]};
 }
 
 function saveGlobalConfig() {
+  const f = getActiveFile();
+  if (!f) { ntf('无活跃文件', 'error'); return; }
   const cfg = buildConfigData();
-  const sig = hdrSignature(S.files.map(f => f.hdr).flat());
+  const sig = hdrSignature(f.hdr);
   // 弹出命名对话框
   showConfigNameDialog(name => {
     if (!name) return;
@@ -1949,15 +1997,18 @@ document.getElementById('goFilter2FromSplit').addEventListener('click', () => {
 });
 
 // ========== 姓名预处理 ==========
-document.getElementById('btnPreprocess').addEventListener('click', () => {
+document.getElementById('btnPreprocess').addEventListener('click', async () => {
   const f = getActiveFile();
   if (!f || !f.raw.length) { ntf('请先上传文件', 'error'); return; }
   // 优先使用预处理列选择器，其次使用拆分列选择器
   const pSel = document.getElementById('preprocessColSel');
   const col = (pSel && pSel.value) || getSplitCol();
   if (!col) { ntf('请先选择预处理列', 'error'); return; }
-  const mapping = S.mappingData;
-  if (!Object.keys(mapping).length) { ntf('映射数据为空', 'error'); return; }
+  // 确保 mappingData 已加载
+  if (!Object.keys(S.mappingData).length) {
+    await loadMapping();
+  }
+  if (!Object.keys(S.mappingData).length) { ntf('映射数据为空，请先进入拆分页加载分局配置', 'error'); return; }
 
   let emptyCount = 0;
   let multiCount = 0;
