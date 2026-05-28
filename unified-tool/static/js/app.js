@@ -2182,7 +2182,7 @@ document.getElementById('btnPreprocess').addEventListener('click', async () => {
     let bestPriority = -1;
     let bestBureau = '';
     names.forEach(name => {
-      for (const [bureau, members] of Object.entries(mapping)) {
+      for (const [bureau, members] of Object.entries(S.mappingData)) {
         if (members.includes(name)) {
           const priority = members.indexOf(name) === 0 ? 2 : 1;
           if (priority > bestPriority) {
