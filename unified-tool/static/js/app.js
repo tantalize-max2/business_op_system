@@ -1358,74 +1358,42 @@ function bindGrpDrag(container) {
     });
   });
 
-  // 顶级卡片之间拖拽排序（仅2级分组之间，1级分组容器通过header排序）
-  const topGcs = container.querySelectorAll(':scope > .gc');
-  topGcs.forEach(el => {
+  // 所有顶级卡片之间拖拽排序（1级分组和2级分组可互换位置）
+  const topItems = container.querySelectorAll(':scope > .gc, :scope > .gc-l1-card');
+  topItems.forEach(el => {
+    const isL1 = el.classList.contains('gc-l1-card');
     el.addEventListener('dragover', e => {
       if (_dragGid == null) return;
-      const f = getActiveFile();
-      const dragG = f.grps.find(x => x.id === _dragGid);
-      if (!dragG || dragG.level === 1) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      el.classList.add('gc-reorder-over');
-    });
-    el.addEventListener('dragleave', () => el.classList.remove('gc-reorder-over'));
-    el.addEventListener('drop', e => {
-      e.preventDefault();
-      el.classList.remove('gc-reorder-over');
-      if (_dragGid == null) return;
-      const f = getActiveFile();
-      const dragG = f.grps.find(x => x.id === _dragGid);
-      if (!dragG || dragG.level === 1) return;
-      const targetGid = +(el.dataset.gid || el.querySelector('[data-gid]')?.dataset.gid);
-      if (!targetGid || targetGid === _dragGid) return;
-      const targetG = f.grps.find(x => x.id === targetGid);
-      if (!targetG) return;
-      // 从原1级分组中移除
-      f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1 => {
-        l1.childGroupIds = l1.childGroupIds.filter(id => id !== _dragGid);
-      });
-      // 在grps数组中交换位置
-      const iFrom = f.grps.indexOf(dragG);
-      const iTo = f.grps.indexOf(targetG);
-      if (iFrom < 0 || iTo < 0) return;
-      f.grps.splice(iFrom, 1);
-      f.grps.splice(iTo, 0, dragG);
-      renderGrpCards();
-      ntf('分组顺序已调整');
-    });
-  });
-
-  // 1级分组容器之间拖拽排序
-  const topL1s = container.querySelectorAll(':scope > .gc-l1-card');
-  topL1s.forEach(el => {
-    el.addEventListener('dragover', e => {
-      if (_dragGid == null) return;
-      const f = getActiveFile();
-      const dragG = f.grps.find(x => x.id === _dragGid);
-      if (!dragG || dragG.level !== 1) return;
-      // 避免与1级body内部的drop zone冲突
-      if (e.target.closest('.gc-l1-body')) return;
+      // 1级body内部的拖入逻辑优先，排序不抢占
+      if (isL1 && e.target.closest('.gc-l1-body')) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       el.classList.add('gc-reorder-over');
     });
     el.addEventListener('dragleave', e => {
-      if (!e.target.closest('.gc-l1-body')) el.classList.remove('gc-reorder-over');
+      if (isL1 && e.target.closest('.gc-l1-body')) return;
+      el.classList.remove('gc-reorder-over');
     });
     el.addEventListener('drop', e => {
-      if (e.target.closest('.gc-l1-body')) return;
+      // 1级body内部的拖入逻辑优先
+      if (isL1 && e.target.closest('.gc-l1-body')) return;
       e.preventDefault();
       el.classList.remove('gc-reorder-over');
       if (_dragGid == null) return;
       const f = getActiveFile();
       const dragG = f.grps.find(x => x.id === _dragGid);
-      if (!dragG || dragG.level !== 1) return;
-      const targetGid = +el.dataset.l1id;
+      if (!dragG) return;
+      const targetGid = isL1 ? +el.dataset.l1id : +(el.dataset.gid || el.querySelector('[data-gid]')?.dataset.gid);
       if (!targetGid || targetGid === _dragGid) return;
       const targetG = f.grps.find(x => x.id === targetGid);
       if (!targetG) return;
+      // 拖拽2级分组时，从原1级分组中移除
+      if (dragG.level !== 1) {
+        f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1 => {
+          l1.childGroupIds = l1.childGroupIds.filter(id => id !== _dragGid);
+        });
+      }
+      // 在grps数组中交换位置
       const iFrom = f.grps.indexOf(dragG);
       const iTo = f.grps.indexOf(targetG);
       if (iFrom < 0 || iTo < 0) return;
