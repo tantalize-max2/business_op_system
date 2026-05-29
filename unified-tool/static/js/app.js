@@ -416,21 +416,35 @@ function handleFile(file) {
       const hdr = Object.keys(json[0]);
       const l1 = {};
       hdr.forEach(c => { l1[c] = newL1(); });
-      S.files.push({
-        id: ++fileIdCounter,
-        name: file.name,
-        raw: json,
-        hdr,
-        l1,
-        grps: [],
-        gid: 0,
-        addedCols: [],
-        sumCol: '',
-        hiddenCols: new Set(),
-        rawFileData: rawBuffer
-      });
-      ntf(`已加载 ${file.name} (${json.length} 行)`);
+      // 同名文件自动替换旧文件
+      const oldIdx = S.files.findIndex(f => f.name === file.name);
+      let newId;
+      if (oldIdx >= 0) {
+        newId = S.files[oldIdx].id;
+        S.files[oldIdx] = {
+          id: newId, name: file.name, raw: json, hdr, l1,
+          grps: [], gid: 0, addedCols: [], sumCol: '', hiddenCols: new Set(), rawFileData: rawBuffer
+        };
+        // 清理与旧文件关联的拆分状态
+        if (S.splitFileId === newId) { S.splitFileId = null; S.splitMatchedRows = null; S.splitResult = null; }
+        ntf(`已替换 ${file.name} (${json.length} 行)`);
+      } else {
+        newId = ++fileIdCounter;
+        S.files.push({
+          id: newId, name: file.name, raw: json, hdr, l1,
+          grps: [], gid: 0, addedCols: [], sumCol: '', hiddenCols: new Set(), rawFileData: rawBuffer
+        });
+        ntf(`已加载 ${file.name} (${json.length} 行)`);
+      }
+      S.activeFileId = newId;
       renderFileList();
+      renderFileTabs();
+      renderTable();
+      updHdr();
+      popGCol();
+      renderGrpCards();
+      renderL2FileTabs();
+      updSbStats();
       debouncedSave();
     } catch (err) { ntf('解析失败: ' + err.message, 'error'); }
   };
