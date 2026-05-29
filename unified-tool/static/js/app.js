@@ -62,7 +62,7 @@ const S = {
   splitResult: null,
   splitFileId: null,      // 执行拆分时的文件ID，splitMatchedRows 只对该文件生效
   mappingData: {},
-  splitMatchedRows: null,  // Set<row ref> - 拆分后匹配的行引用集合（仅对 splitFileId 文件有效）
+  splitMatchedRows: null,  // Set<row index> - 拆分后匹配的行索引集合（仅对 splitFileId 文件有效）
 };
 
 const CM = {
@@ -167,10 +167,23 @@ function switchStep(step) {
     document.getElementById('sbStats').style.display = '';
     updSbStats();
   }
+  // 进入二级统计时刷新L2数据（清理过时分组值、更新数据条数）
+  if (step === 'filter2') {
+    refreshL2Data();
+  }
 }
 function capitalize(s) {
   const map = {upload:'Upload', filter1:'Filter1', split:'Split', filter2:'Filter2'};
   return map[s] || s;
+}
+
+// 辅助：将过滤后数据按splitMatchedRows（索引集合）排除未匹配行
+function filterBySplitMatch(l1Data, file) {
+  if (!S.splitMatchedRows || S.splitFileId !== file.id || S.splitMatchedRows.size === 0) return l1Data;
+  return l1Data.filter(r => {
+    const idx = file.raw.indexOf(r);
+    return idx >= 0 && S.splitMatchedRows.has(idx);
+  });
 }
 
 function updSbStats() {
@@ -180,8 +193,7 @@ function updSbStats() {
   document.getElementById('sAll').textContent = f.raw.length;
   // 如果在二级统计页面且有拆分数据，显示拆分后的数量
   if (S.currentStep === 'filter2' && S.splitMatchedRows && S.splitFileId === S.activeFileId && S.splitMatchedRows.size > 0) {
-    const splitFiltered = fd.filter(r => S.splitMatchedRows.has(r));
-    document.getElementById('sFil').textContent = splitFiltered.length;
+    document.getElementById('sFil').textContent = filterBySplitMatch(fd, f).length;
   } else {
     document.getElementById('sFil').textContent = fd.length;
   }
@@ -391,6 +403,79 @@ function getGroupContext(gid, l1Data, grps, cache) {
   }
   cache[gid] = ctx;
   return ctx;
+}
+
+// ========== 分组值自动清理 ==========
+// 当前过滤条件变化后，分组中某些值可能已不在过滤后数据中，自动剔除这些值
+function cleanGroupValues(file) {
+  if (!file || !file.grps.length) return false;
+  let l1Data = getFilteredData_forFile(file);
+  // 如果已执行拆分且该文件是拆分文件，排除未匹配行
+  if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
+    l1Data = filterBySplitMatch(l1Data, file);
+  }
+  // 收集每列在当前过滤数据中的可用值
+  const availByCol = {};
+  file.grps.forEach(g => {
+    if (g.column && !availByCol[g.column]) {
+      availByCol[g.column] = new Set(l1Data.map(r => String(r[g.column] ?? '').trim()).filter(v => v));
+    }
+  });
+  let changed = false;
+  // 清理每组中不在过滤数据内的值
+  file.grps.forEach(g => {
+    if (g.level === 1) return; // 1级分组没有自己的values
+    const avail = availByCol[g.column];
+    if (!avail) return;
+    const origLen = g.values.length;
+    g.values = g.values.filter(v => avail.has(String(v).trim()));
+    if (g.values.length !== origLen) changed = true;
+  });
+  // 移除值已清空的2级分组
+  const emptyGrpIds = new Set(
+    file.grps.filter(g => g.level !== 1 && g.values.length === 0).map(g => g.id)
+  );
+  if (emptyGrpIds.size) {
+    file.grps = file.grps.filter(g => !emptyGrpIds.has(g.id));
+    // 清理1级分组的childGroupIds引用
+    file.grps.filter(g => g.level === 1 && g.childGroupIds).forEach(g => {
+      g.childGroupIds = g.childGroupIds.filter(id => !emptyGrpIds.has(id));
+    });
+    // 移除无子分组的1级分组
+    file.grps = file.grps.filter(g => g.level !== 1 || (g.childGroupIds && g.childGroupIds.length > 0));
+    // 清理其他分组的parentIds引用
+    file.grps.forEach(g => {
+      if (g.parentIds && g.parentIds.length) {
+        const newPids = g.parentIds.filter(id => !emptyGrpIds.has(id) && file.grps.some(x => x.id === id));
+        const newRels = g.parentRels ? g.parentRels.filter((_, i) => i < newPids.length) : [];
+        if (newPids.length !== g.parentIds.length) {
+          g.parentIds = newPids.length ? newPids : [];
+          g.parentRels = newRels;
+          g.parentId = newPids[0] || null;
+          g.parentRel = newRels[0] || null;
+          changed = true;
+        }
+      }
+    });
+    changed = true;
+  }
+  return changed;
+}
+
+// 刷新L2数据（清理分组值 + 重新渲染L2区域）
+function refreshL2Data() {
+  const f = getActiveFile();
+  if (!f) return;
+  const changed = cleanGroupValues(f);
+  if (changed) {
+    renderGrpCards();
+    popDepGrp();
+    ntf('已自动清理与当前过滤不匹配的分组值', 'warn');
+  }
+  renderL2FileTabs();
+  // 刷新值选择面板（如果已选列）
+  const col = document.getElementById('gCol').value;
+  if (col) { renderVP2(col); showL2BaseInfo(col); }
 }
 
 // ========== 文件管理 ==========
@@ -1056,9 +1141,7 @@ function renderL2Preview() {
   if (!f || !f.raw.length) { div.style.display = 'none'; updateL2DataInfo(0, 0); return; }
   div.style.display = 'block';
   let l1Data = getFilteredData();
-  if (S.splitMatchedRows && S.splitFileId === S.activeFileId && S.splitMatchedRows.size > 0) {
-    l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
-  }
+  l1Data = filterBySplitMatch(l1Data, f);
   // 更新数据条数信息
   updateL2DataInfo(f.raw.length, l1Data.length);
   const previewRows = l1Data.slice(0, 3);
@@ -1573,6 +1656,14 @@ function calcAllStats() {
   // 检查是否有数据
   const hasData = S.files.some(f => f.raw.length > 0);
   if (!hasData) { area.innerHTML = '<div class="empty-hint">文件数据未加载，请重新上传文件后刷新</div>'; return; }
+  // 计算前自动清理与当前过滤不匹配的分组值
+  let anyCleaned = false;
+  S.files.forEach(file => { if (cleanGroupValues(file)) anyCleaned = true; });
+  if (anyCleaned) {
+    renderGrpCards();
+    popDepGrp();
+    ntf('已自动清理与当前过滤不匹配的分组值', 'warn');
+  }
   let html = '';
   S.files.forEach((file, fi) => {
     if (!file.raw.length) return; // 跳过无数据文件
@@ -1580,7 +1671,7 @@ function calcAllStats() {
     let l1Data = getFilteredData_forFile(file);
     // 如果已执行拆分且该文件是拆分文件，排除未匹配行
     if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
-      l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
+      l1Data = filterBySplitMatch(l1Data, file);
     }
     const ctxCache = {};
     const entries = [];
@@ -1757,7 +1848,7 @@ document.getElementById('exportBtn').addEventListener('click', () => {
     let l1Data = getFilteredData_forFile(file);
     // 如果已执行拆分且该文件是拆分文件，排除未匹配行
     if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
-      l1Data = l1Data.filter(r => S.splitMatchedRows.has(r));
+      l1Data = filterBySplitMatch(l1Data, file);
     }
     const ctxCache = {};
     const rows = [];
@@ -1962,6 +2053,7 @@ function showConfigPicker(configs) {
 
 function applyConfig(cfg) {
   if (!cfg.files || !cfg.files.length) { ntf('配置文件格式错误', 'error'); return; }
+  let cleanedCount = 0;
   cfg.files.forEach((fc, fi) => {
     // 按表头匹配找到对应的当前文件
     const fcSig = hdrSignature(fc.hdr);
@@ -1986,11 +2078,19 @@ function applyConfig(cfg) {
       fc.grps.forEach(g => {
         targetFile.grps.push({id: ++targetFile.gid, name: g.name, color: g.color, column: g.column, values: g.values || [], l1Dep: g.l1Dep || null, parentIds: g.parentIds || (g.parentId ? [g.parentId] : []), parentRels: g.parentRels || (g.parentRel ? [g.parentRel] : []), level: g.level || null, childGroupIds: g.childGroupIds || null});
       });
+      // 加载配置后，清理与当前过滤数据不匹配的分组值
+      const origGrpCount = targetFile.grps.length;
+      cleanGroupValues(targetFile);
+      if (targetFile.grps.length < origGrpCount) cleanedCount += origGrpCount - targetFile.grps.length;
     }
   });
   initActiveFile();
   popDepGrp();
-  ntf('配置已应用');
+  if (cleanedCount > 0) {
+    ntf(`配置已应用，已自动清理 ${cleanedCount} 个空分组`, 'warn');
+  } else {
+    ntf('配置已应用');
+  }
 }
 
 // 文件导入回退
@@ -2188,15 +2288,15 @@ async function doSplit() {
     if (!res.ok) { ntf(data.error, 'error'); overlay.style.display = 'none'; return; }
 
     S.splitResult = data;
-    // 计算拆分后匹配的行集合（用于L2统计时排除未匹配行）
+    // 计算拆分后匹配的行索引集合（用于L2统计时排除未匹配行）
     const splitColName = getSplitCol();
     if (splitColName && S.mappingData) {
       const matchedSet = new Set();
-      f.raw.forEach(row => {
+      f.raw.forEach((row, idx) => {
         const val = String(row[splitColName] ?? '').trim();
         for (const members of Object.values(S.mappingData)) {
           if (members.some(m => m === val)) {
-            matchedSet.add(row);
+            matchedSet.add(idx);
             break;
           }
         }
