@@ -348,21 +348,46 @@ function getGroupContext(gid, l1Data, grps, cache) {
       const childCtx = getGroupContext(cid, l1Data, grps, cache);
       childCtx.forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
     });
-  } else if (!g.parentId) {
+  } else if (!g.parentId && (!g.parentIds || !g.parentIds.length)) {
     const valSet = new Set(g.values.map(v => String(v).trim()));
     ctx = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
   } else {
-    const parentCtx = getGroupContext(g.parentId, l1Data, grps, cache);
-    const valSet = new Set(g.values.map(v => String(v).trim()));
-    const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
-    if (g.parentRel === 'AND') {
-      const ps = new Set(parentCtx);
-      ctx = selfMatch.filter(r => ps.has(r));
-    } else {
-      const seen = new Set();
-      ctx = [];
-      [...parentCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
-    }
+    // 支持多父分组依赖
+    const pids = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
+    const prels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
+    // 先取第一个父分组的上下文作为基础
+    let mergedCtx;
+    pids.forEach((pid, i) => {
+      const rel = prels[i] || 'AND';
+      const parentCtx = getGroupContext(pid, l1Data, grps, cache);
+      const valSet = new Set(g.values.map(v => String(v).trim()));
+      const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+      if (i === 0) {
+        // 第一个父分组
+        if (rel === 'AND') {
+          const ps = new Set(parentCtx);
+          mergedCtx = selfMatch.filter(r => ps.has(r));
+        } else {
+          const seen = new Set();
+          mergedCtx = [];
+          [...parentCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); mergedCtx.push(r); } });
+        }
+      } else {
+        // 后续父分组：与已合并的取并集
+        let nextCtx;
+        if (rel === 'AND') {
+          const ps = new Set(parentCtx);
+          nextCtx = selfMatch.filter(r => ps.has(r));
+        } else {
+          const seen2 = new Set();
+          nextCtx = [];
+          [...parentCtx, ...selfMatch].forEach(r => { if (!seen2.has(r)) { seen2.add(r); nextCtx.push(r); } });
+        }
+        const seen = new Set(mergedCtx);
+        nextCtx.forEach(r => { if (!seen.has(r)) { seen.add(r); mergedCtx.push(r); } });
+      }
+    });
+    ctx = mergedCtx;
   }
   cache[gid] = ctx;
   return ctx;
@@ -417,7 +442,23 @@ function removeFile(id) {
   if (S.activeFileId === id) {
     S.activeFileId = S.files.length ? S.files[0].id : null;
   }
+  // 清理与该文件关联的拆分状态
+  if (S.splitFileId === id) {
+    S.splitFileId = null;
+    S.splitMatchedRows = null;
+    S.splitResult = null;
+  }
   renderFileList();
+  // 刷新当前页面显示
+  if (S.files.length) {
+    renderFileTabs();
+    renderTable();
+    updHdr();
+    popGCol();
+    renderGrpCards();
+    renderL2FileTabs();
+    updSbStats();
+  }
   debouncedSave();
 }
 
