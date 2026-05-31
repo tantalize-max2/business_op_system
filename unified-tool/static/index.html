@@ -28,6 +28,9 @@
     <div class="sb-item" data-step="filter2" id="navFilter2">
       <span class="sb-num">4</span><span class="sb-label">二级统计</span>
     </div>
+    <div class="sb-item" data-step="kdocs" id="navKdocs">
+      <span class="sb-num">5</span><span class="sb-label">在线推送</span>
+    </div>
   </nav>
   <div class="sb-footer">
     <div class="theme-toggle" id="themeToggle" title="切换亮/暗模式">
@@ -209,6 +212,53 @@
       </div>
       <div id="resContent"><div class="empty-hint">点击"查看统计结果"查看分析</div></div>
     </div>
+  </section>
+
+  <!-- ====== STEP 5: KDOCS ONLINE PUSH ====== -->
+  <section class="step-panel" id="stepKdocs">
+    <div class="step-header">
+      <h1 class="step-title">在线推送</h1>
+      <p class="step-desc">管理金山文档在线表格，配置Webhook并推送本地Excel数据</p>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="kd-toolbar">
+      <button class="btn btn-primary btn-sm" id="kdAddBtn">+ 添加在线表格</button>
+      <div class="tb-sep"></div>
+      <button class="btn btn-warn btn-sm" id="kdBatchPushBtn">一键推送</button>
+      <div class="tb-spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="kdCatBtn">管理分类</button>
+      <button class="btn btn-ghost btn-sm" id="kdRefreshBtn">刷新</button>
+    </div>
+
+    <!-- 分类标签栏 -->
+    <div class="kd-cat-bar" id="kdCatBar"></div>
+
+    <!-- 一键推送区域（默认隐藏） -->
+    <div class="kd-batch-area" id="kdBatchArea" style="display:none">
+      <div class="kd-batch-header">
+        <h3>一键推送</h3>
+        <button class="btn btn-ghost btn-xs" id="kdBatchClose">&times; 关闭</button>
+      </div>
+      <div class="kd-batch-body">
+        <div class="kd-batch-folder">
+          <label>本地文件夹路径</label>
+          <div class="kd-folder-row">
+            <input type="text" id="kdBatchFolder" placeholder="输入或浏览文件夹路径...">
+            <button class="btn btn-outline btn-sm" id="kdBatchBrowseBtn">浏览</button>
+            <button class="btn btn-primary btn-sm" id="kdBatchScanBtn">扫描匹配</button>
+          </div>
+        </div>
+        <div class="kd-batch-matches" id="kdBatchMatches"></div>
+        <div class="kd-batch-actions">
+          <button class="btn btn-primary" id="kdBatchGoBtn">开始推送</button>
+        </div>
+        <div class="kd-batch-results" id="kdBatchResults" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- 在线表格列表 -->
+    <div class="kd-sheet-list" id="kdSheetList"></div>
   </section>
 
 </main>

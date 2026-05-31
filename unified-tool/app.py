@@ -10,7 +10,13 @@ import re
 import shutil
 import zipfile
 import tempfile
+import base64
+import http.client
+import ssl
+import time
+import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import pandas as pd
@@ -30,6 +36,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(CONFIGS_DIR, exist_ok=True)
 
 MAPPING_FILE = os.path.join(DATA_DIR, 'bureau_mapping.json')
+SHEETS_FILE = os.path.join(DATA_DIR, 'kdocs_sheets.json')
 
 # ============ 默认分局人员映射 ============
 DEFAULT_MAPPING = {
@@ -453,6 +460,480 @@ def download_folder(folder):
             for f in os.listdir(folder_path):
                 zf.write(os.path.join(folder_path, f), f)
     return send_file(zip_path, as_attachment=True)
+
+
+# ============ 在线表格管理 API ============
+
+KDOCS_CATS_FILE = os.path.join(DATA_DIR, 'kdocs_categories.json')
+
+def _load_kdocs_sheets():
+    """加载在线表格配置列表"""
+    if os.path.exists(SHEETS_FILE):
+        try:
+            with open(SHEETS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+def _save_kdocs_sheets(sheets):
+    """保存在线表格配置列表"""
+    with open(SHEETS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(sheets, f, ensure_ascii=False, indent=2)
+
+def _load_kdocs_cats():
+    """加载分类列表"""
+    if os.path.exists(KDOCS_CATS_FILE):
+        try:
+            with open(KDOCS_CATS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return [{'id': 'default', 'name': '默认', 'color': '#6366f1'}]
+
+def _save_kdocs_cats(cats):
+    """保存分类列表"""
+    with open(KDOCS_CATS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(cats, f, ensure_ascii=False, indent=2)
+
+
+@app.route('/api/kdocs-browse', methods=['POST'])
+def browse_local_fs():
+    """浏览本地文件系统，返回指定路径下的子目录和xlsx文件"""
+    data = request.json or {}
+    path = data.get('path', '').strip()
+
+    # 特殊路径 "__drives__" 表示列出所有盘符
+    if path == '__drives__':
+        drives = []
+        for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+            d = f'{letter}:\\'
+            if os.path.exists(d):
+                drives.append({'name': f'{letter}:', 'path': d, 'is_drive': True})
+        return jsonify({
+            'current': '__drives__',
+            'current_display': '此电脑',
+            'parent': '',
+            'dirs': drives,
+            'files': [],
+            'is_drives': True
+        })
+
+    if not path:
+        path = os.path.expanduser('~')
+    if not os.path.exists(path):
+        return jsonify({'error': f'路径不存在: {path}'}), 400
+
+    dirs = []
+    files = []
+    try:
+        for item in os.listdir(path):
+            full = os.path.join(path, item)
+            if os.path.isdir(full):
+                dirs.append({'name': item, 'path': full})
+            elif item.endswith(('.xlsx', '.xls')) and not item.startswith('~$'):
+                files.append({'name': item, 'path': full, 'size': os.path.getsize(full)})
+    except PermissionError:
+        return jsonify({'error': '无权限访问该路径'}), 400
+
+    # 判断上级目录：盘符根目录的上级回到盘符列表
+    parent = ''
+    if path and len(path) <= 3 and path.endswith(':\\'):
+        # 盘符根目录，上级回到盘符列表
+        parent = '__drives__'
+    elif path:
+        parent = os.path.dirname(path)
+        if parent == path:
+            parent = '__drives__'
+
+    return jsonify({
+        'current': path,
+        'parent': parent,
+        'dirs': sorted(dirs, key=lambda x: x['name'].lower()),
+        'files': sorted(files, key=lambda x: x['name'].lower()),
+        'is_dir': os.path.isdir(path)
+    })
+
+
+@app.route('/api/kdocs-categories', methods=['GET'])
+def list_kdocs_cats():
+    """列出所有分类"""
+    cats = _load_kdocs_cats()
+    sheets = _load_kdocs_sheets()
+    # 附加每个分类下有多少个表格
+    for c in cats:
+        c['count'] = sum(1 for s in sheets if s.get('category') == c['id'])
+    return jsonify(cats)
+
+
+@app.route('/api/kdocs-categories', methods=['POST'])
+def add_kdocs_cat():
+    """添加分类"""
+    data = request.json or {}
+    name = data.get('name', '').strip()
+    color = data.get('color', '#6366f1').strip()
+    if not name:
+        return jsonify({'error': '分类名不能为空'}), 400
+    cats = _load_kdocs_cats()
+    if any(c['name'] == name for c in cats):
+        return jsonify({'error': '分类名已存在'}), 400
+    cat = {'id': str(uuid.uuid4())[:8], 'name': name, 'color': color}
+    cats.append(cat)
+    _save_kdocs_cats(cats)
+    return jsonify({'message': '添加成功', 'category': cat})
+
+
+@app.route('/api/kdocs-categories/<cid>', methods=['DELETE'])
+def delete_kdocs_cat(cid):
+    """删除分类"""
+    cats = _load_kdocs_cats()
+    # 不允许删除默认分类
+    cats = [c for c in cats if not (c['id'] == cid and c['id'] == 'default')]
+    _save_kdocs_cats(cats)
+    # 将属于该分类的表格移至默认分类
+    sheets = _load_kdocs_sheets()
+    for s in sheets:
+        if s.get('category') == cid:
+            s['category'] = 'default'
+    _save_kdocs_sheets(sheets)
+    return jsonify({'message': '已删除'})
+
+
+@app.route('/api/kdocs-sheets', methods=['GET'])
+def list_kdocs_sheets():
+    """列出所有在线表格配置"""
+    sheets = _load_kdocs_sheets()
+    cat_id = request.args.get('category', '')
+    if cat_id:
+        sheets = [s for s in sheets if s.get('category', 'default') == cat_id]
+    return jsonify(sheets)
+
+
+@app.route('/api/kdocs-sheets', methods=['POST'])
+def add_kdocs_sheet():
+    """添加在线表格配置"""
+    data = request.json or {}
+    name = data.get('name', '').strip()
+    url = data.get('url', '').strip()
+    api_token = data.get('api_token', '').strip()
+    webhook_url = data.get('webhook_url', '').strip()
+    excel_path = data.get('excel_path', '').strip()
+    batch_size = data.get('batch_size', 3)
+    category = data.get('category', 'default')
+
+    if not name or not url:
+        return jsonify({'error': '名称和URL不能为空'}), 400
+
+    sheets = _load_kdocs_sheets()
+
+    sheet = {
+        'id': str(uuid.uuid4())[:8],
+        'name': name,
+        'url': url,
+        'api_token': api_token,
+        'webhook_url': webhook_url,
+        'excel_path': excel_path,
+        'batch_size': batch_size,
+        'category': category,
+        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    sheets.append(sheet)
+    _save_kdocs_sheets(sheets)
+    return jsonify({'message': '添加成功', 'sheet': sheet})
+
+
+@app.route('/api/kdocs-sheets/<sid>', methods=['PUT'])
+def update_kdocs_sheet(sid):
+    """更新在线表格配置"""
+    data = request.json or {}
+    sheets = _load_kdocs_sheets()
+    for s in sheets:
+        if s['id'] == sid:
+            for k in ['name', 'url', 'api_token', 'webhook_url', 'excel_path', 'batch_size', 'category']:
+                if k in data:
+                    s[k] = data[k]
+            s['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            _save_kdocs_sheets(sheets)
+            return jsonify({'message': '更新成功', 'sheet': s})
+    return jsonify({'error': '未找到该配置'}), 404
+
+
+@app.route('/api/kdocs-sheets/<sid>', methods=['DELETE'])
+def delete_kdocs_sheet(sid):
+    """删除在线表格配置"""
+    sheets = _load_kdocs_sheets()
+    sheets = [s for s in sheets if s['id'] != sid]
+    _save_kdocs_sheets(sheets)
+    return jsonify({'message': '删除成功'})
+
+
+@app.route('/api/kdocs-push', methods=['POST'])
+def push_to_kdocs():
+    """将本地Excel数据推送到金山文档在线表格"""
+    data = request.json or {}
+    sid = data.get('id', '')
+    excel_path = data.get('excel_path', '')
+
+    sheets = _load_kdocs_sheets()
+    sheet_cfg = None
+    for s in sheets:
+        if s['id'] == sid:
+            sheet_cfg = s
+            break
+
+    if not sheet_cfg:
+        return jsonify({'error': '未找到该在线表格配置'}), 404
+
+    api_token = sheet_cfg.get('api_token', '')
+    webhook_url = sheet_cfg.get('webhook_url', '')
+    batch_size = sheet_cfg.get('batch_size', 3)
+
+    if not api_token or not webhook_url:
+        return jsonify({'error': 'API_TOKEN 或 WEBHOOK_URL 未配置'}), 400
+
+    # 如果传了excel_path则优先使用，否则用配置中的
+    if not excel_path:
+        excel_path = sheet_cfg.get('excel_path', '')
+    if not excel_path:
+        return jsonify({'error': '未指定本地Excel文件路径'}), 400
+
+    if not os.path.exists(excel_path):
+        return jsonify({'error': f'文件不存在: {excel_path}'}), 400
+
+    # 解析webhook URL
+    parsed = urlparse(webhook_url)
+    host = parsed.hostname or "www.kdocs.cn"
+    path = parsed.path
+
+    # 测试连接
+    try:
+        conn = http.client.HTTPSConnection(host, context=ssl._create_unverified_context(), timeout=15)
+        payload = json.dumps({"Context": {"argv": {"action": "info"}}}, ensure_ascii=False)
+        headers = {"Content-Type": "application/json", "AirScript-Token": api_token}
+        conn.request("POST", path, payload.encode("utf-8"), headers)
+        res = conn.getresponse()
+        result = json.loads(res.read().decode("utf-8"))
+        conn.close()
+        if result.get("error"):
+            return jsonify({'error': f'Webhook连接异常: {result["error"]}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Webhook连接失败: {str(e)}'}), 500
+
+    # 读取Excel
+    try:
+        df = pd.read_excel(excel_path)
+        columns = list(df.columns)
+        rows = []
+        for _, row in df.iterrows():
+            row_data = {}
+            for col in columns:
+                val = row[col]
+                if pd.isna(val):
+                    row_data[col] = ""
+                elif isinstance(val, float) and val == int(val):
+                    row_data[col] = int(val)
+                else:
+                    row_data[col] = str(val)
+            rows.append(row_data)
+    except Exception as e:
+        return jsonify({'error': f'读取Excel失败: {str(e)}'}), 500
+
+    # 分批写入
+    total_batches = (len(rows) + batch_size - 1) // batch_size
+    success_count = 0
+    fail_count = 0
+    details = []
+
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i + batch_size]
+        batch_num = i // batch_size + 1
+        try:
+            conn = http.client.HTTPSConnection(host, context=ssl._create_unverified_context(), timeout=30)
+            pl = json.dumps({"Context": {"argv": {"columns": columns, "rows": batch}}}, ensure_ascii=False)
+            headers = {"Content-Type": "application/json", "AirScript-Token": api_token}
+            conn.request("POST", path, pl.encode("utf-8"), headers)
+            resp = conn.getresponse()
+            result = json.loads(resp.read().decode("utf-8"))
+            conn.close()
+
+            error = result.get("error", "")
+            if error:
+                fail_count += len(batch)
+                details.append(f"批{batch_num}: 失败 - {error}")
+                continue
+
+            script_result = result.get("data", {}).get("result", "")
+            try:
+                ret = script_result
+                if isinstance(ret, str) and ret and ret != "[Undefined]":
+                    ret = json.loads(ret)
+                if isinstance(ret, dict) and ret.get("success"):
+                    success_count += ret.get("writeCount", len(batch))
+                    details.append(f"批{batch_num}: 成功 - 写入{ret.get('writeCount','?')}行 (起始行{ret.get('startRow','?')})")
+                else:
+                    fail_count += len(batch)
+                    details.append(f"批{batch_num}: 脚本返回错误 - {str(ret)[:100]}")
+            except Exception as e:
+                fail_count += len(batch)
+                details.append(f"批{batch_num}: 解析异常 - {str(e)}")
+
+        except Exception as e:
+            fail_count += len(batch)
+            details.append(f"批{batch_num}: 请求异常 - {str(e)}")
+
+        if i + batch_size < len(rows):
+            time.sleep(1.5)
+
+    return jsonify({
+        'message': f'推送完成：成功 {success_count} 行，失败 {fail_count} 行',
+        'success_count': success_count,
+        'fail_count': fail_count,
+        'total_rows': len(rows),
+        'details': details
+    })
+
+
+@app.route('/api/kdocs-push-batch', methods=['POST'])
+def push_to_kdocs_batch():
+    """一键推送：只推送与在线表格名称匹配的本地Excel文件"""
+    data = request.json or {}
+    folder_path = data.get('folder_path', '').strip()
+
+    if not folder_path or not os.path.isdir(folder_path):
+        return jsonify({'error': '文件夹路径无效'}), 400
+
+    sheets = _load_kdocs_sheets()
+    if not sheets:
+        return jsonify({'error': '暂无在线表格配置'}), 400
+
+    # 扫描文件夹下所有xlsx文件
+    local_files = {}
+    for f in os.listdir(folder_path):
+        if f.endswith(('.xlsx', '.xls')) and not f.startswith('~$'):
+            local_files[f.lower()] = os.path.join(folder_path, f)
+
+    results = []
+    for s in sheets:
+        # 模糊匹配：去掉扩展名后进行子串匹配（双向包含）
+        online_name = s['name'].replace('.xlsx', '').replace('.xls', '').lower()
+        matched_file = None
+        matched_name = None
+        for lf_name, lf_path in local_files.items():
+            lf_base = lf_name.replace('.xlsx', '').replace('.xls', '')
+            # 双向子串匹配：AAAB匹配AAABB
+            if online_name and lf_base and (online_name in lf_base or lf_base in online_name):
+                matched_file = lf_path
+                matched_name = lf_name
+                break
+
+        if not matched_file:
+            continue  # 未匹配的跳过，不推送也不报错
+
+        if not s.get('api_token') or not s.get('webhook_url'):
+            results.append({'id': s['id'], 'name': s['name'], 'file': matched_name, 'status': 'skip', 'message': 'API_TOKEN或WEBHOOK_URL未配置'})
+            continue
+
+        # 调用推送逻辑
+        push_result = _do_push(s, matched_file)
+        results.append({
+            'id': s['id'],
+            'name': s['name'],
+            'file': matched_name,
+            'status': 'ok' if push_result.get('fail_count', 0) == 0 else 'partial',
+            'success_count': push_result.get('success_count', 0),
+            'fail_count': push_result.get('fail_count', 0),
+            'message': push_result.get('message', '')
+        })
+
+    return jsonify({'results': results, 'total_matched': len(results)})
+
+
+def _do_push(sheet_cfg, excel_path):
+    """执行单个推送（内部函数）"""
+    api_token = sheet_cfg.get('api_token', '')
+    webhook_url = sheet_cfg.get('webhook_url', '')
+    batch_size = sheet_cfg.get('batch_size', 3)
+
+    parsed = urlparse(webhook_url)
+    host = parsed.hostname or "www.kdocs.cn"
+    path = parsed.path
+
+    # 读取Excel
+    try:
+        df = pd.read_excel(excel_path)
+        columns = list(df.columns)
+        rows = []
+        for _, row in df.iterrows():
+            row_data = {}
+            for col in columns:
+                val = row[col]
+                if pd.isna(val):
+                    row_data[col] = ""
+                elif isinstance(val, float) and val == int(val):
+                    row_data[col] = int(val)
+                else:
+                    row_data[col] = str(val)
+            rows.append(row_data)
+    except Exception as e:
+        return {'success_count': 0, 'fail_count': 0, 'message': f'读取Excel失败: {str(e)}'}
+
+    success_count = 0
+    fail_count = 0
+
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i + batch_size]
+        try:
+            conn = http.client.HTTPSConnection(host, context=ssl._create_unverified_context(), timeout=30)
+            pl = json.dumps({"Context": {"argv": {"columns": columns, "rows": batch}}}, ensure_ascii=False)
+            headers = {"Content-Type": "application/json", "AirScript-Token": api_token}
+            conn.request("POST", path, pl.encode("utf-8"), headers)
+            resp = conn.getresponse()
+            result = json.loads(resp.read().decode("utf-8"))
+            conn.close()
+
+            error = result.get("error", "")
+            if error:
+                fail_count += len(batch)
+                continue
+
+            script_result = result.get("data", {}).get("result", "")
+            ret = script_result
+            if isinstance(ret, str) and ret and ret != "[Undefined]":
+                try:
+                    ret = json.loads(ret)
+                except:
+                    pass
+            if isinstance(ret, dict) and ret.get("success"):
+                success_count += ret.get("writeCount", len(batch))
+            else:
+                fail_count += len(batch)
+        except:
+            fail_count += len(batch)
+
+        if i + batch_size < len(rows):
+            time.sleep(1.5)
+
+    msg = f'成功 {success_count} 行，失败 {fail_count} 行'
+    return {'success_count': success_count, 'fail_count': fail_count, 'message': msg}
+
+
+@app.route('/api/kdocs-folder-scan', methods=['POST'])
+def scan_folder():
+    """扫描文件夹，列出所有Excel文件"""
+    data = request.json or {}
+    folder_path = data.get('folder_path', '').strip()
+    if not folder_path or not os.path.isdir(folder_path):
+        return jsonify({'error': '文件夹路径无效'}), 400
+
+    files = []
+    for f in os.listdir(folder_path):
+        if f.endswith(('.xlsx', '.xls')) and not f.startswith('~$'):
+            fpath = os.path.join(folder_path, f)
+            fsize = os.path.getsize(fpath)
+            files.append({'name': f, 'path': fpath, 'size': fsize})
+
+    return jsonify({'files': files, 'count': len(files)})
 
 
 if __name__ == '__main__':
