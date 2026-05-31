@@ -864,8 +864,15 @@ body {
 .kb-drive .kb-name { font-weight:600; color:var(--t1); }
 
 /* 脚本代码查看 */
-.kd-script-pre {
-  margin:0; padding:16px; background:var(--bg); font:12px/1.6 'IBM Plex Mono',var(--mf),monospace;
-  color:var(--t1); white-space:pre; overflow-x:auto; tab-size:2;
+.kd-script-editor {
+  width:100%; min-height:400px; margin:0; padding:16px; border:none;
+  background:var(--bg); font:12px/1.6 'IBM Plex Mono',var(--mf),monospace;
+  color:var(--t1); white-space:pre; resize:none; outline:none; tab-size:2;
+  box-sizing:border-box;
 }
+.kd-script-editor:focus { background:var(--bg2); }
 .kd-script-hint { font-size:11px; color:var(--t3); }
+.kd-script-badge {
+  font-size:10px; padding:2px 8px; border-radius:4px; margin-left:8px;
+  background:rgba(251,191,36,.15); color:var(--wn); font-weight:600;
+}

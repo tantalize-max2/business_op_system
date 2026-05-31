@@ -932,6 +932,20 @@ def get_airscript_code():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/kdocs-airscript-code', methods=['PUT'])
+def save_airscript_code():
+    """保存airscript_code.js脚本内容"""
+    data = request.json or {}
+    code = data.get('code', '')
+    code_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'airscript_code.js')
+    try:
+        with open(code_path, 'w', encoding='utf-8') as f:
+            f.write(code)
+        return jsonify({'message': '保存成功'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/kdocs-folder-scan', methods=['POST'])
 def scan_folder():
     """扫描文件夹，列出所有Excel文件"""

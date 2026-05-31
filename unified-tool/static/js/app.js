@@ -3190,32 +3190,84 @@ document.getElementById('kdShowScriptBtn').addEventListener('click', async () =>
   overlay.className = 'fd-overlay vis';
   const dd = document.createElement('div');
   dd.className = 'fd-dropdown vis';
-  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:640px;max-height:80vh;display:flex;flex-direction:column;';
+  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-height:80vh;display:flex;flex-direction:column;';
 
-  let codeContent = '';
-  try {
-    const res = await fetch('/api/kdocs-airscript-code');
-    const data = await res.json();
-    if (data.error) { ntf(data.error, 'error'); overlay.remove(); dd.remove(); return; }
-    codeContent = data.code || '';
-  } catch (e) {
-    ntf('获取脚本代码失败', 'error'); overlay.remove(); dd.remove(); return;
+  // 从后端加载脚本代码
+  async function loadCode() {
+    try {
+      const res = await fetch('/api/kdocs-airscript-code');
+      const data = await res.json();
+      if (data.error) { ntf(data.error, 'error'); return ''; }
+      return data.code || '';
+    } catch (e) {
+      ntf('获取脚本代码失败', 'error'); return '';
+    }
   }
 
-  dd.innerHTML = `<div class="fd-head"><span class="fd-cn">AirScript 脚本代码</span></div>
-    <div style="padding:0;flex:1;overflow-y:auto;position:relative">
-      <pre class="kd-script-pre"><code>${esc(codeContent)}</code></pre>
+  let codeContent = await loadCode();
+  if (!codeContent) { overlay.remove(); dd.remove(); return; }
+
+  dd.innerHTML = `<div class="fd-head"><span class="fd-cn">AirScript 脚本代码</span><span class="kd-script-badge" id="kdScriptModified" style="display:none">已修改</span></div>
+    <div style="padding:0;flex:1;overflow:auto;position:relative">
+      <textarea class="kd-script-editor" id="kdScriptEditor" spellcheck="false"></textarea>
     </div>
-    <div class="fd-foot"><span class="kd-script-hint">复制后粘贴到金山文档 AirScript 脚本编辑器中使用</span><div class="fd-btns">
-      <button class="btn btn-ghost btn-xs" id="kdScriptClose">关闭</button>
+    <div class="fd-foot"><span class="kd-script-hint">编辑后可保存到文件，或一键复制粘贴到金山文档脚本编辑器</span><div class="fd-btns">
+      <button class="btn btn-ghost btn-xs" id="kdScriptRestore" title="还原为文件中的原始代码">一键还原</button>
+      <button class="btn btn-outline btn-xs" id="kdScriptSave">保存</button>
       <button class="btn btn-primary btn-xs" id="kdScriptCopy">一键复制</button>
+      <button class="btn btn-ghost btn-xs" id="kdScriptClose">关闭</button>
     </div></div>`;
   document.body.appendChild(overlay);
   document.body.appendChild(dd);
 
-  dd.querySelector('#kdScriptCopy').addEventListener('click', () => {
-    navigator.clipboard.writeText(codeContent).then(() => ntf('已复制到剪贴板')).catch(() => ntf('复制失败', 'error'));
+  const editor = dd.querySelector('#kdScriptEditor');
+  const modifiedBadge = dd.querySelector('#kdScriptModified');
+  let originalCode = codeContent;
+  let lastSavedCode = codeContent;
+
+  editor.value = codeContent;
+
+  // 监听编辑：显示"已修改"标记
+  editor.addEventListener('input', () => {
+    const changed = editor.value !== lastSavedCode;
+    modifiedBadge.style.display = changed ? '' : 'none';
   });
+
+  // 一键复制
+  dd.querySelector('#kdScriptCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(editor.value).then(() => ntf('已复制到剪贴板')).catch(() => ntf('复制失败', 'error'));
+  });
+
+  // 一键还原
+  dd.querySelector('#kdScriptRestore').addEventListener('click', async () => {
+    const fresh = await loadCode();
+    if (fresh) {
+      editor.value = fresh;
+      originalCode = fresh;
+      lastSavedCode = fresh;
+      modifiedBadge.style.display = 'none';
+      ntf('已还原为原始代码');
+    }
+  });
+
+  // 保存
+  dd.querySelector('#kdScriptSave').addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/kdocs-airscript-code', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ code: editor.value })
+      });
+      const data = await res.json();
+      if (data.error) { ntf(data.error, 'error'); return; }
+      lastSavedCode = editor.value;
+      modifiedBadge.style.display = 'none';
+      ntf('脚本代码已保存');
+    } catch (e) {
+      ntf('保存失败: ' + e.message, 'error');
+    }
+  });
+
   const close = () => { overlay.remove(); dd.remove(); };
   overlay.addEventListener('click', close);
   dd.querySelector('#kdScriptClose').addEventListener('click', close);
