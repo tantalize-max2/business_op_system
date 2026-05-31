@@ -1,26 +1,25 @@
 // ========== 主题切换（必须在最前面，防止闪烁） ==========
+const THEMES = ['light', 'dark', 'eyecare'];
+const THEME_LABELS = { light: '白天', dark: '黑夜', eyecare: '护眼' };
+const THEME_ICONS = { light: '&#9728;', dark: '&#9790;', eyecare: '&#127811;' };
+
 (function initTheme() {
   const saved = localStorage.getItem('ba-theme');
-  const preferDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const theme = saved || (preferDark ? 'dark' : 'light');
+  const theme = saved && THEMES.includes(saved) ? saved : 'light';
   document.documentElement.setAttribute('data-theme', theme);
 })();
 
 function applyThemeUI(theme) {
   const icon = document.getElementById('themeIcon');
   const label = document.getElementById('themeLabel');
-  if (theme === 'light') {
-    icon.innerHTML = '&#9728;'; // 太阳
-    label.textContent = '亮色';
-  } else {
-    icon.innerHTML = '&#9790;'; // 月亮
-    label.textContent = '暗色';
-  }
+  if (icon) icon.innerHTML = THEME_ICONS[theme] || THEME_ICONS.light;
+  if (label) label.textContent = THEME_LABELS[theme] || '白天';
 }
 
 function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme') || 'dark';
-  const next = current === 'dark' ? 'light' : 'dark';
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  const idx = THEMES.indexOf(current);
+  const next = THEMES[(idx + 1) % THEMES.length];
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('ba-theme', next);
   applyThemeUI(next);
@@ -2087,7 +2086,7 @@ function buildConfigData() {
   f.hdr.forEach(col => {
     fc.l1[col] = {checked: f.l1[col].checked ? [...f.l1[col].checked] : null, cascade: f.l1[col].cascade || false, dependCol: f.l1[col].dependCol || null, sort: f.l1[col].sort || null, condOn: f.l1[col].condOn || false, condOp: f.l1[col].condOp || 'eq', condVal: f.l1[col].condVal || ''};
   });
-  return {files: [fc]};
+  return {files: [fc], mappingData: S.mappingData && Object.keys(S.mappingData).length ? S.mappingData : null};
 }
 
 function saveGlobalConfig() {
@@ -2282,6 +2281,12 @@ function applyConfig(cfg) {
       if (targetFile.grps.length < origGrpCount) cleanedCount += origGrpCount - targetFile.grps.length;
     }
   });
+  // 恢复分局映射排序
+  if (cfg.mappingData && typeof cfg.mappingData === 'object') {
+    S.mappingData = cfg.mappingData;
+    saveMapping();
+    renderMapping();
+  }
   initActiveFile();
   popDepGrp();
   if (cleanedCount > 0) {
@@ -2320,7 +2325,7 @@ function renderMapping() {
   keys.forEach((bureau, i) => {
     const managers = S.mappingData[bureau];
     html += `<div class="bureau-card" data-index="${i}" data-bureau="${esc(bureau)}" draggable="true">
-      <div class="bureau-header" onclick="toggleBureau(this)">
+      <div class="bureau-header">
         <div style="display:flex;align-items:center;gap:10px;">
           <span class="arrow">▶</span>
           <span class="bureau-name">${esc(bureau)}</span>
@@ -2342,6 +2347,13 @@ function renderMapping() {
     </div>`;
   });
   list.innerHTML = html;
+  // 绑定分局卡片点击展开/折叠
+  list.querySelectorAll('.bureau-header').forEach(hdr => {
+    hdr.addEventListener('click', e => {
+      if (e.target.closest('.mapping-actions')) return;
+      hdr.closest('.bureau-card').classList.toggle('open');
+    });
+  });
   bindBureauDrag(list);
 }
 
