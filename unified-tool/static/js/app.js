@@ -2742,8 +2742,8 @@ function renderKdocsList() {
     });
     for (const [catId, group] of Object.entries(grouped)) {
       if (!group.items.length) continue;
-      html += `<div class="kd-group">
-        <div class="kd-group-header"><span class="kd-cat-dot" style="background:${group.color}"></span><span class="kd-group-name">${esc(group.name)}</span><span class="kd-group-count">${group.items.length}个</span></div>
+      html += `<div class="kd-group" data-catid="${catId}">
+        <div class="kd-group-header" data-catid="${catId}"><span class="kd-collapse-arrow">&#9660;</span><span class="kd-cat-dot" style="background:${group.color}"></span><span class="kd-group-name">${esc(group.name)}</span><span class="kd-group-count">${group.items.length}个</span></div>
         <div class="kd-group-body">`;
       group.items.forEach(s => { html += renderKdocsCard(s); });
       html += '</div></div>';
@@ -2752,6 +2752,25 @@ function renderKdocsList() {
     KD.sheets.forEach(s => { html += renderKdocsCard(s); });
   }
   div.innerHTML = html;
+
+  // 绑定分类折叠事件
+  div.querySelectorAll('.kd-group-header').forEach(h => {
+    h.addEventListener('click', () => {
+      const group = h.parentElement;
+      const body = group.querySelector('.kd-group-body');
+      const arrow = h.querySelector('.kd-collapse-arrow');
+      const collapsed = group.classList.toggle('kd-collapsed');
+      if (collapsed) {
+        body.style.maxHeight = '0';
+        body.style.overflow = 'hidden';
+        arrow.innerHTML = '&#9654;';
+      } else {
+        body.style.maxHeight = '';
+        body.style.overflow = '';
+        arrow.innerHTML = '&#9660;';
+      }
+    });
+  });
 
   // 绑定卡片事件
   div.querySelectorAll('.kd-open-btn').forEach(b => b.addEventListener('click', () => {
@@ -3033,6 +3052,11 @@ async function pushKdocsSingle(sid) {
     } else {
       if (statusEl) { statusEl.textContent = `成功${data.success_count}行/失败${data.fail_count}行`; statusEl.className = 'kd-card-status ' + (data.fail_count > 0 ? 'partial' : 'ok'); }
       ntf(data.message, data.fail_count > 0 ? 'warn' : 'success');
+      // 推送成功后清除本地Excel路径
+      try {
+        await fetch(`/api/kdocs-sheets/${sid}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ excel_path: '' }) });
+        loadKdocsSheets();
+      } catch(e) {}
     }
   } catch (e) {
     if (statusEl) { statusEl.textContent = '推送失败'; statusEl.className = 'kd-card-status error'; }

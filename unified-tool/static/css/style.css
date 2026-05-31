@@ -821,11 +821,20 @@ body {
 .kd-group-header {
   display:flex; align-items:center; gap:8px; padding:8px 14px;
   background:var(--bg3); border:1px solid var(--bd); border-radius:10px;
-  font-size:13px; font-weight:700; margin-bottom:8px;
+  font-size:13px; font-weight:700; margin-bottom:8px; cursor:pointer;
+  transition:background .15s;
+}
+.kd-group-header:hover { background:var(--acg); }
+.kd-collapse-arrow {
+  font-size:10px; color:var(--t3); transition:transform .2s; flex-shrink:0;
 }
 .kd-group-name { flex:1; }
 .kd-group-count { font-size:10px; color:var(--t3); font-family:var(--mf); }
-.kd-group-body { display:flex; flex-direction:column; gap:10px; }
+.kd-group-body {
+  display:flex; flex-direction:column; gap:10px;
+  transition:max-height .25s ease;
+}
+.kd-collapsed .kd-group-header { margin-bottom:0; }
 
 /* 双列表单 */
 .kd-form-2col { display:flex; gap:10px; }
