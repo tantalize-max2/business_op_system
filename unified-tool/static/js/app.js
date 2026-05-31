@@ -1814,11 +1814,15 @@ function calcAllStats() {
     const l1Groups = file.grps.filter(g => g.level === 1 && g.childGroupIds && g.childGroupIds.length);
     // 按L1分组归类entries
     const l1Entries = {}; // l1id -> [entries]
-    const standaloneEntries = []; // 无L1分组的独立条目
+    const standaloneEntries = []; // 不属于任何L1分组的独立条目
+    // 构建L1子分组ID集合，用于判断L2归属
+    const l1ChildSet = new Set();
+    l1Groups.forEach(l1g => { (l1g.childGroupIds || []).forEach(cid => l1ChildSet.add(cid)); });
+
     file.grps.forEach(g => {
       // 1级分组：不直接展示
       if (g.level === 1) return;
-      // 2级分组依托1级分组
+      // 2级分组依托1级分组（通过parentIds或childGroupIds）
       const parentIds = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
       const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
       if (parentIds.length > 0) {
@@ -1881,14 +1885,26 @@ function calcAllStats() {
         });
         return;
       }
-      // 普通分组（无依赖）
+      // 普通分组（无依赖）——判断是否属于某个L1的childGroupIds
       const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
-      let depLabel = g.l1Dep ? `L1:${g.l1Dep.col}` : '';
-      depLabel += ' (独立)';
-      const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel};
-      if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-      file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-      standaloneEntries.push(entry);
+      // 查找包含此分组ID的L1
+      const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
+      if (ownerL1) {
+        // 归属到L1分组下展示
+        let depLabel = `L1:${ownerL1.name}`;
+        const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, l1Name: ownerL1.name, l1Id: ownerL1.id};
+        if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+        file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
+        if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
+        l1Entries[ownerL1.id].push(entry);
+      } else {
+        // 真正独立的L2分组
+        let depLabel = '(独立)';
+        const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel};
+        if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+        file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
+        standaloneEntries.push(entry);
+      }
     });
 
     // 为每个1级分组生成合计行
@@ -2023,7 +2039,9 @@ function calcAllStats() {
   area.querySelectorAll('[data-toggle-acc]').forEach(hdr => {
     hdr.addEventListener('click', e => {
       const key = hdr.dataset.toggleAcc;
-      const body = area.querySelector(`[data-accbody="${key}"]`);
+      // 在最近的文件section内查找body，避免多文件时key冲突
+      const section = hdr.closest('.rv-section');
+      const body = section ? section.querySelector(`[data-accbody="${key}"]`) : null;
       const acc = hdr.closest('.rv-acc');
       if (body) {
         body.classList.toggle('rv-acc-body-hidden');
