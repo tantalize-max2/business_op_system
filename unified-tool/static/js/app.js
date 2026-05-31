@@ -2380,6 +2380,7 @@ function bindBureauDrag(container) {
       entries.splice(iTo, 0, moved);
       S.mappingData = Object.fromEntries(entries);
       renderMapping();
+      saveMapping();
       ntf('分局顺序已调整');
     });
   });
