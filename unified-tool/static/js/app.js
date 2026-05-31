@@ -3183,3 +3183,40 @@ document.getElementById('kdBatchGoBtn').addEventListener('click', async () => {
 // 添加按钮
 document.getElementById('kdAddBtn').addEventListener('click', () => showKdocsEditDialog(null));
 document.getElementById('kdRefreshBtn').addEventListener('click', () => { loadKdocsSheets(); loadKdocsCats(); });
+
+// 脚本代码查看按钮
+document.getElementById('kdShowScriptBtn').addEventListener('click', async () => {
+  const overlay = document.createElement('div');
+  overlay.className = 'fd-overlay vis';
+  const dd = document.createElement('div');
+  dd.className = 'fd-dropdown vis';
+  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:640px;max-height:80vh;display:flex;flex-direction:column;';
+
+  let codeContent = '';
+  try {
+    const res = await fetch('/api/kdocs-airscript-code');
+    const data = await res.json();
+    if (data.error) { ntf(data.error, 'error'); overlay.remove(); dd.remove(); return; }
+    codeContent = data.code || '';
+  } catch (e) {
+    ntf('获取脚本代码失败', 'error'); overlay.remove(); dd.remove(); return;
+  }
+
+  dd.innerHTML = `<div class="fd-head"><span class="fd-cn">AirScript 脚本代码</span></div>
+    <div style="padding:0;flex:1;overflow-y:auto;position:relative">
+      <pre class="kd-script-pre"><code>${esc(codeContent)}</code></pre>
+    </div>
+    <div class="fd-foot"><span class="kd-script-hint">复制后粘贴到金山文档 AirScript 脚本编辑器中使用</span><div class="fd-btns">
+      <button class="btn btn-ghost btn-xs" id="kdScriptClose">关闭</button>
+      <button class="btn btn-primary btn-xs" id="kdScriptCopy">一键复制</button>
+    </div></div>`;
+  document.body.appendChild(overlay);
+  document.body.appendChild(dd);
+
+  dd.querySelector('#kdScriptCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(codeContent).then(() => ntf('已复制到剪贴板')).catch(() => ntf('复制失败', 'error'));
+  });
+  const close = () => { overlay.remove(); dd.remove(); };
+  overlay.addEventListener('click', close);
+  dd.querySelector('#kdScriptClose').addEventListener('click', close);
+});

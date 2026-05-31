@@ -862,3 +862,10 @@ body {
 .kb-name { flex:1; color:var(--t2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .kb-size { font-size:10px; color:var(--t3); font-family:var(--mf); flex-shrink:0; }
 .kb-drive .kb-name { font-weight:600; color:var(--t1); }
+
+/* 脚本代码查看 */
+.kd-script-pre {
+  margin:0; padding:16px; background:var(--bg); font:12px/1.6 'IBM Plex Mono',var(--mf),monospace;
+  color:var(--t1); white-space:pre; overflow-x:auto; tab-size:2;
+}
+.kd-script-hint { font-size:11px; color:var(--t3); }

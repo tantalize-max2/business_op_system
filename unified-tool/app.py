@@ -918,6 +918,20 @@ def _do_push(sheet_cfg, excel_path):
     return {'success_count': success_count, 'fail_count': fail_count, 'message': msg}
 
 
+@app.route('/api/kdocs-airscript-code', methods=['GET'])
+def get_airscript_code():
+    """获取airscript_code.js脚本内容"""
+    code_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'airscript_code.js')
+    if not os.path.exists(code_path):
+        return jsonify({'error': 'airscript_code.js 文件不存在'}), 404
+    try:
+        with open(code_path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        return jsonify({'code': code})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/kdocs-folder-scan', methods=['POST'])
 def scan_folder():
     """扫描文件夹，列出所有Excel文件"""
