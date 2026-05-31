@@ -357,6 +357,9 @@ function getSortedData(data) {
 // ========== L2 GROUP CONTEXT ==========
 function getGroupContext(gid, l1Data, grps, cache) {
   if (cache[gid]) return cache[gid];
+  // 防止循环依赖：标记正在计算
+  if (cache['_calc_' + gid]) return [];
+  cache['_calc_' + gid] = true;
   const g = grps.find(x => x.id === gid);
   let ctx;
   // 1级分组：聚合所有子分组的上下文
@@ -378,7 +381,20 @@ function getGroupContext(gid, l1Data, grps, cache) {
     let mergedCtx;
     pids.forEach((pid, i) => {
       const rel = prels[i] || 'AND';
-      const parentCtx = getGroupContext(pid, l1Data, grps, cache);
+      const pg = grps.find(x => x.id === pid);
+      // 如果父分组是L1分组，直接用L1的子分组数据（不走递归），避免循环依赖
+      let parentCtx;
+      if (pg && pg.level === 1 && pg.childGroupIds && pg.childGroupIds.length) {
+        const seen = new Set();
+        parentCtx = [];
+        pg.childGroupIds.forEach(cid => {
+          // 只取不在当前分组依赖链中的子分组上下文
+          const cc = getGroupContext(cid, l1Data, grps, cache);
+          cc.forEach(r => { if (!seen.has(r)) { seen.add(r); parentCtx.push(r); } });
+        });
+      } else {
+        parentCtx = getGroupContext(pid, l1Data, grps, cache);
+      }
       const valSet = new Set(g.values.map(v => String(v).trim()));
       const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
       if (i === 0) {
@@ -1524,73 +1540,96 @@ function showEditGroupDialog(gid) {
 
 /* ===== 分组拖拽：排序 + 拖入1级分组 ===== */
 let _dragGid = null;
+let _dragSource = null; // 'top' | 'l1body' — 拖拽来源区域
 function bindGrpDrag(container) {
-  // 2级分组卡片作为拖拽源
+  const f = getActiveFile();
+  if (!f) return;
+
+  // ---- 拖拽源：2级分组卡片 ----
   container.querySelectorAll('[data-gid]').forEach(el => {
     el.addEventListener('dragstart', e => {
       _dragGid = +el.dataset.gid;
+      _dragSource = el.closest('.gc-l1-body') ? 'l1body' : 'top';
       e.dataTransfer.effectAllowed = 'move';
       el.classList.add('gc-dragging');
+      // 给所有L1 body加提示
       container.querySelectorAll('.gc-l1-body').forEach(b => b.classList.add('gc-l1-drop-hint'));
     });
     el.addEventListener('dragend', () => {
       el.classList.remove('gc-dragging');
-      _dragGid = null;
+      _dragGid = null; _dragSource = null;
       container.querySelectorAll('.gc-l1-drop-hint').forEach(b => b.classList.remove('gc-l1-drop-hint'));
       container.querySelectorAll('.gc-drop-over').forEach(b => b.classList.remove('gc-drop-over'));
       container.querySelectorAll('.gc-reorder-over').forEach(b => b.classList.remove('gc-reorder-over'));
     });
   });
-  // 1级分组容器作为拖拽源
+
+  // ---- 拖拽源：1级分组卡片 ----
   container.querySelectorAll('.gc-l1-card[draggable]').forEach(el => {
     el.addEventListener('dragstart', e => {
       _dragGid = +el.dataset.l1id;
+      _dragSource = 'top';
       e.dataTransfer.effectAllowed = 'move';
       el.classList.add('gc-dragging');
     });
     el.addEventListener('dragend', () => {
       el.classList.remove('gc-dragging');
-      _dragGid = null;
+      _dragGid = null; _dragSource = null;
       container.querySelectorAll('.gc-reorder-over').forEach(b => b.classList.remove('gc-reorder-over'));
+      container.querySelectorAll('.gc-drop-over').forEach(b => b.classList.remove('gc-drop-over'));
     });
   });
 
-  // 1级分组body作为drop zone（拖入子分组）
+  // ---- Drop: 拖入L1分组body（将2级分组加入L1） ----
   container.querySelectorAll('.gc-l1-body').forEach(body => {
     body.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       body.classList.add('gc-drop-over');
     });
-    body.addEventListener('dragleave', () => body.classList.remove('gc-drop-over'));
+    body.addEventListener('dragleave', e => {
+      // 只有真正离开body时才移除样式
+      if (!body.contains(e.relatedTarget)) body.classList.remove('gc-drop-over');
+    });
     body.addEventListener('drop', e => {
       e.preventDefault();
       body.classList.remove('gc-drop-over');
       if (_dragGid == null) return;
       const l1id = +body.dataset.l1body;
-      const f = getActiveFile();
       const l1 = f.grps.find(x => x.id === l1id);
       const g = f.grps.find(x => x.id === _dragGid);
-      if (!l1 || !g || g.level === 1) return; // 不允许1级分组嵌套
-      if (l1.childGroupIds && l1.childGroupIds.includes(g.id)) return; // 已在该1级分组中
-      // 从其他1级分组的childGroupIds中移除
+      if (!l1 || !g || g.level === 1) return;
+      if (l1.childGroupIds && l1.childGroupIds.includes(g.id)) return;
+      // 从其他L1中移除
       f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1g => {
         l1g.childGroupIds = l1g.childGroupIds.filter(id => id !== g.id);
       });
       if (!l1.childGroupIds) l1.childGroupIds = [];
-      l1.childGroupIds.push(g.id);
+      // 插入到目标位置
+      const dropTarget = e.target.closest('[data-gid]');
+      if (dropTarget) {
+        const tgid = +dropTarget.dataset.gid;
+        const tidx = l1.childGroupIds.indexOf(tgid);
+        if (tidx >= 0) {
+          l1.childGroupIds.splice(tidx, 0, g.id);
+        } else {
+          l1.childGroupIds.push(g.id);
+        }
+      } else {
+        l1.childGroupIds.push(g.id);
+      }
       renderGrpCards();
       ntf(`已将「${g.name}」移入1级分组「${l1.name}」`);
     });
   });
 
-  // 所有顶级卡片之间拖拽排序（1级分组和2级分组可互换位置）
+  // ---- Drop: 顶级排序（L1卡片与独立L2分组之间交换位置） ----
   const topItems = container.querySelectorAll(':scope > .gc, :scope > .gc-l1-card');
   topItems.forEach(el => {
     const isL1 = el.classList.contains('gc-l1-card');
     el.addEventListener('dragover', e => {
       if (_dragGid == null) return;
-      // 1级body内部的拖入逻辑优先，排序不抢占
+      // L1 body内部的拖入优先
       if (isL1 && e.target.closest('.gc-l1-body')) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -1598,37 +1637,116 @@ function bindGrpDrag(container) {
     });
     el.addEventListener('dragleave', e => {
       if (isL1 && e.target.closest('.gc-l1-body')) return;
-      el.classList.remove('gc-reorder-over');
+      if (!el.contains(e.relatedTarget)) el.classList.remove('gc-reorder-over');
     });
     el.addEventListener('drop', e => {
-      // 1级body内部的拖入逻辑优先
       if (isL1 && e.target.closest('.gc-l1-body')) return;
       e.preventDefault();
       el.classList.remove('gc-reorder-over');
       if (_dragGid == null) return;
-      const f = getActiveFile();
       const dragG = f.grps.find(x => x.id === _dragGid);
       if (!dragG) return;
-      const targetGid = isL1 ? +el.dataset.l1id : +(el.dataset.gid || el.querySelector('[data-gid]')?.dataset.gid);
+      // 确定目标分组
+      const targetGid = isL1 ? +el.dataset.l1id : +(el.dataset.gid);
       if (!targetGid || targetGid === _dragGid) return;
       const targetG = f.grps.find(x => x.id === targetGid);
       if (!targetG) return;
-      // 拖拽2级分组时，从原1级分组中移除
+      // 拖拽L2分组时，从原L1的childGroupIds中移除
       if (dragG.level !== 1) {
         f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1 => {
           l1.childGroupIds = l1.childGroupIds.filter(id => id !== _dragGid);
         });
       }
-      // 在grps数组中交换位置
+      // 在grps数组中重排：先移除拖拽项，再插入到目标位置
       const iFrom = f.grps.indexOf(dragG);
       const iTo = f.grps.indexOf(targetG);
       if (iFrom < 0 || iTo < 0) return;
       f.grps.splice(iFrom, 1);
-      f.grps.splice(iTo, 0, dragG);
+      const newTo = f.grps.indexOf(targetG);
+      f.grps.splice(newTo, 0, dragG);
       renderGrpCards();
       ntf('分组顺序已调整');
     });
   });
+
+  // ---- Drop: L1内部L2分组之间排序 ----
+  container.querySelectorAll('.gc-nested').forEach(el => {
+    el.addEventListener('dragover', e => {
+      // 只响应来自同一L1 body内的拖拽
+      if (_dragGid == null) return;
+      const parentBody = el.closest('.gc-l1-body');
+      if (!parentBody) return;
+      const dragEl = container.querySelector(`[data-gid="${_dragGid}"]`);
+      // 允许从外部拖入（加入L1分组）或同L1内排序
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('gc-reorder-over');
+    });
+    el.addEventListener('dragleave', e => {
+      if (!el.contains(e.relatedTarget)) el.classList.remove('gc-reorder-over');
+    });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('gc-reorder-over');
+      if (_dragGid == null) return;
+      const parentBody = el.closest('.gc-l1-body');
+      if (!parentBody) return;
+      const l1id = +parentBody.dataset.l1body;
+      const l1 = f.grps.find(x => x.id === l1id);
+      const dragG = f.grps.find(x => x.id === _dragGid);
+      const targetGid = +el.dataset.gid;
+      if (!l1 || !dragG || !targetGid || targetGid === _dragGid) return;
+      if (dragG.level === 1) return; // 不允许L1进入L1
+
+      // 如果拖拽项不在当前L1中：先从其他L1移除，再加入当前L1
+      if (!l1.childGroupIds || !l1.childGroupIds.includes(dragG.id)) {
+        f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1g => {
+          l1g.childGroupIds = l1g.childGroupIds.filter(id => id !== dragG.id);
+        });
+        if (!l1.childGroupIds) l1.childGroupIds = [];
+      }
+
+      // 在childGroupIds中排序
+      const targetIdx = l1.childGroupIds.indexOf(targetGid);
+      const dragIdx = l1.childGroupIds.indexOf(dragG.id);
+      if (dragIdx >= 0) {
+        // 同L1内排序：先移除，再插入
+        l1.childGroupIds.splice(dragIdx, 1);
+        const newTargetIdx = l1.childGroupIds.indexOf(targetGid);
+        l1.childGroupIds.splice(newTargetIdx, 0, dragG.id);
+      } else {
+        // 从外部拖入：插入到目标位置
+        if (targetIdx >= 0) {
+          l1.childGroupIds.splice(targetIdx, 0, dragG.id);
+        } else {
+          l1.childGroupIds.push(dragG.id);
+        }
+      }
+
+      // 同步调整grps数组中子分组的顺序，使其与childGroupIds一致
+      reorderGrpsByL1(f, l1);
+
+      renderGrpCards();
+      ntf('分组顺序已调整');
+    });
+  });
+}
+
+/**
+ * 根据L1的childGroupIds顺序，重新排列f.grps中对应子分组的位置
+ * 使子分组在f.grps中的顺序与childGroupIds一致，并紧跟在L1分组之后
+ */
+function reorderGrpsByL1(f, l1) {
+  if (!l1.childGroupIds || !l1.childGroupIds.length) return;
+  const l1Idx = f.grps.indexOf(l1);
+  if (l1Idx < 0) return;
+  // 取出所有子分组
+  const childGrps = l1.childGroupIds.map(id => f.grps.find(g => g.id === id)).filter(Boolean);
+  // 从grps中移除这些子分组
+  childGrps.forEach(cg => { f.grps.splice(f.grps.indexOf(cg), 1); });
+  // 按childGroupIds顺序插入到L1之后
+  const newL1Idx = f.grps.indexOf(l1);
+  childGrps.forEach((cg, i) => { f.grps.splice(newL1Idx + 1 + i, 0, cg); });
 }
 
 document.getElementById('btnClrL2').addEventListener('click', () => {
@@ -1673,7 +1791,7 @@ function calcAllStats() {
   }
   let html = '';
   S.files.forEach((file, fi) => {
-    if (!file.raw.length) return; // 跳过无数据文件
+    if (!file.raw.length) return;
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
     // 如果已执行拆分且该文件是拆分文件，排除未匹配行
@@ -1689,14 +1807,16 @@ function calcAllStats() {
     });
     // 收集1级分组信息以便生成合计行
     const l1Groups = file.grps.filter(g => g.level === 1 && g.childGroupIds && g.childGroupIds.length);
+    // 按L1分组归类entries
+    const l1Entries = {}; // l1id -> [entries]
+    const standaloneEntries = []; // 无L1分组的独立条目
     file.grps.forEach(g => {
-      // 1级分组：不直接展示，通过子分组展示，但最后会生成合计行
+      // 1级分组：不直接展示
       if (g.level === 1) return;
-      // 2级分组依托1级分组：按1级的每个子分组拆分展示
+      // 2级分组依托1级分组
       const parentIds = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
       const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
       if (parentIds.length > 0) {
-        // 收集所有L1父分组的子分组上下文
         let allParentCtx = [];
         let depParts = [];
         parentIds.forEach((pid, pi) => {
@@ -1722,10 +1842,13 @@ function calcAllStats() {
               allParentCtx.push(...ctx);
               depParts.push(`${rel}→${pg.name}.${cg.name}`);
               const depLabel = `L1:${g.l1Dep ? g.l1Dep.col : ''} ${rel}→${pg.name}.${cg.name}`;
-              const entry = {name: `${cg.name} · ${g.name}`, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, l1Name: pg.name};
+              const entryName = cg.name === g.name ? cg.name : `${cg.name} · ${g.name}`;
+              const entry = {name: entryName, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, l1Name: pg.name, l1Id: pg.id};
               if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
               file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-              entries.push(entry);
+              // 归入对应L1分组的entries数组
+              if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+              l1Entries[pg.id].push(entry);
             });
           } else {
             // 父分组是普通2级分组
@@ -1744,10 +1867,11 @@ function calcAllStats() {
             allParentCtx.push(...ctx);
             depParts.push(`${rel}→${pg.name}`);
             const depLabel = `${rel}→${pg.name}`;
-            const entry = {name: `${pg.name} · ${g.name}`, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1};
+            const entryName = pg.name === g.name ? pg.name : `${pg.name} · ${g.name}`;
+            const entry = {name: entryName, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1};
             if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
             file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-            entries.push(entry);
+            standaloneEntries.push(entry);
           }
         });
         return;
@@ -1759,8 +1883,9 @@ function calcAllStats() {
       const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel};
       if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
       file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-      entries.push(entry);
+      standaloneEntries.push(entry);
     });
+
     // 为每个1级分组生成合计行
     l1Groups.forEach(l1g => {
       const l1Rows = new Set();
@@ -1770,10 +1895,12 @@ function calcAllStats() {
       const l1r = [...l1Rows];
       const l1entry = {name: `${l1g.name} 合计`, isL1Total: true, count: l1r.length, pct: l1Data.length > 0 ? (l1r.length / l1Data.length * 100).toFixed(1) : '0', sum: sumCol ? l1r.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null};
       file.addedCols.forEach(ac => { const tc = {}; l1r.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); l1entry['ac_' + ac] = tc; });
-      entries.push(l1entry);
+      if (!l1Entries[l1g.id]) l1Entries[l1g.id] = [];
+      l1Entries[l1g.id].push(l1entry);
     });
+
     if (!file.grps.length) {
-      entries.push({name: '(未分组)', color: null, isGroup: false, column: '', count: l1Data.length, pct: '100', depInfo: ''});
+      standaloneEntries.push({name: '(未分组)', color: null, isGroup: false, column: '', count: l1Data.length, pct: '100', depInfo: ''});
     }
     const allRows = new Set();
     file.grps.forEach(g => { getGroupContext(g.id, l1Data, file.grps, ctxCache).forEach(r => allRows.add(r)); });
@@ -1785,32 +1912,81 @@ function calcAllStats() {
     let scOpts = '<option value="">-- 无 --</option>';
     file.hdr.forEach(c => { scOpts += `<option value="${esc(c)}"${c === sumCol ? ' selected' : ''}>${esc(c)}</option>`; });
     html += `<div class="rv-section"><div class="rv-section-hdr" data-toggle-rv><span class="sec-dot" style="background:${secColor}"></span>${esc(file.name)}<span class="sec-info">${file.raw.length}行 / ${file.hdr.length}列 / ${file.grps.length}分组</span><span class="rv-toggle-arrow">&#9660;</span><div class="rv-sum-sel"><label>求和列</label><select data-fid="${file.id}" class="rv-sc">${scOpts}</select></div></div><div class="rv-section-body">`;
-    html += '<table class="rt"><thead><tr><th>类别</th><th>依托</th><th>列</th><th style="text-align:right">数量</th><th style="text-align:right">占比</th>';
-    if (sumCol) html += `<th style="text-align:right">${esc(sumCol)} 求和</th>`;
-    file.addedCols.forEach(ac => html += `<th style="text-align:right">${esc(ac)} 类型数</th>`);
-    html += '</tr></thead><tbody>';
-    entries.forEach(e => {
+
+    // 表格头部生成函数
+    function tableHead() {
+      let h = '<table class="rt"><thead><tr><th>类别</th><th>依托</th><th>列</th><th style="text-align:right">数量</th><th style="text-align:right">占比</th>';
+      if (sumCol) h += `<th style="text-align:right">${esc(sumCol)} 求和</th>`;
+      file.addedCols.forEach(ac => h += `<th style="text-align:right">${esc(ac)} 类型数</th>`);
+      h += '</tr></thead><tbody>';
+      return h;
+    }
+    // 表格行生成函数
+    function entryRow(e) {
       const cm = e.color ? CM[e.color] : null;
       const indentStyle = e.indent ? 'style="padding-left:20px;color:var(--t2)"' : '';
       const rowClass = e.isL1Total ? ' class="l1tot"' : '';
-      html += `<tr${rowClass}>`;
+      let r = `<tr${rowClass}>`;
       const icon = e.isL1Total ? '📊' : (e.isGroup ? (e.indent ? '📄' : '📁') : '📌');
-      html += `<td ${indentStyle}><div class="cc">${cm ? `<span class="cdot" style="background:${cm.d}"></span>` : ''}<span class="gico">${icon}</span> ${esc(e.name)}</div></td>`;
-      html += `<td style="color:var(--cy);font-size:10px;font-family:var(--mf)">${esc(e.depInfo)}</td>`;
-      html += `<td style="color:var(--t3);font-size:10px">${esc(e.column)}</td>`;
-      html += `<td class="nc">${e.count}</td><td class="nc">${e.pct}%</td>`;
-      if (sumCol) html += `<td class="nc" style="color:var(--wn)">${e.sum !== undefined ? fmtN(e.sum) : '-'}</td>`;
-      file.addedCols.forEach(ac => { const tc = e['ac_' + ac] || {}; html += `<td class="nc" style="color:var(--cy)">${Object.keys(tc).length} 种</td>`; });
-      html += '</tr>';
+      r += `<td ${indentStyle}><div class="cc">${cm ? `<span class="cdot" style="background:${cm.d}"></span>` : ''}<span class="gico">${icon}</span> ${esc(e.name)}</div></td>`;
+      r += `<td style="color:var(--cy);font-size:10px;font-family:var(--mf)">${esc(e.depInfo)}</td>`;
+      r += `<td style="color:var(--t3);font-size:10px">${esc(e.column)}</td>`;
+      r += `<td class="nc">${e.count}</td><td class="nc">${e.pct}%</td>`;
+      if (sumCol) r += `<td class="nc" style="color:var(--wn)">${e.sum !== undefined ? fmtN(e.sum) : '-'}</td>`;
+      file.addedCols.forEach(ac => { const tc = e['ac_' + ac] || {}; r += `<td class="nc" style="color:var(--cy)">${Object.keys(tc).length} 种</td>`; });
+      r += '</tr>';
+      return r;
+    }
+    // 合计行
+    function totalRow(t) {
+      let r = `<tr class="tot"><td>合计</td><td></td><td></td><td class="nc">${t.count}</td><td class="nc">${t.pct}%</td>`;
+      if (sumCol) r += `<td class="nc" style="color:var(--wn)">${fmtN(t.sum)}</td>`;
+      file.addedCols.forEach(ac => { const tc = t['ac_' + ac] || {}; r += `<td class="nc" style="color:var(--cy)">${Object.keys(tc).length} 种</td>`; });
+      r += '</tr>';
+      return r;
+    }
+
+    // === 按L1分组手风琴展示 ===
+    l1Groups.forEach(l1g => {
+      const l1EntriesList = l1Entries[l1g.id] || [];
+      // L1分组的总行数和总占比
+      const l1TotalEntry = l1EntriesList.find(e => e.isL1Total);
+      const l1Count = l1TotalEntry ? l1TotalEntry.count : l1EntriesList.reduce((a, e) => a + e.count, 0);
+      const l1Pct = l1TotalEntry ? l1TotalEntry.pct : (l1Data.length > 0 ? (l1Count / l1Data.length * 100).toFixed(1) : '0');
+      const childCount = (l1g.childGroupIds || []).length;
+      html += `<div class="rv-acc" data-l1id="${l1g.id}">`;
+      html += `<div class="rv-acc-hdr" data-toggle-acc="${l1g.id}"><span class="rv-acc-dot" style="background:var(--ac)"></span><span class="rv-acc-title">${esc(l1g.name)}</span><span class="rv-acc-info">${childCount}个子分组 · ${l1Count}条 · ${l1Pct}%</span><span class="rv-acc-arrow">&#9660;</span></div>`;
+      html += `<div class="rv-acc-body" data-accbody="${l1g.id}">`;
+      html += tableHead();
+      l1EntriesList.forEach(e => { html += entryRow(e); });
+      html += '</tbody></table></div></div>';
     });
-    html += `<tr class="tot"><td>合计</td><td></td><td></td><td class="nc">${total.count}</td><td class="nc">${total.pct}%</td>`;
-    if (sumCol) html += `<td class="nc" style="color:var(--wn)">${fmtN(total.sum)}</td>`;
-    file.addedCols.forEach(ac => { const tc = total['ac_' + ac] || {}; html += `<td class="nc" style="color:var(--cy)">${Object.keys(tc).length} 种</td>`; });
-    html += '</tr></tbody></table>';
+
+    // 独立分组（非L1的）
+    if (standaloneEntries.length) {
+      html += `<div class="rv-acc rv-acc-standalone">`;
+      html += `<div class="rv-acc-hdr" data-toggle-acc="standalone"><span class="rv-acc-dot" style="background:var(--t3)"></span><span class="rv-acc-title">独立分组</span><span class="rv-acc-info">${standaloneEntries.length}个</span><span class="rv-acc-arrow">&#9660;</span></div>`;
+      html += `<div class="rv-acc-body" data-accbody="standalone">`;
+      html += tableHead();
+      standaloneEntries.forEach(e => { html += entryRow(e); });
+      html += '</tbody></table></div></div>';
+    }
+
+    // 总合计（始终显示）
+    html += tableHead();
+    html += totalRow(total);
+    html += '</tbody></table>';
+
+    // 附加列详细分布
     if (file.addedCols.length) {
+      // 收集所有entries用于详细分布
+      const allEntries = [];
+      l1Groups.forEach(l1g => { (l1Entries[l1g.id] || []).forEach(e => allEntries.push(e)); });
+      standaloneEntries.forEach(e => allEntries.push(e));
+
       file.addedCols.forEach(ac => {
         html += `<div class="det-sec"><div class="det-hdr">${esc(ac)} 详细分布</div><table class="rt"><thead><tr><th>类别</th><th>${esc(ac)} 值</th><th style="text-align:right">数量</th></tr></thead><tbody>`;
-        entries.forEach(e => {
+        allEntries.forEach(e => {
           const tc = e['ac_' + ac] || {};
           const sorted = Object.entries(tc).sort((a, b) => b[1] - a[1]);
           if (!sorted.length) { html += `<tr><td style="font-weight:600">${esc(e.name)}</td><td>-</td><td class="nc">0</td></tr>`; return; }
@@ -1826,10 +2002,10 @@ function calcAllStats() {
     html += '</div></div>';
   });
   area.innerHTML = html;
-  // 折叠/展开事件
+  // 折叠/展开文件区
   area.querySelectorAll('[data-toggle-rv]').forEach(hdr => {
     hdr.addEventListener('click', e => {
-      if (e.target.closest('.rv-sum-sel')) return; // 不拦截求和列下拉
+      if (e.target.closest('.rv-sum-sel')) return;
       const body = hdr.nextElementSibling;
       const section = hdr.closest('.rv-section');
       if (body) {
@@ -1838,6 +2014,21 @@ function calcAllStats() {
       }
     });
   });
+  // 折叠/展开L1手风琴
+  area.querySelectorAll('[data-toggle-acc]').forEach(hdr => {
+    hdr.addEventListener('click', e => {
+      const key = hdr.dataset.toggleAcc;
+      const body = area.querySelector(`[data-accbody="${key}"]`);
+      const acc = hdr.closest('.rv-acc');
+      if (body) {
+        body.classList.toggle('rv-acc-body-hidden');
+      }
+      if (acc) {
+        acc.classList.toggle('rv-acc-collapsed');
+      }
+    });
+  });
+  // 求和列切换
   area.querySelectorAll('.rv-sc').forEach(sel => sel.addEventListener('change', e => {
     const fid = +e.target.dataset.fid;
     const file = S.files.find(f => f.id === fid);

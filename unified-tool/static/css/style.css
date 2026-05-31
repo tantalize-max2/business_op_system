@@ -585,6 +585,21 @@ body {
 .rt .tot { font-weight:700; border-top:2px solid var(--bd); background:var(--bg3); }
 .rt .l1tot { font-weight:600; border-top:1px dashed var(--bd); background:var(--acg); font-style:italic; }
 .rt .nc { text-align:right; font-family:var(--mf); }
+/* 手风琴式L1分组结果展示 */
+.rv-acc { margin-bottom:12px; border:1px solid var(--bd); border-radius:10px; overflow:hidden; transition:all .15s; }
+.rv-acc:hover { border-color:color-mix(in srgb, var(--ac) 40%, var(--bd)); }
+.rv-acc-hdr { display:flex; align-items:center; gap:8px; padding:10px 14px; cursor:pointer; user-select:none; background:var(--bg3); transition:background .15s; }
+.rv-acc-hdr:hover { background:var(--acg); }
+.rv-acc-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.rv-acc-title { font-size:13px; font-weight:700; flex:1; }
+.rv-acc-info { font-size:10px; color:var(--t3); font-family:var(--mf); }
+.rv-acc-arrow { font-size:9px; color:var(--t3); transition:transform .2s; }
+.rv-acc-collapsed .rv-acc-arrow { transform:rotate(-90deg); }
+.rv-acc-body { transition:max-height .25s ease; }
+.rv-acc-body-hidden { display:none; }
+.rv-acc-standalone .rv-acc-dot { background:var(--t3) !important; }
+/* 总合计表格样式 */
+.rt-total { margin-bottom:12px; }
 .rt .cc { display:flex; align-items:center; gap:5px; }
 .rt .cdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 .rt .gico { font-size:9px; }
