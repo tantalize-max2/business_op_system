@@ -16,6 +16,8 @@ email-tool/data/login_creds.json
 email-tool/data/login_debug.png
 email-tool/data/templates.json
 email-tool/data/txt_vars/
+online-excel-tool/data/sheets.json
+online-excel-tool/data/categories.json
 
 # IDE
 .vscode/
@@ -24,6 +26,12 @@ email-tool/data/txt_vars/
 # OS
 Thumbs.db
 .DS_Store
+
+# Temp
+.temp/
+temp/
+airscript_code.js
+push_to_kdocs.py
 
 # Config data
 unified-tool/data/configs/

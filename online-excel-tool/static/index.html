@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>在线表格管理工具</title>
+<style>
+:root {
+    --primary: #1a73e8;
+    --primary-dark: #1557b0;
+    --primary-light: #e8f0fe;
+    --danger: #d93025;
+    --danger-light: #fce8e6;
+    --success: #188038;
+    --success-light: #e6f4ea;
+    --warning: #f29900;
+    --warning-light: #fef7e0;
+    --bg: #f1f3f4;
+    --bg-dark: #e8eaed;
+    --card: #ffffff;
+    --text: #202124;
+    --text-sec: #5f6368;
+    --text-light: #80868b;
+    --border: #dadce0;
+    --border-light: #e8eaed;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.1);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.06);
+    --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-xs: 6px;
+    --transition: all 0.2s ease;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+}
+/* ── 导航栏 ── */
+.navbar {
+    position: sticky; top:0; z-index:100; height:60px;
+    background: linear-gradient(135deg, #1a73e8, #0d47a1);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 24px;
+    box-shadow: 0 2px 8px rgba(26,115,232,0.3);
+    backdrop-filter: blur(12px);
+}
+.navbar .logo { display:flex; align-items:center; gap:10px; color:#fff; }
+.navbar .logo svg { width:28px; height:28px; }
+.navbar .logo h1 { font-size:18px; font-weight:600; letter-spacing:0.5px; }
+.navbar .nav-actions { display:flex; align-items:center; gap:12px; }
+.navbar .nav-actions .btn { color:#fff; border-color:rgba(255,255,255,0.4); }
+.navbar .nav-actions .btn:hover { background:rgba(255,255,255,0.15); border-color:#fff; }
+
+/* ── 布局 ── */
+.layout { display:flex; height:calc(100vh - 60px); }
+.sidebar {
+    width:240px; min-width:240px; background:var(--card);
+    border-right:1px solid var(--border-light);
+    display:flex; flex-direction:column; overflow-y:auto;
+}
+.sidebar-section { padding:16px 12px 8px; }
+.sidebar-section-title {
+    font-size:11px; font-weight:600; color:var(--text-light);
+    text-transform:uppercase; letter-spacing:1px; padding:0 12px 8px;
+}
+.sidebar-item {
+    display:flex; align-items:center; gap:10px;
+    padding:9px 12px; border-radius:var(--radius-sm);
+    cursor:pointer; transition:var(--transition); font-size:14px;
+    color:var(--text-sec); border-left:3px solid transparent;
+    position:relative;
+}
+.sidebar-item:hover { background:var(--bg); color:var(--text); }
+.sidebar-item.active {
+    background:var(--primary-light); color:var(--primary);
+    border-left-color:var(--primary); font-weight:500;
+}
+.sidebar-item .dot {
+    width:8px; height:8px; border-radius:50%; flex-shrink:0;
+}
+.sidebar-item .badge-count {
+    margin-left:auto; background:var(--bg-dark); color:var(--text-sec);
+    font-size:11px; padding:1px 7px; border-radius:10px; font-weight:500;
+}
+.sidebar-item.active .badge-count { background:rgba(26,115,232,0.15); color:var(--primary); }
+.sidebar-divider { height:1px; background:var(--border-light); margin:8px 16px; }
+
+.content { flex:1; overflow-y:auto; padding:24px; }
+
+/* ── 统计卡片 ── */
+.stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+.stat-card {
+    background:var(--card); border-radius:var(--radius); padding:20px;
+    box-shadow:var(--shadow-sm); transition:var(--transition);
+}
+.stat-card:hover { box-shadow:var(--shadow-md); transform:translateY(-1px); }
+.stat-card .stat-label { font-size:12px; color:var(--text-light); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; }
+.stat-card .stat-value { font-size:28px; font-weight:700; color:var(--text); }
+.stat-card .stat-icon { float:right; width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; }
+.stat-card .stat-icon svg { width:20px; height:20px; }
+
+/* ── 工具栏 ── */
+.toolbar {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:16px; gap:12px; flex-wrap:wrap;
+}
+.toolbar-left { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.toolbar-right { display:flex; align-items:center; gap:10px; }
+.search-box {
+    position:relative; width:280px;
+}
+.search-box input {
+    width:100%; padding:8px 12px 8px 36px; border:1px solid var(--border);
+    border-radius:var(--radius-sm); font-size:14px; transition:var(--transition);
+    background:var(--card);
+}
+.search-box input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(26,115,232,0.12); }
+.search-box svg { position:absolute; left:10px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:var(--text-light); }
+.view-toggle { display:flex; border:1px solid var(--border); border-radius:var(--radius-xs); overflow:hidden; }
+.view-toggle button {
+    padding:6px 10px; border:none; background:var(--card); cursor:pointer;
+    color:var(--text-sec); transition:var(--transition); display:flex; align-items:center;
+}
+.view-toggle button.active { background:var(--primary); color:#fff; }
+.view-toggle button svg { width:16px; height:16px; }
+
+/* ── 按钮 ── */
+.btn {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:8px 16px; border-radius:var(--radius-sm);
+    font-size:13px; font-weight:500; border:1px solid transparent;
+    cursor:pointer; transition:var(--transition); white-space:nowrap;
+}
+.btn:hover { transform:translateY(-1px); }
+.btn:active { transform:translateY(0); }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover { background:var(--primary-dark); box-shadow:0 2px 8px rgba(26,115,232,0.3); }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-danger:hover { background:#c5221f; }
+.btn-outline { background:var(--card); color:var(--text-sec); border-color:var(--border); }
+.btn-outline:hover { background:var(--bg); color:var(--text); border-color:var(--text-sec); }
+.btn-ghost { background:transparent; color:var(--text-sec); }
+.btn-ghost:hover { background:var(--bg); color:var(--text); }
+.btn-success { background:var(--success); color:#fff; }
+.btn-success:hover { background:#137333; }
+.btn-sm { padding:5px 10px; font-size:12px; }
+.btn svg { width:14px; height:14px; }
+
+/* ── 卡片 ── */
+.card {
+    background:var(--card); border-radius:var(--radius);
+    box-shadow:var(--shadow-sm); overflow:hidden; margin-bottom:16px;
+}
+.card-head {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px; border-bottom:1px solid var(--border-light);
+    background:linear-gradient(180deg, #fafbfc 0%, #f8f9fa 100%);
+}
+.card-head h3 { font-size:15px; font-weight:600; color:var(--text); }
+.card-body { padding:20px; }
+
+/* ── 表格视图 ── */
+.sheet-table { width:100%; border-collapse:collapse; }
+.sheet-table th {
+    text-align:left; padding:10px 14px; font-size:11px; font-weight:600;
+    color:var(--text-light); text-transform:uppercase; letter-spacing:0.5px;
+    background:#f8f9fa; border-bottom:1px solid var(--border-light);
+    white-space:nowrap;
+}
+.sheet-table td {
+    padding:12px 14px; border-bottom:1px solid var(--border-light);
+    font-size:13px; vertical-align:middle;
+}
+.sheet-table tr:hover td { background:rgba(26,115,232,0.03); }
+.sheet-table .sheet-name {
+    display:flex; align-items:center; gap:8px; font-weight:500; color:var(--primary);
+    cursor:pointer;
+}
+.sheet-table .sheet-name:hover { text-decoration:underline; }
+.sheet-table .sheet-name .pin-icon { color:var(--warning); font-size:14px; }
+.sheet-table .cat-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+.sheet-table .tag {
+    display:inline-block; padding:2px 8px; border-radius:10px;
+    font-size:11px; background:var(--primary-light); color:var(--primary);
+    margin:1px 2px;
+}
+.sheet-table .actions { display:flex; gap:4px; }
+.sheet-url-text {
+    max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    color:var(--text-sec); font-size:12px;
+}
+.empty-state {
+    text-align:center; padding:60px 20px; color:var(--text-light);
+}
+.empty-state svg { width:64px; height:64px; color:var(--border); margin-bottom:16px; }
+.empty-state p { font-size:15px; margin-bottom:8px; }
+.empty-state .sub { font-size:13px; }
+
+/* ── 网格视图 ── */
+.grid-view { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; }
+.grid-card {
+    background:var(--card); border-radius:var(--radius); padding:0;
+    box-shadow:var(--shadow-sm); transition:var(--transition); overflow:hidden;
+    border:1px solid var(--border-light); cursor:default;
+}
+.grid-card:hover { box-shadow:var(--shadow-md); transform:translateY(-2px); }
+.grid-card-header {
+    display:flex; align-items:center; gap:10px; padding:16px 16px 0;
+}
+.grid-card-header .cat-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.grid-card-header .grid-title {
+    font-size:14px; font-weight:600; color:var(--text);
+    flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.grid-card-header .pin-badge { color:var(--warning); font-size:14px; }
+.grid-card-body { padding:12px 16px; }
+.grid-card-body .grid-desc {
+    font-size:12px; color:var(--text-sec); margin-bottom:8px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.grid-card-body .grid-tags { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+.grid-card-body .grid-tags .tag { font-size:10px; padding:1px 6px; }
+.grid-card-body .grid-meta {
+    display:flex; justify-content:space-between; font-size:11px; color:var(--text-light);
+}
+.grid-card-footer {
+    display:flex; gap:0; border-top:1px solid var(--border-light);
+}
+.grid-card-footer button {
+    flex:1; padding:8px; border:none; background:transparent;
+    cursor:pointer; font-size:12px; color:var(--text-sec);
+    transition:var(--transition); display:flex; align-items:center; justify-content:center; gap:4px;
+}
+.grid-card-footer button:hover { background:var(--bg); color:var(--primary); }
+.grid-card-footer button+button { border-left:1px solid var(--border-light); }
+.grid-card-footer button svg { width:14px; height:14px; }
+
+/* ── 表单 ── */
+.form-group { margin-bottom:16px; }
+.form-label { display:block; font-size:13px; font-weight:500; color:var(--text-sec); margin-bottom:6px; }
+.form-input, .form-select, .form-textarea {
+    width:100%; padding:8px 12px; border:1px solid var(--border);
+    border-radius:var(--radius-sm); font-size:14px; transition:var(--transition);
+    background:var(--card); color:var(--text);
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+    outline:none; border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(26,115,232,0.12);
+}
+.form-textarea { resize:vertical; min-height:80px; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+
+/* ── 标签输入 ── */
+.tag-input-wrap {
+    display:flex; flex-wrap:wrap; gap:6px; padding:6px 10px;
+    border:1px solid var(--border); border-radius:var(--radius-sm);
+    background:var(--card); transition:var(--transition); min-height:38px;
+    align-items:center;
+}
+.tag-input-wrap:focus-within { border-color:var(--primary); box-shadow:0 0 0 3px rgba(26,115,232,0.12); }
+.tag-input-wrap .tag-pill {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:2px 8px; border-radius:10px; font-size:12px;
+    background:var(--primary-light); color:var(--primary);
+}
+.tag-input-wrap .tag-pill button {
+    background:none; border:none; cursor:pointer; color:var(--primary);
+    font-size:14px; line-height:1; padding:0; opacity:0.6;
+}
+.tag-input-wrap .tag-pill button:hover { opacity:1; }
+.tag-input-wrap input {
+    border:none; outline:none; font-size:13px; flex:1; min-width:80px;
+    background:transparent; color:var(--text);
+}
+
+/* ── 模态框 ── */
+.modal-mask {
+    display:none; position:fixed; inset:0; z-index:200;
+    background:rgba(0,0,0,0.4); backdrop-filter:blur(2px);
+    align-items:center; justify-content:center;
+}
+.modal-mask.show { display:flex; }
+.modal-box {
+    background:var(--card); border-radius:var(--radius);
+    width:560px; max-width:90vw; max-height:85vh; overflow:hidden;
+    box-shadow:var(--shadow-lg);
+    animation:modalIn 0.25s ease;
+}
+@keyframes modalIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+.modal-head {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 24px 16px; border-bottom:1px solid var(--border-light);
+}
+.modal-head h3 { font-size:17px; font-weight:600; }
+.modal-head .close-btn {
+    background:none; border:none; cursor:pointer; color:var(--text-light);
+    width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    transition:var(--transition);
+}
+.modal-head .close-btn:hover { background:var(--bg); color:var(--text); }
+.modal-content { padding:24px; overflow-y:auto; max-height:calc(85vh - 130px); }
+.modal-foot {
+    display:flex; justify-content:flex-end; gap:10px;
+    padding:16px 24px; border-top:1px solid var(--border-light);
+}
+
+/* ── Toast ── */
+.toast-container { position:fixed; top:72px; right:20px; z-index:300; }
+.toast {
+    display:flex; align-items:center; gap:10px;
+    padding:12px 20px; border-radius:var(--radius-sm);
+    background:var(--card); box-shadow:var(--shadow-md);
+    margin-bottom:8px; font-size:13px; min-width:260px;
+    animation:slideIn 0.3s ease;
+    border-left:4px solid var(--primary);
+}
+.toast.success { border-left-color:var(--success); }
+.toast.success .toast-icon { color:var(--success); }
+.toast.error { border-left-color:var(--danger); }
+.toast.error .toast-icon { color:var(--danger); }
+.toast.info { border-left-color:var(--primary); }
+.toast.info .toast-icon { color:var(--primary); }
+@keyframes slideIn { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } }
+.toast.removing { animation:slideOut 0.3s ease forwards; }
+@keyframes slideOut { to { opacity:0; transform:translateX(40px); } }
+
+/* ── 复选框 ── */
+.checkbox-wrap { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.checkbox-wrap input[type=checkbox] {
+    width:16px; height:16px; accent-color:var(--primary); cursor:pointer;
+}
+
+/* ── 批量操作栏 ── */
+.batch-bar {
+    display:none; align-items:center; justify-content:space-between;
+    padding:10px 20px; background:var(--primary-light);
+    border-radius:var(--radius-sm); margin-bottom:16px;
+    border:1px solid rgba(26,115,232,0.2);
+}
+.batch-bar.show { display:flex; }
+.batch-bar .batch-info { font-size:13px; color:var(--primary); font-weight:500; }
+.batch-bar .batch-actions { display:flex; gap:8px; }
+
+/* ── 滚动条 ── */
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text-light); }
+
+/* ── 响应式 ── */
+@media (max-width:768px) {
+    .sidebar { display:none; }
+    .stats-row { grid-template-columns:repeat(2,1fr); }
+    .form-row { grid-template-columns:1fr; }
+    .grid-view { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- 导航栏 -->
+<nav class="navbar">
+    <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+        <h1>在线表格管理工具</h1>
+    </div>
+    <div class="nav-actions">
+        <button class="btn btn-outline btn-sm" onclick="showImportModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            导入
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="exportData()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            导出
+        </button>
+    </div>
+</nav>
+
+<!-- 布局 -->
+<div class="layout">
+    <!-- 侧栏 -->
+    <div class="sidebar">
+        <div class="sidebar-section">
+            <div class="sidebar-item active" data-cat="all" onclick="filterCategory('all', this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                全部表格
+                <span class="badge-count" id="totalCount">0</span>
+            </div>
+            <div class="sidebar-item" data-cat="pinned" onclick="filterCategory('pinned', this)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                已置顶
+                <span class="badge-count" id="pinnedCount">0</span>
+            </div>
+        </div>
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:0 12px 8px;">
+                <div class="sidebar-section-title" style="padding:0;">分类</div>
+                <button class="btn btn-ghost btn-sm" onclick="showCatModal()" style="padding:2px 6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+            </div>
+            <div id="categoryList"></div>
+        </div>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="content" id="mainContent">
+        <!-- 统计 -->
+        <div class="stats-row" id="statsRow">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:var(--primary-light)"></div>
+                <div class="stat-label">表格总数</div>
+                <div class="stat-value" id="statTotal">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:var(--warning-light)"></div>
+                <div class="stat-label">已置顶</div>
+                <div class="stat-value" id="statPinned">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:var(--success-light)"></div>
+                <div class="stat-label">分类数</div>
+                <div class="stat-value" id="statCats">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:var(--danger-light)"></div>
+                <div class="stat-label">未分类</div>
+                <div class="stat-value" id="statUncat">0</div>
+            </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button class="btn btn-primary" onclick="showSheetModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    添加表格
+                </button>
+                <div class="search-box">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="searchInput" placeholder="搜索表格名称、链接、描述..." oninput="searchSheets()">
+                </div>
+            </div>
+            <div class="toolbar-right">
+                <div class="view-toggle">
+                    <button class="active" id="btnTableView" onclick="switchView('table')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    </button>
+                    <button id="btnGridView" onclick="switchView('grid')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                    </button>
+                </div>
+                <label class="checkbox-wrap">
+                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                    <span style="font-size:13px;">全选</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- 批量操作栏 -->
+        <div class="batch-bar" id="batchBar">
+            <div class="batch-info">已选择 <strong id="selectedCount">0</strong> 个表格</div>
+            <div class="batch-actions">
+                <select id="batchMoveCat" class="form-select" style="width:auto;padding:4px 8px;font-size:12px;">
+                    <option value="">移动到分类...</option>
+                </select>
+                <button class="btn btn-outline btn-sm" onclick="batchMove()">移动</button>
+                <button class="btn btn-danger btn-sm" onclick="batchDelete()">删除</button>
+            </div>
+        </div>
+
+        <!-- 表格区 -->
+        <div id="sheetContainer"></div>
+    </div>
+</div>
+
+<!-- 模态框: 添加/编辑表格 -->
+<div class="modal-mask" id="sheetModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3 id="sheetModalTitle">添加表格</h3>
+            <button class="close-btn" onclick="hideModal('sheetModal')">&times;</button>
+        </div>
+        <div class="modal-content">
+            <input type="hidden" id="editSheetId">
+            <div class="form-group">
+                <label class="form-label">表格名称 *</label>
+                <input type="text" class="form-input" id="sheetName" placeholder="例: 5月商机统计表">
+            </div>
+            <div class="form-group">
+                <label class="form-label">在线链接 *</label>
+                <input type="url" class="form-input" id="sheetUrl" placeholder="https://kdocs.cn/xxx 或 https://www.kdocs.cn/xxx">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">所属分类</label>
+                    <select class="form-select" id="sheetCategory"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">是否置顶</label>
+                    <select class="form-select" id="sheetPinned">
+                        <option value="false">否</option>
+                        <option value="true">是</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">标签 (回车添加)</label>
+                <div class="tag-input-wrap" id="tagInputWrap">
+                    <input type="text" id="tagInput" placeholder="输入标签后回车" onkeydown="handleTagInput(event)">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">描述</label>
+                <textarea class="form-textarea" id="sheetDesc" placeholder="备注说明..." rows="3"></textarea>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-outline" onclick="hideModal('sheetModal')">取消</button>
+            <button class="btn btn-primary" onclick="saveSheet()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 模态框: 分类管理 -->
+<div class="modal-mask" id="catModal">
+    <div class="modal-box" style="width:480px;">
+        <div class="modal-head">
+            <h3>分类管理</h3>
+            <button class="close-btn" onclick="hideModal('catModal')">&times;</button>
+        </div>
+        <div class="modal-content">
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+                <input type="text" class="form-input" id="newCatName" placeholder="分类名称" style="flex:1;">
+                <input type="color" id="newCatColor" value="#1a73e8" style="width:40px;height:36px;border:1px solid var(--border);border-radius:var(--radius-xs);cursor:pointer;padding:2px;">
+                <button class="btn btn-primary btn-sm" onclick="addCategory()">添加</button>
+            </div>
+            <div id="catManageList"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 模态框: 导入 -->
+<div class="modal-mask" id="importModal">
+    <div class="modal-box" style="width:480px;">
+        <div class="modal-head">
+            <h3>导入数据</h3>
+            <button class="close-btn" onclick="hideModal('importModal')">&times;</button>
+        </div>
+        <div class="modal-content">
+            <div class="form-group">
+                <label class="form-label">导入模式</label>
+                <select class="form-select" id="importMode">
+                    <option value="merge">合并（保留现有数据，仅添加新的）</option>
+                    <option value="replace">替换（清除现有数据，使用导入数据）</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">选择 JSON 文件</label>
+                <input type="file" class="form-input" id="importFile" accept=".json" style="padding:6px;">
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-outline" onclick="hideModal('importModal')">取消</button>
+            <button class="btn btn-primary" onclick="importData()">导入</button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+const API = '';
+let allSheets = [];
+let allCategories = [];
+let currentCategory = 'all';
+let currentView = 'table';
+let currentTags = [];
+let selectedIds = new Set();
+
+// ── 工具函数 ──
+function toast(msg, type='info') {
+    const c = document.getElementById('toastContainer');
+    const icons = {
+        success: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+        error: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+        info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+    };
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<span class="toast-icon">${icons[type]}</span>${msg}`;
+    c.appendChild(el);
+    setTimeout(() => { el.classList.add('removing'); setTimeout(() => el.remove(), 300); }, 4000);
+}
+
+function showModal(id) { document.getElementById(id).classList.add('show'); }
+function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+
+async function api(method, path, body) {
+    const opts = { method, headers: {'Content-Type':'application/json'} };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(API + path, opts);
+    return res.json();
+}
+
+function getCatName(catId) {
+    const c = allCategories.find(c => c.id === catId);
+    return c ? c.name : '未分类';
+}
+function getCatColor(catId) {
+    const c = allCategories.find(c => c.id === catId);
+    return c ? c.color : '#80868b';
+}
+
+function timeAgo(str) {
+    if (!str) return '';
+    const d = new Date(str.replace(' ', 'T'));
+    const now = new Date();
+    const diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return Math.floor(diff/60) + '分钟前';
+    if (diff < 86400) return Math.floor(diff/3600) + '小时前';
+    if (diff < 604800) return Math.floor(diff/86400) + '天前';
+    return str.split(' ')[0];
+}
+
+// ── 数据加载 ──
+async function loadSheets() {
+    const params = new URLSearchParams();
+    if (currentCategory === 'pinned') {
+        // 不传category，前端过滤
+    } else if (currentCategory !== 'all') {
+        params.set('category', currentCategory);
+    }
+    const kw = document.getElementById('searchInput').value.trim();
+    if (kw) params.set('keyword', kw);
+    const res = await api('GET', '/api/sheets?' + params.toString());
+    if (res.success) {
+        allSheets = res.data;
+        // 置顶过滤
+        if (currentCategory === 'pinned') {
+            allSheets = allSheets.filter(s => s.pinned);
+        }
+        renderSheets();
+    }
+}
+
+async function loadCategories() {
+    const res = await api('GET', '/api/categories');
+    if (res.success) {
+        allCategories = res.data;
+        renderCategoryList();
+        updateCategorySelects();
+    }
+}
+
+async function loadStats() {
+    const res = await api('GET', '/api/stats');
+    if (res.success) {
+        document.getElementById('statTotal').textContent = res.data.total;
+        document.getElementById('statPinned').textContent = res.data.pinned;
+        document.getElementById('statCats').textContent = res.data.categories;
+        document.getElementById('totalCount').textContent = res.data.total;
+        document.getElementById('pinnedCount').textContent = res.data.pinned;
+        // 未分类 = total - categorized
+        const catCount = res.data.cat_stats.reduce((a,b) => a + (b.name === '未分类' ? 0 : b.count), 0);
+        const uncat = res.data.cat_stats.find(c => c.name === '未分类');
+        document.getElementById('statUncat').textContent = uncat ? uncat.count : (res.data.total - catCount);
+    }
+}
+
+// ── 渲染分类侧栏 ──
+function renderCategoryList() {
+    const el = document.getElementById('categoryList');
+    let html = '';
+    allCategories.forEach(c => {
+        const active = currentCategory === c.id ? 'active' : '';
+        html += `<div class="sidebar-item ${active}" data-cat="${c.id}" onclick="filterCategory('${c.id}', this)">
+            <span class="dot" style="background:${c.color}"></span>
+            ${c.name}
+            <span class="badge-count">${c.count || 0}</span>
+        </div>`;
+    });
+    el.innerHTML = html;
+}
+
+function updateCategorySelects() {
+    const selects = ['sheetCategory', 'batchMoveCat'];
+    selects.forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        const val = sel.value;
+        let html = '<option value="">未分类</option>';
+        allCategories.forEach(c => {
+            html += `<option value="${c.id}">${c.name}</option>`;
+        });
+        sel.innerHTML = html;
+        if (val) sel.value = val;
+    });
+}
+
+// ── 渲染表格 ──
+function renderSheets() {
+    const container = document.getElementById('sheetContainer');
+    if (allSheets.length === 0) {
+        container.innerHTML = `<div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            <p>暂无表格</p>
+            <div class="sub">点击"添加表格"开始管理您的在线Excel</div>
+        </div>`;
+        return;
+    }
+    if (currentView === 'table') {
+        renderTableView(container);
+    } else {
+        renderGridView(container);
+    }
+    updateBatchBar();
+}
+
+function renderTableView(container) {
+    let html = `<div class="card"><table class="sheet-table">
+        <thead><tr>
+            <th style="width:40px;"></th>
+            <th>名称</th>
+            <th>链接</th>
+            <th>分类</th>
+            <th>标签</th>
+            <th>更新时间</th>
+            <th>访问次数</th>
+            <th style="width:160px;">操作</th>
+        </tr></thead><tbody>`;
+    allSheets.forEach(s => {
+        const checked = selectedIds.has(s.id) ? 'checked' : '';
+        const catName = getCatName(s.category);
+        const catColor = getCatColor(s.category);
+        const tags = (s.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+        html += `<tr>
+            <td><input type="checkbox" ${checked} onchange="toggleSelect('${s.id}', this.checked)"></td>
+            <td><div class="sheet-name" onclick="openSheet('${s.id}')">
+                ${s.pinned ? '<span class="pin-icon">&#128204;</span>' : ''}
+                ${s.name}
+            </div></td>
+            <td><span class="sheet-url-text" title="${s.url}">${s.url}</span></td>
+            <td><span class="cat-dot" style="background:${catColor}"></span>${catName}</td>
+            <td>${tags || '<span style="color:var(--text-light)">-</span>'}</td>
+            <td style="color:var(--text-sec);font-size:12px;">${timeAgo(s.updated_at)}</td>
+            <td style="color:var(--text-sec);font-size:12px;">${s.access_count || 0}</td>
+            <td><div class="actions">
+                <button class="btn btn-primary btn-sm" onclick="openSheet('${s.id}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    打开
+                </button>
+                <button class="btn btn-outline btn-sm" onclick="editSheet('${s.id}')">编辑</button>
+                <button class="btn btn-ghost btn-sm" onclick="togglePin('${s.id}')">
+                    ${s.pinned ? '取消置顶' : '置顶'}
+                </button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteSheet('${s.id}')">删除</button>
+            </div></td>
+        </tr>`;
+    });
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+function renderGridView(container) {
+    let html = '<div class="grid-view">';
+    allSheets.forEach(s => {
+        const catName = getCatName(s.category);
+        const catColor = getCatColor(s.category);
+        const tags = (s.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+        const checked = selectedIds.has(s.id);
+        html += `<div class="grid-card" style="${checked ? 'border-color:var(--primary);box-shadow:0 0 0 2px rgba(26,115,232,0.15);' : ''}">
+            <div class="grid-card-header">
+                <span class="cat-dot" style="background:${catColor}"></span>
+                <span class="grid-title" onclick="openSheet('${s.id}')" style="cursor:pointer;color:var(--primary);">${s.name}</span>
+                ${s.pinned ? '<span class="pin-badge">&#128204;</span>' : ''}
+            </div>
+            <div class="grid-card-body">
+                <div class="grid-desc">${s.description || '无描述'}</div>
+                ${tags ? `<div class="grid-tags">${tags}</div>` : ''}
+                <div class="grid-meta">
+                    <span>${catName}</span>
+                    <span>${timeAgo(s.updated_at)}</span>
+                </div>
+            </div>
+            <div class="grid-card-footer">
+                <button onclick="toggleSelect('${s.id}', !selectedIds.has('${s.id}'))">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                    选择
+                </button>
+                <button onclick="openSheet('${s.id}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    打开
+                </button>
+                <button onclick="editSheet('${s.id}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    编辑
+                </button>
+                <button onclick="deleteSheet('${s.id}')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                    删除
+                </button>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// ── 视图切换 ──
+function switchView(view) {
+    currentView = view;
+    document.getElementById('btnTableView').classList.toggle('active', view === 'table');
+    document.getElementById('btnGridView').classList.toggle('active', view === 'grid');
+    renderSheets();
+}
+
+// ── 分类过滤 ──
+function filterCategory(cat, el) {
+    currentCategory = cat;
+    document.querySelectorAll('.sidebar-item').forEach(e => e.classList.remove('active'));
+    if (el) el.classList.add('active');
+    selectedIds.clear();
+    loadSheets();
+}
+
+// ── 搜索 ──
+let searchTimer;
+function searchSheets() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(loadSheets, 300);
+}
+
+// ── 选择 ──
+function toggleSelect(id, checked) {
+    if (checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+    updateBatchBar();
+    renderSheets();
+}
+function toggleSelectAll() {
+    const all = document.getElementById('selectAll').checked;
+    if (all) allSheets.forEach(s => selectedIds.add(s.id));
+    else selectedIds.clear();
+    updateBatchBar();
+    renderSheets();
+}
+function updateBatchBar() {
+    const bar = document.getElementById('batchBar');
+    if (selectedIds.size > 0) {
+        bar.classList.add('show');
+        document.getElementById('selectedCount').textContent = selectedIds.size;
+    } else {
+        bar.classList.remove('show');
+    }
+}
+
+// ── 标签输入 ──
+function handleTagInput(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const input = document.getElementById('tagInput');
+        const val = input.value.trim();
+        if (val && !currentTags.includes(val)) {
+            currentTags.push(val);
+            renderTags();
+        }
+        input.value = '';
+    }
+}
+function renderTags() {
+    const wrap = document.getElementById('tagInputWrap');
+    const input = document.getElementById('tagInput');
+    wrap.querySelectorAll('.tag-pill').forEach(e => e.remove());
+    currentTags.forEach((t, i) => {
+        const pill = document.createElement('span');
+        pill.className = 'tag-pill';
+        pill.innerHTML = `${t}<button onclick="removeTag(${i})">&times;</button>`;
+        wrap.insertBefore(pill, input);
+    });
+}
+function removeTag(i) {
+    currentTags.splice(i, 1);
+    renderTags();
+}
+
+// ── 添加/编辑表格 ──
+function showSheetModal(sheetId) {
+    document.getElementById('editSheetId').value = '';
+    document.getElementById('sheetName').value = '';
+    document.getElementById('sheetUrl').value = '';
+    document.getElementById('sheetCategory').value = '';
+    document.getElementById('sheetPinned').value = 'false';
+    document.getElementById('sheetDesc').value = '';
+    currentTags = [];
+    renderTags();
+    document.getElementById('sheetModalTitle').textContent = '添加表格';
+    showModal('sheetModal');
+}
+
+async function editSheet(id) {
+    const res = await api('GET', '/api/sheets');
+    if (!res.success) return;
+    const sheet = res.data.find(s => s.id === id);
+    if (!sheet) return;
+    document.getElementById('editSheetId').value = sheet.id;
+    document.getElementById('sheetName').value = sheet.name;
+    document.getElementById('sheetUrl').value = sheet.url;
+    document.getElementById('sheetCategory').value = sheet.category || '';
+    document.getElementById('sheetPinned').value = sheet.pinned ? 'true' : 'false';
+    document.getElementById('sheetDesc').value = sheet.description || '';
+    currentTags = [...(sheet.tags || [])];
+    renderTags();
+    document.getElementById('sheetModalTitle').textContent = '编辑表格';
+    showModal('sheetModal');
+}
+
+async function saveSheet() {
+    const id = document.getElementById('editSheetId').value;
+    const name = document.getElementById('sheetName').value.trim();
+    const url = document.getElementById('sheetUrl').value.trim();
+    if (!name || !url) { toast('名称和链接不能为空', 'error'); return; }
+    const data = {
+        name, url,
+        category: document.getElementById('sheetCategory').value,
+        pinned: document.getElementById('sheetPinned').value === 'true',
+        description: document.getElementById('sheetDesc').value.trim(),
+        tags: [...currentTags],
+    };
+    let res;
+    if (id) {
+        res = await api('PUT', `/api/sheets/${id}`, data);
+    } else {
+        res = await api('POST', '/api/sheets', data);
+    }
+    if (res.success) {
+        toast(res.message, 'success');
+        hideModal('sheetModal');
+        loadSheets();
+        loadStats();
+        loadCategories();
+    } else {
+        toast(res.message, 'error');
+    }
+}
+
+// ── 删除表格 ──
+async function deleteSheet(id) {
+    if (!confirm('确定要删除这个表格吗？')) return;
+    const res = await api('DELETE', `/api/sheets/${id}`);
+    if (res.success) {
+        toast(res.message, 'success');
+        selectedIds.delete(id);
+        loadSheets();
+        loadStats();
+        loadCategories();
+    } else {
+        toast(res.message, 'error');
+    }
+}
+
+// ── 置顶 ──
+async function togglePin(id) {
+    const res = await api('POST', `/api/sheets/${id}/pin`);
+    if (res.success) {
+        toast(res.message, 'success');
+        loadSheets();
+        loadStats();
+    } else {
+        toast(res.message, 'error');
+    }
+}
+
+// ── 批量操作 ──
+async function batchDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`确定要删除选中的 ${selectedIds.size} 个表格吗？`)) return;
+    const res = await api('POST', '/api/sheets/batch-delete', { ids: [...selectedIds] });
+    if (res.success) {
+        toast(res.message, 'success');
+        selectedIds.clear();
+        loadSheets(); loadStats(); loadCategories();
+    } else { toast(res.message, 'error'); }
+}
+async function batchMove() {
+    const catId = document.getElementById('batchMoveCat').value;
+    if (!catId) { toast('请选择目标分类', 'error'); return; }
+    const res = await api('POST', '/api/sheets/batch-move', { ids: [...selectedIds], category: catId });
+    if (res.success) {
+        toast(res.message, 'success');
+        selectedIds.clear();
+        loadSheets(); loadStats(); loadCategories();
+    } else { toast(res.message, 'error'); }
+}
+
+// ── 分类管理 ──
+function showCatModal() {
+    renderCatManageList();
+    showModal('catModal');
+}
+function renderCatManageList() {
+    const el = document.getElementById('catManageList');
+    let html = '';
+    allCategories.forEach(c => {
+        html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light);">
+            <input type="color" value="${c.color}" style="width:28px;height:28px;border:1px solid var(--border);border-radius:4px;cursor:pointer;padding:1px;" onchange="updateCatColor('${c.id}', this.value)">
+            <span style="flex:1;font-size:14px;">${c.name}</span>
+            <span style="font-size:12px;color:var(--text-light);">${c.count || 0} 个表格</span>
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="deleteCategory('${c.id}')">删除</button>
+        </div>`;
+    });
+    el.innerHTML = html;
+}
+async function addCategory() {
+    const name = document.getElementById('newCatName').value.trim();
+    const color = document.getElementById('newCatColor').value;
+    if (!name) { toast('分类名称不能为空', 'error'); return; }
+    const res = await api('POST', '/api/categories', { name, color });
+    if (res.success) {
+        toast(res.message, 'success');
+        document.getElementById('newCatName').value = '';
+        await loadCategories();
+        renderCatManageList();
+        loadStats();
+    } else { toast(res.message, 'error'); }
+}
+async function updateCatColor(id, color) {
+    const cat = allCategories.find(c => c.id === id);
+    if (cat) {
+        await api('PUT', `/api/categories/${id}`, { color });
+        loadCategories();
+    }
+}
+async function deleteCategory(id) {
+    if (!confirm('删除分类后，该分类下的表格将变为"未分类"，确定删除？')) return;
+    const res = await api('DELETE', `/api/categories/${id}`);
+    if (res.success) {
+        toast(res.message, 'success');
+        await loadCategories();
+        renderCatManageList();
+        loadSheets();
+        loadStats();
+    } else { toast(res.message, 'error'); }
+}
+
+// ── 导入导出 ──
+async function exportData() {
+    const res = await api('GET', '/api/export');
+    if (res.success) {
+        const blob = new Blob([JSON.stringify(res.data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `在线表格数据_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        toast('导出成功', 'success');
+    } else { toast('导出失败', 'error'); }
+}
+function showImportModal() { showModal('importModal'); }
+async function importData() {
+    const file = document.getElementById('importFile').files[0];
+    if (!file) { toast('请选择文件', 'error'); return; }
+    const mode = document.getElementById('importMode').value;
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const res = await api('POST', '/api/import', { mode, sheets: data.sheets || [], categories: data.categories || [] });
+        if (res.success) {
+            toast(res.message, 'success');
+            hideModal('importModal');
+            loadSheets(); loadStats(); loadCategories();
+        } else { toast(res.message, 'error'); }
+    } catch(e) { toast('文件格式错误，请选择有效的JSON文件', 'error'); }
+}
+
+// ── 打开表格（当前窗口跳转） ──
+async function openSheet(id) {
+    const res = await api('POST', `/api/sheets/${id}/open`);
+    if (res.success) {
+        const url = res.data.url;
+        // 在当前窗口打开，浏览器返回键可回到本页
+        window.location.href = url;
+    } else {
+        toast(res.message, 'error');
+    }
+}
+
+// ── 初始化 ──
+async function init() {
+    await Promise.all([loadCategories(), loadSheets(), loadStats()]);
+}
+init();
+</script>
+</body>
+</html>
