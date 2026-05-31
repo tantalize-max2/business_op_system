@@ -172,6 +172,12 @@ function switchStep(step) {
   if (step === 'filter2') {
     refreshL2Data();
   }
+  // 进入分局拆分时加载最新mapping数据
+  if (step === 'split') {
+    loadMapping();
+    populateSplitColSel();
+    updSplitActiveFile();
+  }
   // 进入在线推送时加载数据
   if (step === 'kdocs') {
     loadKdocsCats();
@@ -2606,7 +2612,7 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
 document.querySelectorAll('.sb-item').forEach(item => {
   item.addEventListener('click', () => {
     const step = item.dataset.step;
-    if (step === 'upload' || step === 'kdocs' || S.files.length) switchStep(step);
+    if (step === 'upload' || step === 'kdocs' || step === 'split' || S.files.length) switchStep(step);
   });
 });
 
@@ -2797,16 +2803,9 @@ document.getElementById('preprocessColSel').addEventListener('change', onPreproc
 document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 applyThemeUI(document.documentElement.getAttribute('data-theme') || 'dark');
 
-// 恢复持久化状态（不恢复文件列表，每次启动为空白）
+// 恢复持久化状态（不恢复文件列表和mappingData，每次启动为空白，mappingData从后端加载）
 (function restoreState() {
-  try {
-    const saved = localStorage.getItem('ba-state');
-    if (saved) {
-      const data = JSON.parse(saved);
-      S.mappingData = data.mappingData || {};
-      S.splitResult = null; // 不恢复拆分结果（需要重新执行）
-    }
-  } catch (e) {}
+  // mappingData 已通过后端 API 持久化，不需要从 localStorage 恢复
   // 清除旧的文件状态，确保启动时为空白
   localStorage.removeItem('ba-state');
 })();

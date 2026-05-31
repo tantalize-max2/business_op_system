@@ -131,7 +131,13 @@ def index():
 
 @app.route('/api/mapping', methods=['GET'])
 def get_mapping():
-    return jsonify(load_mapping())
+    data = load_mapping()
+    # 使用 json.dumps 而非 jsonify，保留键的插入顺序（不排序）
+    return app.response_class(
+        response=json.dumps(data, ensure_ascii=False),
+        status=200,
+        mimetype='application/json'
+    )
 
 
 @app.route('/api/mapping', methods=['POST'])
