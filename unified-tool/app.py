@@ -38,7 +38,9 @@ os.makedirs(CONFIGS_DIR, exist_ok=True)
 MAPPING_FILE = os.path.join(DATA_DIR, 'bureau_mapping.json')
 SHEETS_FILE = os.path.join(DATA_DIR, 'kdocs_sheets.json')
 TEMPLATES_DIR = os.path.join(DATA_DIR, 'bureau_templates')
+NZ_TEMPLATES_DIR = os.path.join(DATA_DIR, 'nz_templates')
 os.makedirs(TEMPLATES_DIR, exist_ok=True)
+os.makedirs(NZ_TEMPLATES_DIR, exist_ok=True)
 
 # ============ 默认分局人员映射 ============
 DEFAULT_MAPPING = {
@@ -1053,6 +1055,312 @@ def scan_folder():
             files.append({'name': f, 'path': fpath, 'size': fsize})
 
     return jsonify({'files': files, 'count': len(files)})
+
+
+# ============ 数据标准化模板 API ============
+
+def _nz_template_path(name):
+    """安全获取数据标准化模板路径"""
+    safe_name = re.sub(r'[^\w\u4e00-\u9fff\-\.]', '_', name)
+    return os.path.join(NZ_TEMPLATES_DIR, f"{safe_name}.json")
+
+
+def _nz_resolve_formula_str(formula_str, stats_data):
+    """解析并计算单个公式字符串的值"""
+    m = re.match(r'^\{\{(.+?)\}\}$', formula_str.strip())
+    if not m:
+        return {'ok': False, 'value': '格式错误'}
+    inner = m.group(1).strip()
+    slash_idx = inner.rfind('/')
+    if slash_idx < 0:
+        return {'ok': False, 'value': '格式错误(无/指标)'}
+    metric = inner[slash_idx + 1:].strip()
+    path = inner[:slash_idx].strip()
+    parts = path.split(':')
+    parts = [p.strip() for p in parts]
+
+    file_idx = None
+    l1, l2, col = '', '', ''
+    try:
+        file_idx = int(parts[0])
+    except (ValueError, IndexError):
+        return {'ok': False, 'value': '文件序号无效'}
+
+    if file_idx < 1:
+        return {'ok': False, 'value': '文件序号无效'}
+
+    fi_str = str(file_idx)
+    if fi_str not in stats_data:
+        return {'ok': False, 'value': '未匹配(文件不存在)'}
+
+    fd = stats_data[fi_str]
+    entries = fd.get('entries', [])
+    total = fd.get('total', {})
+    sum_col = fd.get('sumCol', '')
+
+    # 解析附加列.值
+    ac_col, ac_val = None, None
+    if len(parts) >= 4:
+        col = parts[3]
+        if '.' in col:
+            dp = col.split('.', 1)
+            ac_col, ac_val = dp[0], dp[1]
+
+    # 总合计
+    if len(parts) == 2 and parts[1] == '总合计':
+        return _nz_resolve_metric(total, col, metric, sum_col, ac_col, ac_val, fd)
+    if len(parts) >= 2 and parts[1] == '总合计' and len(parts) <= 3:
+        return _nz_resolve_metric(total, col, metric, sum_col, ac_col, ac_val, fd)
+
+    # 确定 L1 和 L2
+    if len(parts) == 2:
+        l2 = parts[1]
+    elif len(parts) == 3:
+        l1 = parts[1]
+        l2 = parts[2]
+    elif len(parts) >= 4:
+        l1 = parts[1]
+        l2 = parts[2]
+
+    # L1合计
+    if l2 == '合计' and l1:
+        l1_total = None
+        for e in entries:
+            if e.get('isL1Total') and e.get('l1Name') == l1:
+                l1_total = e
+                break
+        if not l1_total:
+            return {'ok': False, 'value': '未匹配'}
+        return _nz_resolve_metric(l1_total, col, metric, sum_col, ac_col, ac_val, fd)
+
+    # 常规匹配
+    entry = None
+    if l1:
+        for e in entries:
+            if e.get('isGroup') and e.get('l1Name') == l1 and e.get('name') == l2:
+                entry = e
+                break
+    else:
+        for e in entries:
+            if e.get('isGroup') and not e.get('l1Name') and e.get('name') == l2:
+                entry = e
+                break
+
+    if not entry:
+        return {'ok': False, 'value': '未匹配'}
+
+    return _nz_resolve_metric(entry, col, metric, sum_col, ac_col, ac_val, fd)
+
+
+def _nz_resolve_metric(entry, col, metric, sum_col, ac_col, ac_val, fd):
+    """解析指标值"""
+    if metric == '数量':
+        if ac_col and ac_val:
+            ac_data = entry.get('acData', {})
+            tc = ac_data.get(ac_col, {})
+            return {'ok': True, 'value': tc.get(ac_val, 0)}
+        return {'ok': True, 'value': entry.get('count', 0)}
+    if metric == '占比':
+        pct = entry.get('pct', '0')
+        try:
+            return {'ok': True, 'value': float(pct)}
+        except:
+            return {'ok': False, 'value': '占比解析失败'}
+    if metric == '求和':
+        target_col = col or sum_col
+        if not target_col:
+            return {'ok': False, 'value': '未匹配(无求和列)'}
+        s = entry.get('sum')
+        if s is not None:
+            try:
+                return {'ok': True, 'value': round(float(s), 2)}
+            except:
+                pass
+        return {'ok': False, 'value': '未匹配(求和)'}
+    if metric == '均值':
+        target_col = col or sum_col
+        if not target_col:
+            return {'ok': False, 'value': '未匹配(无求和列)'}
+        s = entry.get('sum')
+        c = entry.get('count', 0)
+        if s is not None and c > 0:
+            try:
+                return {'ok': True, 'value': round(float(s) / c, 2)}
+            except:
+                pass
+        return {'ok': True, 'value': 0}
+    return {'ok': False, 'value': '未知指标'}
+
+
+@app.route('/api/nz-templates', methods=['GET'])
+def list_nz_templates():
+    """列出所有数据标准化模板"""
+    templates = []
+    if os.path.exists(NZ_TEMPLATES_DIR):
+        for fname in os.listdir(NZ_TEMPLATES_DIR):
+            if not fname.endswith('.json'):
+                continue
+            fpath = os.path.join(NZ_TEMPLATES_DIR, fname)
+            try:
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                templates.append({
+                    'name': data.get('name', fname[:-5]),
+                    'savedAt': data.get('savedAt', 0),
+                    'sheetCount': data.get('sheetCount', 0)
+                })
+            except:
+                pass
+    templates.sort(key=lambda t: t.get('savedAt', 0), reverse=True)
+    return jsonify({'templates': templates})
+
+
+@app.route('/api/nz-templates', methods=['POST'])
+def save_nz_template():
+    """保存数据标准化模板"""
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    file_data = data.get('fileData', '')
+    if not name:
+        return jsonify({'error': '模板名称不能为空'}), 400
+    if not file_data:
+        return jsonify({'error': '模板数据不能为空'}), 400
+
+    # 验证base64是有效的Excel
+    try:
+        raw = base64.b64decode(file_data)
+        tmp = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+        tmp.write(raw)
+        tmp.close()
+        wb = load_workbook(tmp.name)
+        sheet_count = len(wb.sheetnames)
+        wb.close()
+        os.unlink(tmp.name)
+    except Exception as e:
+        return jsonify({'error': f'模板文件无效: {str(e)}'}), 400
+
+    template_data = {
+        'name': name,
+        'fileData': file_data,
+        'savedAt': datetime.now().timestamp() * 1000,
+        'sheetCount': sheet_count
+    }
+    fpath = _nz_template_path(name)
+    with open(fpath, 'w', encoding='utf-8') as f:
+        json.dump(template_data, f, ensure_ascii=False)
+    return jsonify({'message': '模板已保存', 'name': name})
+
+
+@app.route('/api/nz-templates/<path:name>', methods=['GET'])
+def get_nz_template(name):
+    """获取指定数据标准化模板"""
+    fpath = _nz_template_path(name)
+    if not os.path.exists(fpath):
+        return jsonify({'error': '模板不存在'}), 404
+    with open(fpath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return app.response_class(
+        response=json.dumps(data, ensure_ascii=False),
+        status=200,
+        mimetype='application/json'
+    )
+
+
+@app.route('/api/nz-templates/<path:name>', methods=['DELETE'])
+def delete_nz_template(name):
+    """删除指定数据标准化模板"""
+    fpath = _nz_template_path(name)
+    if not os.path.exists(fpath):
+        return jsonify({'error': '模板不存在'}), 404
+    os.remove(fpath)
+    return jsonify({'message': '模板已删除'})
+
+
+@app.route('/api/nz-fill', methods=['POST'])
+def nz_fill_template():
+    """填充数据标准化模板：解析公式并替换值，返回填充后的Excel文件"""
+    data = request.json or {}
+    template_b64 = data.get('templateData', '')
+    stats_data = data.get('statsData', {})
+
+    if not template_b64:
+        return jsonify({'error': '缺少模板数据'}), 400
+
+    # 解码base64模板
+    try:
+        raw = base64.b64decode(template_b64)
+    except:
+        return jsonify({'error': '模板数据解码失败'}), 400
+
+    # 写入临时文件并用openpyxl打开
+    tmp_in = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+    tmp_in.write(raw)
+    tmp_in.close()
+    tmp_out = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
+    tmp_out.close()
+
+    try:
+        wb = load_workbook(tmp_in.name)
+    except Exception as e:
+        os.unlink(tmp_in.name)
+        os.unlink(tmp_out.name)
+        return jsonify({'error': f'读取模板失败: {str(e)}'}), 500
+
+    formula_pattern = re.compile(r'^\{\{(.+?)\}\}$')
+    fill_count = 0
+    fail_count = 0
+
+    for ws in wb.worksheets:
+        # 遍历所有单元格
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value is None:
+                    continue
+                cell_str = str(cell.value).strip()
+                if not formula_pattern.match(cell_str):
+                    continue
+                # 解析公式并取值
+                result = _nz_resolve_formula_str(cell_str, stats_data)
+                if result['ok']:
+                    val = result['value']
+                    # 根据类型设置单元格值
+                    if isinstance(val, (int, float)):
+                        cell.value = val
+                        cell.number_format = 'General'
+                    else:
+                        cell.value = val
+                    fill_count += 1
+                else:
+                    cell.value = str(result['value'])
+                    fail_count += 1
+
+    try:
+        wb.save(tmp_out.name)
+        wb.close()
+    except Exception as e:
+        wb.close()
+        os.unlink(tmp_in.name)
+        os.unlink(tmp_out.name)
+        return jsonify({'error': f'保存失败: {str(e)}'}), 500
+
+    # 发送文件
+    result = send_file(
+        tmp_out.name,
+        as_attachment=True,
+        download_name='填充结果.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+    # 清理（使用after_request延迟清理）
+    @result.call_on_close
+    def cleanup():
+        try:
+            os.unlink(tmp_in.name)
+            os.unlink(tmp_out.name)
+        except:
+            pass
+
+    return result
 
 
 if __name__ == '__main__':

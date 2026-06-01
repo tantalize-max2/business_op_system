@@ -159,10 +159,10 @@ function switchStep(step) {
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('step' + capitalize(step)).classList.add('active');
   document.querySelectorAll('.sb-item').forEach(n => n.classList.remove('active'));
-  const navMap = {upload:'navUpload', filter1:'navFilter1', split:'navSplit', filter2:'navFilter2', kdocs:'navKdocs'};
+  const navMap = {upload:'navUpload', filter1:'navFilter1', split:'navSplit', filter2:'navFilter2', normalize:'navNormalize', kdocs:'navKdocs'};
   document.getElementById(navMap[step])?.classList.add('active');
   // 更新侧栏统计
-  if (step !== 'upload' && step !== 'kdocs') {
+  if (step !== 'upload' && step !== 'kdocs' && step !== 'normalize') {
     document.getElementById('sbStats').style.display = '';
     updSbStats();
   } else {
@@ -178,6 +178,10 @@ function switchStep(step) {
     populateSplitColSel();
     updSplitActiveFile();
   }
+  // 进入数据标准化时加载模板列表
+  if (step === 'normalize') {
+    loadNzTemplates();
+  }
   // 进入在线推送时加载数据
   if (step === 'kdocs') {
     loadKdocsCats();
@@ -185,7 +189,7 @@ function switchStep(step) {
   }
 }
 function capitalize(s) {
-  const map = {upload:'Upload', filter1:'Filter1', split:'Split', filter2:'Filter2', kdocs:'Kdocs'};
+  const map = {upload:'Upload', filter1:'Filter1', split:'Split', filter2:'Filter2', normalize:'Normalize', kdocs:'Kdocs'};
   return map[s] || s;
 }
 
@@ -2719,7 +2723,7 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
 document.querySelectorAll('.sb-item').forEach(item => {
   item.addEventListener('click', () => {
     const step = item.dataset.step;
-    if (step === 'upload' || step === 'kdocs' || step === 'split' || S.files.length) switchStep(step);
+    if (step === 'upload' || step === 'kdocs' || step === 'normalize' || step === 'split' || S.files.length) switchStep(step);
   });
 });
 
@@ -3581,4 +3585,850 @@ document.getElementById('kdShowScriptBtn').addEventListener('click', async () =>
   const close = () => { overlay.remove(); dd.remove(); };
   overlay.addEventListener('click', close);
   dd.querySelector('#kdScriptClose').addEventListener('click', close);
+});
+
+
+// ================================================================
+// STEP 5: 数据标准化 (Normalize)
+// ================================================================
+
+const NZ = {
+  templates: [],          // 模板列表 [{name, savedAt}]
+  currentTemplate: null,  // 当前编辑的模板名
+  wb: null,               // SheetJS workbook 对象
+  rawBuffer: null,        // 原始 ArrayBuffer (用于回写后端)
+  activeSheet: 0,         // 当前活动 sheet 索引
+  selectedCell: null,     // {row, col} 当前选中的单元格
+  cellEdits: {},          // 'sheetIdx!row!col' -> newValue 编辑缓存
+};
+
+// ---- 公式解析 ----
+const NZ_FORMULA_RE = /^\{\{(.+?)\}\}$/;
+
+function nzParseFormula(str) {
+  const m = String(str).match(NZ_FORMULA_RE);
+  if (!m) return null;
+  const inner = m[1].trim();
+  const slashIdx = inner.lastIndexOf('/');
+  if (slashIdx < 0) return null;
+  const metric = inner.substring(slashIdx + 1).trim();
+  const path = inner.substring(0, slashIdx).trim();
+  const parts = path.split(':').map(p => p.trim());
+  // {{文件序号:L1:L2:列/指标}} 或 {{文件序号:L1:L2/指标}} 或 {{文件序号:总合计/指标}}
+  let fileIdx, l1, l2, col;
+  if (parts.length >= 1) fileIdx = parseInt(parts[0], 10);
+  if (isNaN(fileIdx) || fileIdx < 1) return null;
+  if (parts.length === 2) {
+    // {{1:总合计/指标}} 或 {{1:L2名/指标}} (独立L2)
+    l2 = parts[1];
+  } else if (parts.length === 3) {
+    l1 = parts[1];
+    l2 = parts[2];
+  } else if (parts.length >= 4) {
+    l1 = parts[1];
+    l2 = parts[2];
+    col = parts[3];
+  }
+  // 解析附加列.值
+  let acCol, acVal;
+  if (col && col.includes('.')) {
+    const dp = col.split('.');
+    acCol = dp[0];
+    acVal = dp.slice(1).join('.');
+    col = acCol;
+  }
+  return { fileIdx, l1: l1 || '', l2: l2 || '', col: col || '', metric, acCol, acVal };
+}
+
+function nzBuildFormula(p) {
+  let inner = p.fileIdx;
+  if (p.l1) inner += ':' + p.l1;
+  if (p.l2) inner += ':' + p.l2;
+  if (p.col) {
+    if (p.acVal) inner += ':' + p.col + '.' + p.acVal;
+    else inner += ':' + p.col;
+  }
+  inner += '/' + p.metric;
+  return '{{' + inner + '}}';
+}
+
+// ---- 统计数据计算 (简化版：直接用 column+values 匹配) ----
+function nzComputeStats() {
+  const result = {}; // fileIdx -> { entries: [], l1Groups: [], total: {} }
+  S.files.forEach((file, fi) => {
+    if (!file.raw.length) return;
+    const fileIdx = fi + 1;
+    const sumCol = file.sumCol || '';
+    let l1Data = getFilteredData_forFile(file);
+    if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
+      l1Data = filterBySplitMatch(l1Data, file);
+    }
+    const ctxCache = {};
+    const entries = [];
+    const l1Groups = file.grps.filter(g => g.level === 1 && g.childGroupIds && g.childGroupIds.length);
+    const l1Entries = {};
+    const standaloneEntries = [];
+
+    // 构建L1子分组ID集合
+    const l1ChildSet = new Set();
+    l1Groups.forEach(l1g => { (l1g.childGroupIds || []).forEach(cid => l1ChildSet.add(cid)); });
+
+    // 遍历所有2级分组
+    file.grps.forEach(g => {
+      if (g.level === 1) return; // 跳过1级分组
+
+      // 直接用 column+values 匹配（类似getGroupContext的独立分组分支）
+      let ctx;
+      if (g.column && g.values && g.values.length) {
+        const valSet = new Set(g.values.map(v => String(v).trim()));
+        ctx = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+      } else {
+        // 没有column/values的分组，尝试getGroupContext
+        ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+      }
+
+      // 确定归属的L1分组
+      const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
+
+      const entry = {
+        name: g.name,
+        isGroup: true,
+        column: g.column,
+        count: ctx.length,
+        pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
+        depInfo: ownerL1 ? `L1:${ownerL1.name}` : '(独立)',
+        l1Name: ownerL1 ? ownerL1.name : '',
+        l1Id: ownerL1 ? ownerL1.id : null,
+        _ctx: ctx
+      };
+      if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+      file.addedCols.forEach(ac => {
+        const tc = {};
+        ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+        entry['ac_' + ac] = tc;
+      });
+
+      if (ownerL1) {
+        if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
+        l1Entries[ownerL1.id].push(entry);
+      } else {
+        standaloneEntries.push(entry);
+      }
+    });
+
+    // L1合计行
+    l1Groups.forEach(l1g => {
+      // 聚合所有子分组的ctx（去重）
+      const l1Rows = new Set();
+      (l1Entries[l1g.id] || []).forEach(e => {
+        if (e._ctx) e._ctx.forEach(r => l1Rows.add(r));
+      });
+      const l1r = [...l1Rows];
+      const l1entry = {
+        name: `${l1g.name} 合计`,
+        isL1Total: true,
+        l1Name: l1g.name,
+        l1Id: l1g.id,
+        count: l1r.length,
+        pct: l1Data.length > 0 ? (l1r.length / l1Data.length * 100).toFixed(1) : '0',
+        sum: sumCol ? l1r.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null,
+        _ctx: l1r
+      };
+      file.addedCols.forEach(ac => {
+        const tc = {};
+        l1r.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+        l1entry['ac_' + ac] = tc;
+      });
+      if (!l1Entries[l1g.id]) l1Entries[l1g.id] = [];
+      l1Entries[l1g.id].push(l1entry);
+    });
+
+    // 总合计
+    const allRowsSet = new Set();
+    (function collectRows(entries) {
+      entries.forEach(e => { if (e._ctx) e._ctx.forEach(r => allRowsSet.add(r)); });
+    })([...(l1Entries ? Object.values(l1Entries).flat() : []), ...standaloneEntries]);
+    const totalRows = [...allRowsSet];
+    const total = {
+      name: '合计',
+      isTotal: true,
+      count: totalRows.length,
+      pct: l1Data.length > 0 ? (totalRows.length / l1Data.length * 100).toFixed(1) : '0',
+      sum: sumCol ? totalRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null,
+      _ctx: totalRows
+    };
+
+    // 汇总entries
+    const allEntries = [];
+    l1Groups.forEach(l1g => {
+      if (l1Entries[l1g.id]) allEntries.push(...l1Entries[l1g.id]);
+    });
+    allEntries.push(...standaloneEntries);
+
+    result[fileIdx] = { entries: allEntries, l1Groups, total, file, l1Data };
+  });
+  return result;
+}
+
+// ---- 公式匹配与取值 ----
+function nzResolveFormula(parsed, statsData) {
+  const { fileIdx, l1, l2, col, metric, acCol, acVal } = parsed;
+  const fd = statsData[fileIdx];
+  if (!fd) return { ok: false, value: '未匹配(文件不存在)' };
+  const { entries, total, file, l1Data } = fd;
+
+  // 总合计
+  if (l2 === '总合计' || (!l1 && l2 === '总合计')) {
+    return nzResolveMetric(total, col, metric, file, l1Data, acCol, acVal);
+  }
+
+  // L1合计
+  if (l1 && l2 === '合计') {
+    const l1Total = entries.find(e => e.isL1Total && e.l1Name === l1);
+    if (!l1Total) return { ok: false, value: '未匹配' };
+    return nzResolveMetric(l1Total, col, metric, file, l1Data, acCol, acVal);
+  }
+
+  // 常规匹配
+  let entry;
+  if (l1) {
+    entry = entries.find(e => e.isGroup && e.l1Name === l1 && e.name === l2);
+  } else {
+    entry = entries.find(e => e.isGroup && !e.l1Name && e.name === l2 && e.depInfo === '(独立)');
+  }
+  if (!entry) return { ok: false, value: '未匹配' };
+  return nzResolveMetric(entry, col, metric, file, l1Data, acCol, acVal);
+}
+
+function nzResolveMetric(entry, col, metric, file, l1Data, acCol, acVal) {
+  if (metric === '数量') {
+    if (acCol && acVal) {
+      const tc = entry['ac_' + acCol];
+      if (!tc) return { ok: false, value: '未匹配(附加列)' };
+      return { ok: true, value: tc[acVal] || 0 };
+    }
+    return { ok: true, value: entry.count };
+  }
+  if (metric === '占比') {
+    return { ok: true, value: parseFloat(entry.pct) };
+  }
+  if (metric === '求和') {
+    const targetCol = col || file.sumCol;
+    if (!targetCol) return { ok: false, value: '未匹配(无求和列)' };
+    if (col && col !== file.sumCol && entry._ctx) {
+      const sum = entry._ctx.reduce((a, r) => a + (parseFloat(r[targetCol]) || 0), 0);
+      return { ok: true, value: parseFloat(sum.toFixed(2)) };
+    }
+    return { ok: true, value: entry.sum != null ? parseFloat(entry.sum.toFixed(2)) : 0 };
+  }
+  if (metric === '均值') {
+    const targetCol = col || file.sumCol;
+    if (!targetCol) return { ok: false, value: '未匹配(无求和列)' };
+    if (!entry._ctx || entry._ctx.length === 0) return { ok: true, value: 0 };
+    const sum = entry._ctx.reduce((a, r) => a + (parseFloat(r[targetCol]) || 0), 0);
+    return { ok: true, value: parseFloat((sum / entry._ctx.length).toFixed(2)) };
+  }
+  return { ok: false, value: '未匹配(指标)' };
+}
+
+// ---- 模板列表加载 ----
+async function loadNzTemplates() {
+  try {
+    const res = await fetch('/api/nz-templates');
+    const data = await res.json();
+    NZ.templates = data.templates || [];
+    nzRenderTemplateSel();
+  } catch (e) {
+    console.error('加载模板列表失败', e);
+  }
+}
+
+function nzRenderTemplateSel() {
+  const sel = document.getElementById('nzTemplateSel');
+  sel.innerHTML = '<option value="">-- 选择已保存模板 --</option>';
+  NZ.templates.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.name;
+    opt.textContent = t.name + (t.sheetCount ? ` (${t.sheetCount}个Sheet)` : '');
+    sel.appendChild(opt);
+  });
+  if (NZ.currentTemplate) sel.value = NZ.currentTemplate;
+}
+
+// ---- 模板上传与解析 ----
+document.getElementById('nzUploadBtn').addEventListener('click', () => {
+  document.getElementById('nzFileInput').click();
+});
+
+document.getElementById('nzFileInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  NZ.currentTemplate = file.name.replace(/\.(xlsx|xls)$/i, '');
+  const reader = new FileReader();
+  reader.onload = ev => {
+    NZ.rawBuffer = ev.target.result;
+    nzParseWorkbook(ev.target.result);
+    nzRenderTemplateSel();
+    document.getElementById('nzTemplateSel').value = NZ.currentTemplate;
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+});
+
+function nzParseWorkbook(buffer) {
+  try {
+    NZ.wb = XLSX.read(buffer, { type: 'array', cellStyles: true, cellDates: true });
+    NZ.cellEdits = {};
+    NZ.selectedCell = null;
+    NZ.activeSheet = 0;
+    nzShowWorkspace();
+    nzRenderSheetTabs();
+    nzRenderTable();
+  } catch (e) {
+    ntf('解析模板失败: ' + e.message, 'error');
+  }
+}
+
+function nzShowWorkspace() {
+  document.getElementById('nzWorkspace').style.display = '';
+  document.getElementById('nzEmpty').style.display = 'none';
+}
+
+// ---- Sheet标签 ----
+function nzRenderSheetTabs() {
+  const tabs = document.getElementById('nzSheetTabs');
+  tabs.innerHTML = '';
+  if (!NZ.wb) return;
+  NZ.wb.SheetNames.forEach((name, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'nz-sheet-tab' + (i === NZ.activeSheet ? ' active' : '');
+    tab.textContent = name;
+    tab.addEventListener('click', () => {
+      NZ.activeSheet = i;
+      NZ.selectedCell = null;
+      nzRenderSheetTabs();
+      nzRenderTable();
+    });
+    tabs.appendChild(tab);
+  });
+}
+
+// ---- 表格渲染 ----
+function nzRenderTable() {
+  if (!NZ.wb) return;
+  const ws = NZ.wb.Sheets[NZ.wb.SheetNames[NZ.activeSheet]];
+  if (!ws || !ws['!ref']) {
+    document.getElementById('nzThead').innerHTML = '';
+    document.getElementById('nzTbody').innerHTML = '<tr><td style="padding:20px;color:var(--t3)">空Sheet</td></tr>';
+    return;
+  }
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const maxR = Math.min(range.e.r, 200); // 最多显示200行
+  const maxC = Math.min(range.e.c, 50);  // 最多显示50列
+
+  // 表头: 列号
+  let thead = '<tr><th></th>';
+  for (let c = 0; c <= maxC; c++) {
+    thead += `<th>${XLSX.utils.encode_col(c)}</th>`;
+  }
+  thead += '</tr>';
+  document.getElementById('nzThead').innerHTML = thead;
+
+  // 数据行
+  let tbody = '';
+  for (let r = 0; r <= maxR; r++) {
+    tbody += `<tr><td>${r + 1}</td>`;
+    for (let c = 0; c <= maxC; c++) {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      const editKey = `${NZ.activeSheet}!${r}!${c}`;
+      let cellVal = '';
+      let isFormula = false;
+      // 优先显示编辑缓存
+      if (NZ.cellEdits[editKey] !== undefined) {
+        cellVal = NZ.cellEdits[editKey];
+      } else {
+        const cell = ws[ref];
+        if (cell) {
+          cellVal = cell.v != null ? String(cell.v) : '';
+          if (cell.t === 'd') cellVal = cell.v.toLocaleDateString?.() || String(cell.v);
+        }
+      }
+      isFormula = NZ_FORMULA_RE.test(cellVal);
+      const cls = isFormula ? ' nz-formula' : '';
+      const selCls = (NZ.selectedCell && NZ.selectedCell.row === r && NZ.selectedCell.col === c) ? ' selected' : '';
+      tbody += `<td class="${cls}${selCls}" data-r="${r}" data-c="${c}" title="${esc(cellVal)}">${esc(cellVal)}</td>`;
+    }
+    tbody += '</tr>';
+  }
+  document.getElementById('nzTbody').innerHTML = tbody;
+
+  // 绑定点击事件
+  document.getElementById('nzTbody').querySelectorAll('td[data-r]').forEach(td => {
+    td.addEventListener('click', () => nzSelectCell(+td.dataset.r, +td.dataset.c));
+  });
+
+  // 更新编辑栏
+  nzUpdateEditBar();
+}
+
+function nzSelectCell(r, c) {
+  NZ.selectedCell = { row: r, col: c };
+  // 高亮
+  document.querySelectorAll('#nzTbody td.selected').forEach(td => td.classList.remove('selected'));
+  const td = document.querySelector(`#nzTbody td[data-r="${r}"][data-c="${c}"]`);
+  if (td) td.classList.add('selected');
+  nzUpdateEditBar();
+}
+
+function nzUpdateEditBar() {
+  const bar = document.getElementById('nzEditBar');
+  const refEl = document.getElementById('nzCellRef');
+  const input = document.getElementById('nzCellInput');
+  if (!NZ.selectedCell || !NZ.wb) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = '';
+  const { row, col } = NZ.selectedCell;
+  refEl.textContent = XLSX.utils.encode_cell({ r: row, c: col });
+  const editKey = `${NZ.activeSheet}!${row}!${col}`;
+  const ws = NZ.wb.Sheets[NZ.wb.SheetNames[NZ.activeSheet]];
+  let val = '';
+  if (NZ.cellEdits[editKey] !== undefined) {
+    val = NZ.cellEdits[editKey];
+  } else {
+    const ref = XLSX.utils.encode_cell({ r: row, c: col });
+    const cell = ws?.[ref];
+    if (cell) val = cell.v != null ? String(cell.v) : '';
+  }
+  input.value = val;
+}
+
+// ---- 单元格编辑 ----
+document.getElementById('nzCellInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    nzApplyCellEdit();
+  }
+});
+document.getElementById('nzCellInput').addEventListener('blur', () => {
+  nzApplyCellEdit();
+});
+
+function nzApplyCellEdit() {
+  if (!NZ.selectedCell || !NZ.wb) return;
+  const { row, col } = NZ.selectedCell;
+  const editKey = `${NZ.activeSheet}!${row}!${col}`;
+  const newVal = document.getElementById('nzCellInput').value;
+  const ws = NZ.wb.Sheets[NZ.wb.SheetNames[NZ.activeSheet]];
+  const ref = XLSX.utils.encode_cell({ r: row, c: col });
+  const cell = ws?.[ref];
+  const origVal = cell ? (cell.v != null ? String(cell.v) : '') : '';
+  if (newVal === origVal) {
+    delete NZ.cellEdits[editKey];
+  } else {
+    NZ.cellEdits[editKey] = newVal;
+  }
+  // 只刷新该单元格而非全表
+  const td = document.querySelector(`#nzTbody td[data-r="${row}"][data-c="${col}"]`);
+  if (td) {
+    const isFormula = NZ_FORMULA_RE.test(newVal);
+    td.className = (isFormula ? ' nz-formula' : '') + ' selected';
+    td.textContent = newVal;
+    td.title = newVal;
+  }
+}
+
+// ---- 快速插入 ----
+document.getElementById('nzQuickInsertBtn').addEventListener('click', () => {
+  const body = document.getElementById('nzQiBody');
+  const visible = body.style.display !== 'none';
+  body.style.display = visible ? 'none' : '';
+  if (!visible) nzPopulateQiSelects();
+});
+
+document.getElementById('nzQiToggle').addEventListener('click', () => {
+  const body = document.getElementById('nzQiBody');
+  const visible = body.style.display !== 'none';
+  body.style.display = visible ? 'none' : '';
+  if (!visible) nzPopulateQiSelects();
+});
+
+document.getElementById('nzScanToggle').addEventListener('click', () => {
+  const body = document.getElementById('nzScanBody');
+  body.style.display = body.style.display !== 'none' ? 'none' : '';
+});
+
+function nzPopulateQiSelects() {
+  // 文件下拉
+  const fileSel = document.getElementById('nzQiFile');
+  fileSel.innerHTML = '';
+  if (!S.files.length) {
+    fileSel.innerHTML = '<option value="">-- 无文件 --</option>';
+    return;
+  }
+  S.files.forEach((f, i) => {
+    const opt = document.createElement('option');
+    opt.value = i + 1;
+    opt.textContent = `${i + 1} - ${f.name}`;
+    fileSel.appendChild(opt);
+  });
+  nzQiUpdateL1();
+}
+
+document.getElementById('nzQiFile').addEventListener('change', nzQiUpdateL1);
+document.getElementById('nzQiL1').addEventListener('change', nzQiUpdateL2);
+document.getElementById('nzQiL2').addEventListener('change', nzQiUpdateCol);
+document.getElementById('nzQiCol').addEventListener('change', nzQiUpdatePreview);
+document.getElementById('nzQiMetric').addEventListener('change', nzQiUpdatePreview);
+
+function nzQiUpdateL1() {
+  const fi = parseInt(document.getElementById('nzQiFile').value);
+  const l1Sel = document.getElementById('nzQiL1');
+  l1Sel.innerHTML = '<option value="">(无/总合计)</option>';
+  if (!fi || !S.files[fi - 1]) return;
+  const file = S.files[fi - 1];
+  const l1Groups = file.grps.filter(g => g.level === 1);
+  l1Groups.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g.name;
+    opt.textContent = g.name;
+    l1Sel.appendChild(opt);
+  });
+  // 独立分组选项
+  const standalone = file.grps.filter(g => g.level !== 1 && (!g.parentIds || !g.parentIds.length) && (!g.parentId));
+  if (standalone.length) {
+    const opt = document.createElement('option');
+    opt.value = '__standalone__';
+    opt.textContent = '(独立分组)';
+    l1Sel.appendChild(opt);
+  }
+  nzQiUpdateL2();
+}
+
+function nzQiUpdateL2() {
+  const fi = parseInt(document.getElementById('nzQiFile').value);
+  const l1Val = document.getElementById('nzQiL1').value;
+  const l2Sel = document.getElementById('nzQiL2');
+  l2Sel.innerHTML = '<option value="">-- 选择 --</option><option value="总合计">总合计</option>';
+  if (!fi || !S.files[fi - 1]) return;
+  const file = S.files[fi - 1];
+
+  if (l1Val === '__standalone__') {
+    const standalone = file.grps.filter(g => g.level !== 1 && (!g.parentIds || !g.parentIds.length) && (!g.parentId));
+    standalone.forEach(g => {
+      const opt = document.createElement('option');
+      opt.value = g.name;
+      opt.textContent = g.name;
+      l2Sel.appendChild(opt);
+    });
+  } else if (l1Val) {
+    const l1g = file.grps.find(g => g.level === 1 && g.name === l1Val);
+    if (l1g && l1g.childGroupIds) {
+      l1g.childGroupIds.forEach(cid => {
+        const cg = file.grps.find(x => x.id === cid);
+        if (cg) {
+          const opt = document.createElement('option');
+          opt.value = cg.name;
+          opt.textContent = cg.name;
+          l2Sel.appendChild(opt);
+        }
+      });
+    }
+    const opt = document.createElement('option');
+    opt.value = '合计';
+    opt.textContent = `${l1Val} 合计`;
+    l2Sel.appendChild(opt);
+  }
+  nzQiUpdateCol();
+}
+
+function nzQiUpdateCol() {
+  const fi = parseInt(document.getElementById('nzQiFile').value);
+  const colSel = document.getElementById('nzQiCol');
+  colSel.innerHTML = '<option value="">默认</option>';
+  if (!fi || !S.files[fi - 1]) return;
+  const file = S.files[fi - 1];
+  file.hdr.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    colSel.appendChild(opt);
+  });
+  nzQiUpdatePreview();
+}
+
+function nzQiUpdatePreview() {
+  const p = nzQiBuildParsed();
+  const preview = document.getElementById('nzQiPreview');
+  if (!p) { preview.textContent = ''; return; }
+  const formula = nzBuildFormula(p);
+  preview.textContent = formula;
+
+  // 尝试解析预览值
+  const statsData = nzComputeStats();
+  const result = nzResolveFormula(p, statsData);
+  if (result.ok) {
+    preview.textContent += ` = ${result.value}`;
+  } else {
+    preview.textContent += ` → ${result.value}`;
+  }
+}
+
+function nzQiBuildParsed() {
+  const fi = parseInt(document.getElementById('nzQiFile').value);
+  if (!fi) return null;
+  const l1Val = document.getElementById('nzQiL1').value;
+  const l2Val = document.getElementById('nzQiL2').value;
+  const colVal = document.getElementById('nzQiCol').value;
+  const metric = document.getElementById('nzQiMetric').value;
+  if (!l2Val) return null;
+  const p = { fileIdx: fi, l1: '', l2: l2Val, col: colVal || '', metric };
+  if (l1Val === '__standalone__') {
+    p.l1 = '';
+  } else {
+    p.l1 = l1Val || '';
+  }
+  return p;
+}
+
+document.getElementById('nzQiInsertBtn').addEventListener('click', () => {
+  const p = nzQiBuildParsed();
+  if (!p) { ntf('请选择分组信息', 'warn'); return; }
+  const formula = nzBuildFormula(p);
+  const input = document.getElementById('nzCellInput');
+  input.value = formula;
+  nzApplyCellEdit();
+  ntf('公式已插入');
+});
+
+// ---- 扫描公式 ----
+document.getElementById('nzScanBtn').addEventListener('click', nzScanFormulas);
+
+function nzScanFormulas() {
+  if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
+  const body = document.getElementById('nzScanBody');
+  body.style.display = '';
+  const list = document.getElementById('nzScanList');
+  const statsData = nzComputeStats();
+  const formulas = [];
+  let matchCount = 0, failCount = 0;
+
+  NZ.wb.SheetNames.forEach((sname, si) => {
+    const ws = NZ.wb.Sheets[sname];
+    if (!ws || !ws['!ref']) return;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = range.s.r; r <= range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        const editKey = `${si}!${r}!${c}`;
+        let cellVal;
+        if (NZ.cellEdits[editKey] !== undefined) {
+          cellVal = NZ.cellEdits[editKey];
+        } else {
+          const cell = ws[ref];
+          if (!cell) continue;
+          cellVal = cell.v != null ? String(cell.v) : '';
+        }
+        if (!NZ_FORMULA_RE.test(cellVal)) continue;
+        const parsed = nzParseFormula(cellVal);
+        if (!parsed) {
+          formulas.push({ formula: cellVal, ref, sheet: sname, ok: false, value: '格式错误' });
+          failCount++;
+          continue;
+        }
+        const result = nzResolveFormula(parsed, statsData);
+        formulas.push({ formula: cellVal, ref, sheet: sname, ok: result.ok, value: result.value });
+        if (result.ok) matchCount++; else failCount++;
+      }
+    }
+  });
+
+  if (!formulas.length) {
+    list.innerHTML = '<div style="padding:10px;color:var(--t3);font-size:12px">未找到任何 {{...}} 公式</div>';
+  } else {
+    list.innerHTML = formulas.map(f => `
+      <div class="nz-scan-item ${f.ok ? 'ok' : 'err'}">
+        <span class="nz-scan-icon">${f.ok ? '✅' : '❌'}</span>
+        <span class="nz-scan-formula">${esc(f.sheet)}!${esc(f.ref)}: ${esc(f.formula)}</span>
+        <span class="nz-scan-value ${f.ok ? '' : 'err'}">${esc(String(f.value))}</span>
+      </div>
+    `).join('');
+  }
+  ntf(`扫描完成：${matchCount} 匹配，${failCount} 未匹配`, failCount ? 'warn' : 'success');
+}
+
+// ---- 保存模板 ----
+document.getElementById('nzSaveBtn').addEventListener('click', async () => {
+  if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
+
+  // 将编辑应用到workbook
+  nzApplyEditsToWorkbook();
+
+  const name = NZ.currentTemplate || prompt('请输入模板名称:');
+  if (!name) return;
+  NZ.currentTemplate = name;
+
+  // 导出为base64
+  const wbOut = XLSX.write(NZ.wb, { type: 'array', bookType: 'xlsx' });
+  const b64 = arrayBufferToBase64(wbOut);
+
+  try {
+    const res = await fetch('/api/nz-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, fileData: b64 })
+    });
+    const data = await res.json();
+    if (data.error) { ntf(data.error, 'error'); return; }
+    ntf('模板已保存');
+    await loadNzTemplates();
+  } catch (e) {
+    ntf('保存失败: ' + e.message, 'error');
+  }
+});
+
+// ---- 选择已有模板 ----
+document.getElementById('nzTemplateSel').addEventListener('change', async () => {
+  const name = document.getElementById('nzTemplateSel').value;
+  if (!name) return;
+  NZ.currentTemplate = name;
+  try {
+    const res = await fetch(`/api/nz-templates/${encodeURIComponent(name)}`);
+    const data = await res.json();
+    if (data.error) { ntf(data.error, 'error'); return; }
+    // 解码base64
+    const raw = base64ToArrayBuffer(data.fileData);
+    NZ.rawBuffer = raw;
+    nzParseWorkbook(raw);
+  } catch (e) {
+    ntf('加载模板失败: ' + e.message, 'error');
+  }
+});
+
+// ---- 删除模板 ----
+document.getElementById('nzDeleteBtn').addEventListener('click', async () => {
+  const name = NZ.currentTemplate;
+  if (!name) { ntf('请先选择模板', 'warn'); return; }
+  if (!confirm(`确定删除模板"${name}"?`)) return;
+  try {
+    await fetch(`/api/nz-templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    ntf('模板已删除');
+    NZ.currentTemplate = null;
+    NZ.wb = null;
+    document.getElementById('nzWorkspace').style.display = 'none';
+    document.getElementById('nzEmpty').style.display = '';
+    await loadNzTemplates();
+  } catch (e) {
+    ntf('删除失败', 'error');
+  }
+});
+
+// ---- 下载模板 ----
+document.getElementById('nzDownloadBtn').addEventListener('click', () => {
+  if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
+  nzApplyEditsToWorkbook();
+  const wbOut = XLSX.write(NZ.wb, { type: 'array', bookType: 'xlsx' });
+  const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (NZ.currentTemplate || '模板') + '.xlsx';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ---- 填充并下载 ----
+document.getElementById('nzFillBtn').addEventListener('click', async () => {
+  if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
+  if (!S.files.length) { ntf('请先上传数据文件并完成二级统计', 'warn'); return; }
+
+  nzApplyEditsToWorkbook();
+  const wbOut = XLSX.write(NZ.wb, { type: 'array', bookType: 'xlsx' });
+  const b64 = arrayBufferToBase64(wbOut);
+
+  // 计算统计数据发送给后端
+  const statsData = nzComputeStats();
+  const statsPayload = {};
+  for (const [fi, fd] of Object.entries(statsData)) {
+    statsPayload[fi] = {
+      entries: fd.entries.map(e => ({
+        name: e.name, isGroup: e.isGroup, isL1Total: e.isL1Total, isTotal: e.isTotal,
+        l1Name: e.l1Name || '', count: e.count, pct: e.pct,
+        sum: e.sum, column: e.column || '',
+        acCols: fd.file.addedCols,
+        acData: fd.file.addedCols.reduce((acc, ac) => {
+          acc[ac] = e['ac_' + ac] || {};
+          return acc;
+        }, {}),
+      })),
+      total: { count: fd.total.count, pct: fd.total.pct, sum: fd.total.sum },
+      sumCol: fd.file.sumCol || '',
+      hdr: fd.file.hdr,
+    };
+  }
+
+  try {
+    ntf('正在填充数据...', 'info');
+    const res = await fetch('/api/nz-fill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ templateData: b64, statsData: statsPayload })
+    });
+    if (!res.ok) { ntf('填充失败', 'error'); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (NZ.currentTemplate || '报表') + '_填充结果.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+    ntf('填充完成，文件已下载');
+  } catch (e) {
+    ntf('填充失败: ' + e.message, 'error');
+  }
+});
+
+// ---- 辅助函数 ----
+function nzApplyEditsToWorkbook() {
+  if (!NZ.wb) return;
+  Object.entries(NZ.cellEdits).forEach(([key, val]) => {
+    const [si, r, c] = key.split('!').map(Number);
+    const ws = NZ.wb.Sheets[NZ.wb.SheetNames[si]];
+    if (!ws) return;
+    const ref = XLSX.utils.encode_cell({ r, c });
+    if (!ws[ref]) {
+      ws[ref] = { t: 's', v: val };
+    } else {
+      ws[ref].v = val;
+      ws[ref].t = 's';
+      delete ws[ref].w;
+    }
+    // 扩展range
+    if (ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      if (r > range.e.r) range.e.r = r;
+      if (c > range.e.c) range.e.c = c;
+      ws['!ref'] = XLSX.utils.encode_range(range);
+    }
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// 初始化
+document.addEventListener('DOMContentLoaded', () => {
+  applyThemeUI(document.documentElement.getAttribute('data-theme') || 'light');
 });
