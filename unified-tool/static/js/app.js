@@ -2139,11 +2139,13 @@ function showConfigNameDialog(callback) {
   dd.className = 'fd-dropdown vis';
   dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:360px;';
   const defaultName = `配置_${new Date().toLocaleString('zh-CN').replace(/[\/:]/g, '-')}`;
+  const hasMapping = S.mappingData && Object.keys(S.mappingData).length > 0;
   dd.innerHTML = `
     <div class="fd-head"><span class="fd-cn">保存配置</span></div>
     <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
       <label style="font-size:12px;color:var(--t3)">配置名称</label>
       <input id="cfgNameInput" value="${esc(defaultName)}" style="background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;color:var(--t1);font:13px var(--sf);outline:none;width:100%">
+      ${hasMapping ? '<div style="font-size:10px;color:var(--cy);font-family:var(--mf)">包含分局映射 (' + Object.keys(S.mappingData).length + '个分局)</div>' : ''}
     </div>
     <div class="fd-foot"><span></span><div class="fd-btns">
       <button class="btn btn-ghost btn-xs" id="cfgNameCancel">取消</button>
@@ -2221,7 +2223,7 @@ function showConfigPicker(configs) {
         <div style="font-weight:600;font-size:12px">${esc(c.name)}${matchBadge}</div>
         <button class="btn btn-danger btn-xs cfg-del-btn" data-cfg-name="${esc(c.name)}" style="flex-shrink:0;${isMatched ? '' : 'pointer-events:auto;opacity:1;'}">删除</button>
       </div>
-      <div style="font-size:10px;color:var(--t3)">${date} - ${fileNames}</div>
+      <div style="font-size:10px;color:var(--t3)">${date} - ${fileNames}${c.hasMapping ? ' <span style="color:var(--cy)">含分局映射(' + c.mappingCount + '个)</span>' : ''}</div>
     </div>`;
   });
   html += '</div>';
@@ -2467,6 +2469,93 @@ document.getElementById('resetMapping').addEventListener('click', async () => {
   await loadMapping();
   ntf('已恢复默认映射');
 });
+
+// ========== 分局模板 ==========
+document.getElementById('btnBureauTemplate').addEventListener('click', async () => {
+  const res = await fetch('/api/bureau-templates');
+  const templates = await res.json();
+  showBureauTemplateDialog(templates);
+});
+
+function showBureauTemplateDialog(templates) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center';
+  const dlg = document.createElement('div');
+  dlg.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;width:420px;max-height:70vh;display:flex;flex-direction:column;box-shadow:var(--sh)';
+  let html = `<div style="padding:18px 20px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span style="font-weight:700;font-size:14px">分局模板管理</span><span style="cursor:pointer;color:var(--t3);font-size:18px" id="btClose">&times;</span></div>`;
+  html += `<div style="padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;gap:8px"><input type="text" id="btNewName" placeholder="输入模板名称..." style="flex:1;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--t1);font-size:13px;outline:none"><button class="btn btn-primary btn-sm" id="btSaveBtn">保存当前映射为模板</button></div>`;
+  html += `<div style="flex:1;overflow-y:auto;padding:12px 20px" id="btList">`;
+  if (!templates.length) {
+    html += `<div style="color:var(--t3);font-size:12px;text-align:center;padding:20px">暂无保存的模板</div>`;
+  } else {
+    templates.forEach(t => {
+      const d = new Date(t.savedAt);
+      const ts = `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--bd);border-radius:10px;margin-bottom:8px;transition:background .15s;cursor:pointer" class="bt-item" data-btname="${esc(t.name)}" onmouseenter="this.style.background='var(--acg)'" onmouseleave="this.style.background=''"><div style="flex:1"><div style="font-weight:600;font-size:13px">${esc(t.name)}</div><div style="font-size:10px;color:var(--t3);font-family:var(--mf)">${t.bureauCount}个分局 · ${ts}</div></div><button class="btn btn-primary btn-xs bt-apply" style="margin-right:4px">应用</button><button class="btn btn-ghost btn-xs bt-del" style="color:var(--err)">删除</button></div>`;
+    });
+  }
+  html += `</div>`;
+  dlg.innerHTML = html;
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  dlg.querySelector('#btClose').addEventListener('click', () => overlay.remove());
+
+  // 保存当前映射为模板
+  dlg.querySelector('#btSaveBtn').addEventListener('click', async () => {
+    const name = dlg.querySelector('#btNewName').value.trim();
+    if (!name) { ntf('请输入模板名称', 'error'); return; }
+    if (!Object.keys(S.mappingData).length) { ntf('当前映射为空', 'error'); return; }
+    const res = await fetch('/api/bureau-templates', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ name, mapping: S.mappingData, savedAt: Date.now() })
+    });
+    const data = await res.json();
+    if (data.error) { ntf(data.error, 'error'); return; }
+    ntf(`模板「${name}」已保存`);
+    overlay.remove();
+    // 刷新模板列表
+    document.getElementById('btnBureauTemplate').click();
+  });
+  dlg.querySelector('#btNewName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') dlg.querySelector('#btSaveBtn').click();
+  });
+
+  // 应用模板
+  dlg.querySelectorAll('.bt-apply').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const item = btn.closest('.bt-item');
+      const name = item.dataset.btname;
+      if (!confirm(`确定应用模板「${name}」？当前映射将被替换。`)) return;
+      const res = await fetch(`/api/bureau-templates/${encodeURIComponent(name)}`);
+      const data = await res.json();
+      if (data.error) { ntf(data.error, 'error'); return; }
+      S.mappingData = data.mapping;
+      renderMapping();
+      saveMapping();
+      ntf(`已应用模板「${name}」`);
+      overlay.remove();
+    });
+  });
+
+  // 删除模板
+  dlg.querySelectorAll('.bt-del').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const item = btn.closest('.bt-item');
+      const name = item.dataset.btname;
+      if (!confirm(`确定删除模板「${name}」？`)) return;
+      await fetch(`/api/bureau-templates/${encodeURIComponent(name)}`, {method: 'DELETE'});
+      item.remove();
+      ntf(`模板「${name}」已删除`);
+      if (!dlg.querySelectorAll('.bt-item').length) {
+        dlg.querySelector('#btList').innerHTML = '<div style="color:var(--t3);font-size:12px;text-align:center;padding:20px">暂无保存的模板</div>';
+      }
+    });
+  });
+}
 
 async function saveMapping() {
   await fetch('/api/mapping', {

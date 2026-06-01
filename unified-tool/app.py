@@ -37,6 +37,8 @@ os.makedirs(CONFIGS_DIR, exist_ok=True)
 
 MAPPING_FILE = os.path.join(DATA_DIR, 'bureau_mapping.json')
 SHEETS_FILE = os.path.join(DATA_DIR, 'kdocs_sheets.json')
+TEMPLATES_DIR = os.path.join(DATA_DIR, 'bureau_templates')
+os.makedirs(TEMPLATES_DIR, exist_ok=True)
 
 # ============ 默认分局人员映射 ============
 DEFAULT_MAPPING = {
@@ -155,6 +157,77 @@ def reset_mapping():
     return jsonify({'message': '已重置为默认映射'})
 
 
+# ============ 分局模板 API ============
+
+def _template_path(name):
+    safe_name = re.sub(r'[^\w\u4e00-\u9fff\-\.]', '_', name)
+    return os.path.join(TEMPLATES_DIR, f"{safe_name}.json")
+
+
+@app.route('/api/bureau-templates', methods=['GET'])
+def list_bureau_templates():
+    templates = []
+    for fname in os.listdir(TEMPLATES_DIR):
+        if not fname.endswith('.json'):
+            continue
+        fpath = os.path.join(TEMPLATES_DIR, fname)
+        try:
+            with open(fpath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            templates.append({
+                'name': data.get('name', fname[:-5]),
+                'bureauCount': len(data.get('mapping', {})),
+                'savedAt': data.get('savedAt', 0)
+            })
+        except:
+            pass
+    templates.sort(key=lambda t: t.get('savedAt', 0), reverse=True)
+    return jsonify(templates)
+
+
+@app.route('/api/bureau-templates', methods=['POST'])
+def save_bureau_template():
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': '模板名称不能为空'}), 400
+    mapping = data.get('mapping')
+    if not mapping or not isinstance(mapping, dict):
+        return jsonify({'error': '映射数据不能为空'}), 400
+    template_data = {
+        'name': name,
+        'mapping': mapping,
+        'savedAt': data.get('savedAt', datetime.now().timestamp() * 1000)
+    }
+    fpath = _template_path(name)
+    with open(fpath, 'w', encoding='utf-8') as f:
+        json.dump(template_data, f, ensure_ascii=False, indent=2)
+    return jsonify({'message': '模板已保存', 'name': name})
+
+
+@app.route('/api/bureau-templates/<path:name>', methods=['GET'])
+def get_bureau_template(name):
+    fpath = _template_path(name)
+    if not os.path.exists(fpath):
+        return jsonify({'error': '模板不存在'}), 404
+    with open(fpath, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return app.response_class(
+        response=json.dumps(data, ensure_ascii=False),
+        status=200,
+        mimetype='application/json'
+    )
+
+
+@app.route('/api/bureau-templates/<path:name>', methods=['DELETE'])
+def delete_bureau_template(name):
+    fpath = _template_path(name)
+    if not os.path.exists(fpath):
+        return jsonify({'error': '模板不存在'}), 404
+    os.remove(fpath)
+    return jsonify({'message': '模板已删除'})
+
+
 # ============ 配置管理 API ============
 
 def _config_path(name):
@@ -174,16 +247,24 @@ def list_configs():
         try:
             with open(fpath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+            cfg = data.get('cfg', {})
+            mapping_data = cfg.get('mappingData')
             configs.append({
                 'name': data.get('name', fname[:-5]),
                 'sig': data.get('sig', ''),
                 'savedAt': data.get('savedAt', 0),
-                'fileNames': [fd.get('name', '') for fd in data.get('cfg', {}).get('files', [])]
+                'fileNames': [fd.get('name', '') for fd in cfg.get('files', [])],
+                'hasMapping': mapping_data is not None and isinstance(mapping_data, dict) and len(mapping_data) > 0,
+                'mappingCount': len(mapping_data) if isinstance(mapping_data, dict) else 0
             })
         except:
             pass
     configs.sort(key=lambda c: c.get('savedAt', 0), reverse=True)
-    return jsonify(configs)
+    return app.response_class(
+        response=json.dumps(configs, ensure_ascii=False),
+        status=200,
+        mimetype='application/json'
+    )
 
 
 @app.route('/api/configs', methods=['POST'])
@@ -232,7 +313,11 @@ def get_config(name):
         return jsonify({'error': '配置不存在'}), 404
     with open(fpath, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    return jsonify(data)
+    return app.response_class(
+        response=json.dumps(data, ensure_ascii=False),
+        status=200,
+        mimetype='application/json'
+    )
 
 
 @app.route('/api/configs/<path:name>', methods=['DELETE'])
