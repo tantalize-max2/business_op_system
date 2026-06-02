@@ -1901,14 +1901,7 @@ function calcAllStats() {
   // 检查是否有数据
   const hasData = S.files.some(f => f.raw.length > 0);
   if (!hasData) { area.innerHTML = '<div class="empty-hint">文件数据未加载，请重新上传文件后刷新</div>'; return; }
-  // 计算前自动清理与当前过滤不匹配的分组值
-  let anyCleaned = false;
-  S.files.forEach(file => { if (cleanGroupValues(file)) anyCleaned = true; });
-  if (anyCleaned) {
-    renderGrpCards();
-    popDepGrp();
-    ntf('已自动清理与当前过滤不匹配的分组值', 'warn');
-  }
+  // 注意：不再自动清理分组值，避免意外删除有效值导致数量对不上
   let html = '';
   S.files.forEach((file, fi) => {
     if (!file.raw.length) return;
@@ -1940,11 +1933,10 @@ function calcAllStats() {
       // 2级分组依托（通过parentIds）
       const parentIds = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
       const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
-      // 判断是否属于某个L1分组
+      // 判断是否属于某个L1分组（在childGroupIds中）
       const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
 
       if (parentIds.length > 0) {
-        // 检查parentIds是否指向L1分组还是L2分组
         const hasL1Parent = parentIds.some(pid => {
           const pg = file.grps.find(x => x.id === pid);
           return pg && pg.level === 1;
@@ -1954,45 +1946,81 @@ function calcAllStats() {
         });
 
         if (hasL1Parent) {
-          // 依托L1分组：为L1的每个子分组生成一个交叉entry
-          parentIds.forEach((pid, pi) => {
-            const pg = file.grps.find(x => x.id === pid);
-            if (!pg || pg.level !== 1) return;
-            const rel = parentRels[pi] || 'OR';
-            if (pg.childGroupIds && pg.childGroupIds.length) {
-              pg.childGroupIds.forEach(cid => {
-                const cg = file.grps.find(x => x.id === cid);
-                if (!cg) return;
-                const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
-                const valSet = new Set(g.values.map(v => String(v).trim()));
-                const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
-                let ctx;
-                if (rel === 'AND') {
-                  const ps = new Set(childCtx);
-                  ctx = selfMatch.filter(r => ps.has(r));
-                } else {
-                  const seen = new Set();
-                  ctx = [];
-                  [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
-                }
-                const depLabel = `${rel}→${pg.name}.${cg.name}`;
-                const entryName = `${cg.name} · ${g.name}`;
-                const entry = {name: entryName, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, l1Name: pg.name, l1Id: pg.id, isL1Cross: true};
-                if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-                file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-                if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
-                l1Entries[pg.id].push(entry);
-              });
-            }
-          });
+          // 依托L1分组：为L1的每个子分组生成交叉entry
+          // 如果此分组未被纳入任何L1（不在ownerL1中），交叉entry放入独立分组的crossItems中
+          if (!ownerL1) {
+            const totalCtx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+            const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
+            const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
+            const totalEntry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: totalCtx.length, pct: l1Data.length > 0 ? (totalCtx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, _ctx: totalCtx, crossItems: []};
+            if (sumCol) totalEntry.sum = totalCtx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+            file.addedCols.forEach(ac => { const tc = {}; totalCtx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); totalEntry['ac_' + ac] = tc; });
+            // 生成每个L1子分组的交叉entry
+            parentIds.forEach((pid, pi) => {
+              const pg = file.grps.find(x => x.id === pid);
+              if (!pg || pg.level !== 1) return;
+              const rel = parentRels[pi] || 'OR';
+              if (pg.childGroupIds && pg.childGroupIds.length) {
+                pg.childGroupIds.forEach(cid => {
+                  const cg = file.grps.find(x => x.id === cid);
+                  if (!cg) return;
+                  const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
+                  const valSet = new Set(g.values.map(v => String(v).trim()));
+                  const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+                  let ctx;
+                  if (rel === 'AND') {
+                    const ps = new Set(childCtx);
+                    ctx = selfMatch.filter(r => ps.has(r));
+                  } else {
+                    const seen = new Set();
+                    ctx = [];
+                    [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
+                  }
+                  const crossEntry = {name: `${cg.name} · ${g.name}`, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: `${rel}→${pg.name}.${cg.name}`, indent: 1, l1Name: pg.name, l1Id: pg.id, isL1Cross: true};
+                  if (sumCol) crossEntry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+                  file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); crossEntry['ac_' + ac] = tc; });
+                  totalEntry.crossItems.push(crossEntry);
+                });
+              }
+            });
+            standaloneEntries.push(totalEntry);
+          } else {
+            // 已被纳入L1：交叉entry放入对应L1的entries中
+            parentIds.forEach((pid, pi) => {
+              const pg = file.grps.find(x => x.id === pid);
+              if (!pg || pg.level !== 1) return;
+              const rel = parentRels[pi] || 'OR';
+              if (pg.childGroupIds && pg.childGroupIds.length) {
+                pg.childGroupIds.forEach(cid => {
+                  const cg = file.grps.find(x => x.id === cid);
+                  if (!cg) return;
+                  const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
+                  const valSet = new Set(g.values.map(v => String(v).trim()));
+                  const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+                  let ctx;
+                  if (rel === 'AND') {
+                    const ps = new Set(childCtx);
+                    ctx = selfMatch.filter(r => ps.has(r));
+                  } else {
+                    const seen = new Set();
+                    ctx = [];
+                    [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
+                  }
+                  const depLabel = `${rel}→${pg.name}.${cg.name}`;
+                  const entry = {name: `${cg.name} · ${g.name}`, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, l1Name: pg.name, l1Id: pg.id, isL1Cross: true};
+                  if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+                  file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
+                  if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+                  l1Entries[pg.id].push(entry);
+                });
+              }
+            });
+          }
           return;
         } else if (hasChainedL2Parent && ownerL1) {
           // 链式子分组：parentIds指向同L1内的其他L2分组
           const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
-          const parentNames = parentIds.map(pid => {
-            const pg = file.grps.find(x => x.id === pid);
-            return pg ? pg.name : '?';
-          });
+          const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
           const relLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
           const depLabel = `链式: ${relLabel}`;
           const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 2, isChained: true, l1Name: ownerL1.name, l1Id: ownerL1.id};
@@ -2004,19 +2032,16 @@ function calcAllStats() {
         } else {
           // 普通L2→L2依赖（跨L1或独立L2）
           const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
-          const parentNames = parentIds.map(pid => {
-            const pg = file.grps.find(x => x.id === pid);
-            return pg ? pg.name : '?';
-          });
+          const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
           const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
-          const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1};
+          const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, _ctx: ctx};
           if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
           file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
           standaloneEntries.push(entry);
           return;
         }
       }
-      // 普通分组（无依赖）——判断是否属于某个L1的childGroupIds
+      // 无依赖的普通分组——判断是否属于某个L1的childGroupIds
       const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
       if (ownerL1) {
         // 归属到L1分组下展示
@@ -2027,9 +2052,9 @@ function calcAllStats() {
         if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
         l1Entries[ownerL1.id].push(entry);
       } else {
-        // 真正独立的L2分组
+        // 独立L2分组
         let depLabel = '(独立)';
-        const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel};
+        const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, _ctx: ctx};
         if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
         file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
         standaloneEntries.push(entry);
@@ -2054,10 +2079,16 @@ function calcAllStats() {
     if (!file.grps.length) {
       standaloneEntries.push({name: '(未分组)', color: null, isGroup: false, column: '', count: l1Data.length, pct: '100', depInfo: ''});
     }
-    // 总合计：直接使用 l1Data 的总行数（而非分组 ctx 的并集，避免遗漏未覆盖的数据行）
-    const totalRows = l1Data;
-    const total = {name: '合计', isTotal: true, count: totalRows.length, pct: l1Data.length > 0 ? '100.0' : '0', sum: sumCol ? totalRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null};
-    file.addedCols.forEach(ac => { const tc = {}; totalRows.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); total['ac_' + ac] = tc; });
+    // 总合计：所有L2分组ctx的并集（确保合计=分组之和）
+    const allGroupRows = new Set();
+    file.grps.forEach(g => {
+      if (g.level === 1) return;
+      getGroupContext(g.id, l1Data, file.grps, ctxCache).forEach(r => allGroupRows.add(r));
+    });
+    const coveredRows = [...allGroupRows];
+    const uncovered = l1Data.length - coveredRows.length;
+    const total = {name: '合计', isTotal: true, count: coveredRows.length, pct: l1Data.length > 0 ? (coveredRows.length / l1Data.length * 100).toFixed(1) : '0', sum: sumCol ? coveredRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null, totalData: l1Data.length, uncovered};
+    file.addedCols.forEach(ac => { const tc = {}; coveredRows.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); total['ac_' + ac] = tc; });
 
     const secColor = SEC_COLORS[fi % SEC_COLORS.length];
     let scOpts = '<option value="">-- 无 --</option>';
@@ -2091,7 +2122,9 @@ function calcAllStats() {
     }
     // 合计行
     function totalRow(t) {
-      let r = `<tr class="tot"><td>合计</td><td></td><td></td><td class="nc">${t.count}</td><td class="nc">${t.pct}%</td>`;
+      const uncoveredHint = t.uncovered > 0 ? `<span style="color:var(--wn);font-size:10px;margin-left:6px">(未覆盖 ${t.uncovered} 条)</span>` : '';
+      const totalHint = t.totalData != null ? `<span style="color:var(--t3);font-size:10px;margin-left:6px">/ 总${t.totalData}条</span>` : '';
+      let r = `<tr class="tot"><td>合计${totalHint}${uncoveredHint}</td><td></td><td></td><td class="nc">${t.count}</td><td class="nc">${t.pct}%</td>`;
       if (sumCol) r += `<td class="nc" style="color:var(--wn)">${fmtN(t.sum)}</td>`;
       file.addedCols.forEach(ac => { const tc = t['ac_' + ac] || {}; r += `<td class="nc" style="color:var(--cy)">${Object.keys(tc).length} 种</td>`; });
       r += '</tr>';
@@ -2114,16 +2147,22 @@ function calcAllStats() {
       html += '</tbody></table></div></div>';
     });
 
-    // 独立分组（非L1的）——每个独立分组单独一个手风琴+合计
+    // 独立分组（非L1的）——每个独立分组单独一个手风琴，含交叉项和合计
     if (standaloneEntries.length) {
       standaloneEntries.forEach(e => {
+        const crossItems = e.crossItems || [];
+        const mainCount = e.count;
+        const mainPct = e.pct;
         html += `<div class="rv-acc rv-acc-standalone">`;
-        html += `<div class="rv-acc-hdr" data-toggle-acc="sa_${e.name}"><span class="rv-acc-dot" style="background:${e.color ? (CM[e.color] || {}).d : 'var(--t3)'}"></span><span class="rv-acc-title">${esc(e.name)}</span><span class="rv-acc-info">${e.count}条 · ${e.pct}%</span><span class="rv-acc-arrow">&#9660;</span></div>`;
+        html += `<div class="rv-acc-hdr" data-toggle-acc="sa_${e.name}"><span class="rv-acc-dot" style="background:${e.color ? (CM[e.color] || {}).d : 'var(--t3)'}"></span><span class="rv-acc-title">${esc(e.name)}</span><span class="rv-acc-info">${mainCount}条 · ${mainPct}%</span><span class="rv-acc-arrow">&#9660;</span></div>`;
         html += `<div class="rv-acc-body" data-accbody="sa_${e.name}">`;
         html += tableHead();
+        // 先展示交叉项（依赖L1的每个子分组）
+        crossItems.forEach(ce => { html += entryRow(ce); });
+        // 展示自身总entry
         html += entryRow(e);
-        // 独立分组的合计行
-        const saTotal = {name: `${e.name} 合计`, isL1Total: true, count: e.count, pct: e.pct, sum: e.sum, column: e.column || ''};
+        // 合计行
+        const saTotal = {name: `${e.name} 合计`, isL1Total: true, count: mainCount, pct: mainPct, sum: e.sum, column: e.column || ''};
         file.addedCols.forEach(ac => { saTotal['ac_' + ac] = e['ac_' + ac] || {}; });
         html += entryRow(saTotal);
         html += '</tbody></table></div></div>';
@@ -2221,8 +2260,15 @@ document.getElementById('exportBtn').addEventListener('click', () => {
       rows.push(row);
     });
     if (!file.grps.length) { const row = [file.name, '(未分组)', '', '', l1Data.length, '100']; if (sumCol) row.push(0); rows.push(row); }
-    const totalRow = [file.name, '合计', '', '', l1Data.length, '100'];
-    if (sumCol) totalRow.push(l1Data.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0));
+    // 合计：所有L2分组ctx并集
+    const expAllRows = new Set();
+    file.grps.forEach(g => {
+      if (g.level === 1) return;
+      getGroupContext(g.id, l1Data, file.grps, ctxCache).forEach(r => expAllRows.add(r));
+    });
+    const expCovered = [...expAllRows];
+    const totalRow = [file.name, `合计(总${l1Data.length}条)`, '', '', expCovered.length, l1Data.length > 0 ? (expCovered.length / l1Data.length * 100).toFixed(1) : '0'];
+    if (sumCol) totalRow.push(expCovered.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0));
     rows.push(totalRow);
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
     XLSX.utils.book_append_sheet(wb, ws, file.name.substring(0, 20));
@@ -2434,12 +2480,11 @@ function applyConfig(cfg) {
       targetFile.grps = [];
       targetFile.gid = 0;
       fc.grps.forEach(g => {
-        targetFile.grps.push({id: ++targetFile.gid, name: g.name, color: g.color, column: g.column, values: g.values || [], l1Dep: g.l1Dep || null, parentIds: g.parentIds || (g.parentId ? [g.parentId] : []), parentRels: g.parentRels || (g.parentRel ? [g.parentRel] : []), level: g.level || null, childGroupIds: g.childGroupIds || null});
+        const pids = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
+        const prels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
+        targetFile.grps.push({id: ++targetFile.gid, name: g.name, color: g.color, column: g.column, values: g.values || [], l1Dep: g.l1Dep || null, parentIds: pids, parentRels: prels, parentId: pids[0] || null, parentRel: prels[0] || null, level: g.level || null, childGroupIds: g.childGroupIds || null});
       });
-      // 加载配置后，清理与当前过滤数据不匹配的分组值
-      const origGrpCount = targetFile.grps.length;
-      cleanGroupValues(targetFile);
-      if (targetFile.grps.length < origGrpCount) cleanedCount += origGrpCount - targetFile.grps.length;
+      // 注意：不再自动cleanGroupValues，避免基于当前数据误删配置中的有效分组值
     }
   });
   // 恢复分局映射排序
@@ -3822,44 +3867,83 @@ function nzComputeStats() {
         });
 
         if (hasL1Parent) {
-          // 依托L1分组：为L1的每个子分组生成交叉entry
-          parentIds.forEach((pid) => {
-            const pg = file.grps.find(x => x.id === pid);
-            if (!pg || pg.level !== 1) return;
-            const rel = g.parentRel || 'AND';
-            if (pg.childGroupIds && pg.childGroupIds.length) {
-              pg.childGroupIds.forEach(cid => {
-                const cg = file.grps.find(x => x.id === cid);
-                if (!cg) return;
-                const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
-                const valSet = new Set(g.values.map(v => String(v).trim()));
-                const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
-                let ctx;
-                if (rel === 'AND') {
-                  const ps = new Set(childCtx);
-                  ctx = selfMatch.filter(r => ps.has(r));
-                } else {
-                  const seen = new Set();
-                  ctx = [];
-                  [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
-                }
-                const entryName = `${cg.name} · ${g.name}`;
-                const entry = {
-                  name: entryName, isGroup: true, column: g.column, count: ctx.length,
-                  pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
-                  depInfo: `${rel}→${pg.name}.${cg.name}`,
-                  l1Name: pg.name, l1Id: pg.id, isL1Cross: true, _ctx: ctx
-                };
-                if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-                file.addedCols.forEach(ac => {
-                  const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
-                  entry['ac_' + ac] = tc;
+          // 依托L1分组
+          if (!ownerL1) {
+            // 未被纳入L1：生成交叉entry + 自身总entry，归入独立分组
+            const totalCtx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+            const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
+            const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
+            const totalEntry = {
+              name: g.name, isGroup: true, column: g.column, count: totalCtx.length,
+              pct: l1Data.length > 0 ? (totalCtx.length / l1Data.length * 100).toFixed(1) : '0',
+              depInfo: depLabel, _ctx: totalCtx, crossItems: []
+            };
+            if (sumCol) totalEntry.sum = totalCtx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+            file.addedCols.forEach(ac => {
+              const tc = {}; totalCtx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+              totalEntry['ac_' + ac] = tc;
+            });
+            parentIds.forEach((pid, pi) => {
+              const pg = file.grps.find(x => x.id === pid);
+              if (!pg || pg.level !== 1) return;
+              const rel = parentRels[pi] || 'AND';
+              if (pg.childGroupIds && pg.childGroupIds.length) {
+                pg.childGroupIds.forEach(cid => {
+                  const cg = file.grps.find(x => x.id === cid);
+                  if (!cg) return;
+                  const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
+                  const valSet = new Set(g.values.map(v => String(v).trim()));
+                  const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+                  let ctx;
+                  if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }
+                  else { const seen = new Set(); ctx = []; [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } }); }
+                  const crossEntry = {
+                    name: `${cg.name} · ${g.name}`, isGroup: true, column: g.column, count: ctx.length,
+                    pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
+                    depInfo: `${rel}→${pg.name}.${cg.name}`, l1Name: pg.name, l1Id: pg.id, isL1Cross: true, _ctx: ctx
+                  };
+                  if (sumCol) crossEntry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+                  file.addedCols.forEach(ac => {
+                    const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+                    crossEntry['ac_' + ac] = tc;
+                  });
+                  totalEntry.crossItems.push(crossEntry);
                 });
-                if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
-                l1Entries[pg.id].push(entry);
-              });
-            }
-          });
+              }
+            });
+            standaloneEntries.push(totalEntry);
+          } else {
+            // 已被纳入L1：交叉entry放入对应L1的entries中
+            parentIds.forEach((pid, pi) => {
+              const pg = file.grps.find(x => x.id === pid);
+              if (!pg || pg.level !== 1) return;
+              const rel = parentRels[pi] || 'AND';
+              if (pg.childGroupIds && pg.childGroupIds.length) {
+                pg.childGroupIds.forEach(cid => {
+                  const cg = file.grps.find(x => x.id === cid);
+                  if (!cg) return;
+                  const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
+                  const valSet = new Set(g.values.map(v => String(v).trim()));
+                  const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+                  let ctx;
+                  if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }
+                  else { const seen = new Set(); ctx = []; [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } }); }
+                  const entry = {
+                    name: `${cg.name} · ${g.name}`, isGroup: true, column: g.column, count: ctx.length,
+                    pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
+                    depInfo: `${rel}→${pg.name}.${cg.name}`, l1Name: pg.name, l1Id: pg.id, isL1Cross: true, _ctx: ctx
+                  };
+                  if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+                  file.addedCols.forEach(ac => {
+                    const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+                    entry['ac_' + ac] = tc;
+                  });
+                  if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+                  l1Entries[pg.id].push(entry);
+                });
+              }
+            });
+          }
           return;
         } else if (hasChainedL2Parent && ownerL1) {
           // 链式子分组
@@ -3952,14 +4036,20 @@ function nzComputeStats() {
       l1Entries[l1g.id].push(l1entry);
     });
 
-    // 总合计：直接使用 l1Data 的总量
+    // 总合计：所有L2分组ctx的并集（确保合计=分组之和）
+    const nzAllGroupRows = new Set();
+    file.grps.forEach(g => {
+      if (g.level === 1) return;
+      getGroupContext(g.id, l1Data, file.grps, ctxCache).forEach(r => nzAllGroupRows.add(r));
+    });
+    const nzCovered = [...nzAllGroupRows];
     const total = {
       name: '合计',
       isTotal: true,
-      count: l1Data.length,
-      pct: '100.0',
-      sum: sumCol ? l1Data.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null,
-      _ctx: l1Data
+      count: nzCovered.length,
+      pct: l1Data.length > 0 ? (nzCovered.length / l1Data.length * 100).toFixed(1) : '0',
+      sum: sumCol ? nzCovered.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null,
+      _ctx: nzCovered
     };
 
     // 汇总entries
