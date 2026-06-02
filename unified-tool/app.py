@@ -1278,10 +1278,13 @@ def delete_nz_template(name):
 
 @app.route('/api/nz-fill', methods=['POST'])
 def nz_fill_template():
-    """填充数据标准化模板：解析公式并替换值，返回填充后的Excel文件"""
+    """填充数据标准化模板：解析公式并替换值，返回填充后的Excel文件
+    使用原始模板文件保留格式，仅替换公式单元格的值。
+    """
     data = request.json or {}
     template_b64 = data.get('templateData', '')
     stats_data = data.get('statsData', {})
+    cell_edits = data.get('cellEdits', [])
 
     if not template_b64:
         return jsonify({'error': '缺少模板数据'}), 400
@@ -1292,7 +1295,7 @@ def nz_fill_template():
     except:
         return jsonify({'error': '模板数据解码失败'}), 400
 
-    # 写入临时文件并用openpyxl打开
+    # 写入临时文件并用openpyxl打开（保留原格式）
     tmp_in = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
     tmp_in.write(raw)
     tmp_in.close()
@@ -1306,6 +1309,28 @@ def nz_fill_template():
         os.unlink(tmp_out.name)
         return jsonify({'error': f'读取模板失败: {str(e)}'}), 500
 
+    # 1. 先应用前端单元格编辑（保留格式，只改值）
+    for edit in cell_edits:
+        si = edit.get('sheet', 0)
+        r = edit.get('row', 0)
+        c = edit.get('col', 0)
+        val = edit.get('value', '')
+        if si < 0 or si >= len(wb.sheetnames):
+            continue
+        ws = wb.worksheets[si]
+        cell = ws.cell(row=r + 1, column=c + 1)  # openpyxl是1-based
+        # 保留原有格式，只替换值
+        try:
+            # 尝试转为数字
+            num_val = float(val) if val and '.' in val else (int(val) if val and val.lstrip('-').isdigit() else None)
+        except (ValueError, TypeError, AttributeError):
+            num_val = None
+        if num_val is not None:
+            cell.value = num_val
+        else:
+            cell.value = val
+
+    # 2. 扫描公式并替换值
     formula_pattern = re.compile(r'^\{\{(.+?)\}\}$')
     fill_count = 0
     fail_count = 0
@@ -1323,10 +1348,9 @@ def nz_fill_template():
                 result = _nz_resolve_formula_str(cell_str, stats_data)
                 if result['ok']:
                     val = result['value']
-                    # 根据类型设置单元格值
+                    # 根据类型设置单元格值（保留格式）
                     if isinstance(val, (int, float)):
                         cell.value = val
-                        cell.number_format = 'General'
                     else:
                         cell.value = val
                     fill_count += 1

@@ -567,6 +567,10 @@ body {
 .gc-l1-body { display:none; padding:0 12px 12px; }
 .gc-l1-body-open { display:flex; flex-direction:column; gap:6px; }
 .gc-nested { border-left:3px solid var(--bd); border-radius:8px; }
+/* 链式子分组样式 */
+.gc-chain-children { margin-left:16px; border-left:2px dashed var(--bd); padding-left:8px; display:flex; flex-direction:column; gap:4px; margin-top:4px; }
+.gc-chained { border-left:2px solid var(--ac); border-radius:6px; opacity:0.9; }
+.gc-chain-arrow { font-size:10px; color:var(--t3); font-family:var(--mf); padding:2px 0 0 4px; user-select:none; }
 /* 值标签"更多" */
 .gc-more { background:var(--bg3) !important; color:var(--t3) !important; border:1px dashed var(--bd) !important; }
 .gc-rel { font-size:9px; padding:2px 6px; border-radius:4px; font-weight:600; font-family:var(--mf); }
