@@ -2238,7 +2238,7 @@ function calcAllStats() {
         // 每个L1父分组一个小计
         const subRows = [...l1SubtotalRows];
         const subtotal = {
-          name: `${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
+          name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
           count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
           indent: 1, _ctx: subRows
         };
@@ -2303,7 +2303,7 @@ function calcAllStats() {
             // L1小计
             const subRows = [...l1SubtotalRows];
             const subtotal = {
-              name: `${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
+              name: `${fullName} · ${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
               count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
               indent: 1, _ctx: subRows
             };
@@ -2326,7 +2326,7 @@ function calcAllStats() {
           // 为每个L1创建带l1Name的totalEntry副本
           ancestorL1s.forEach(l1 => {
             if (!l1Entries[l1.id]) l1Entries[l1.id] = [];
-            const copy = Object.assign({}, totalEntry, { l1Name: l1.name, l1Id: l1.id });
+            const copy = Object.assign({}, totalEntry, { l1Name: l1.name, l1Id: l1.id, isL1Copy: true });
             delete copy.crossItems;
             delete copy.l1Subtotals;
             l1Entries[l1.id].push(copy);
@@ -2359,11 +2359,14 @@ function calcAllStats() {
             const pg = file.grps.find(x => x.id === pid);
             if (!pg || pg.level !== 1) return;
             if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
-            const copy = Object.assign({}, totalEntry, { l1Name: pg.name, l1Id: pg.id });
+            const copy = Object.assign({}, totalEntry, { l1Name: pg.name, l1Id: pg.id, isL1Copy: true });
             delete copy.crossItems;
             delete copy.l1Subtotals;
             l1Entries[pg.id].push(copy);
           });
+          // standalone显示用：清空已分发的crossItems/subtotals避免allEntries展平时重复
+          totalEntry.crossItems = [];
+          totalEntry.l1Subtotals = [];
           standaloneEntries.push(totalEntry);
         } else {
           // 交叉项和totalEntry都放入对应L1的entries中（与L3+一致）
@@ -2408,7 +2411,7 @@ function calcAllStats() {
     l1Groups.forEach(l1g => {
       const l1Rows = new Set();
       (l1Entries[l1g.id] || []).forEach(e => {
-        if (e.isChained || e.isL1Cross || e.isL1Subtotal || (e.level && e.level >= 3)) return;
+        if (e.isChained || e.isL1Cross || e.isL1Subtotal || e.isL1Copy || (e.level && e.level >= 3)) return;
         if (e._ctx) e._ctx.forEach(r => l1Rows.add(r));
       });
       const l1r = [...l1Rows];
@@ -4314,7 +4317,7 @@ function nzComputeStats() {
             // L1小计
             const subRows = [...l1SubtotalRows];
             const subtotal = {
-              name: `${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
+              name: `${fullName} · ${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
               count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
               _ctx: subRows
             };
@@ -4337,7 +4340,7 @@ function nzComputeStats() {
           // 为每个L1创建带l1Name的entry副本
           ancestorL1s.forEach(l1 => {
             if (!l1Entries[l1.id]) l1Entries[l1.id] = [];
-            const copy = Object.assign({}, entry, { l1Name: l1.name, l1Id: l1.id });
+            const copy = Object.assign({}, entry, { l1Name: l1.name, l1Id: l1.id, isL1Copy: true });
             delete copy.crossItems;
             delete copy.l1Subtotals;
             l1Entries[l1.id].push(copy);
@@ -4410,10 +4413,12 @@ function nzComputeStats() {
               const pg = file.grps.find(x => x.id === pid);
               if (!pg || pg.level !== 1) return;
               if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
-              const copy = Object.assign({}, totalEntry, { l1Name: pg.name, l1Id: pg.id });
+              const copy = Object.assign({}, totalEntry, { l1Name: pg.name, l1Id: pg.id, isL1Copy: true });
               delete copy.crossItems;
               l1Entries[pg.id].push(copy);
             });
+            // standalone显示用：清空已分发的crossItems避免allEntries展平时重复
+            totalEntry.crossItems = [];
             standaloneEntries.push(totalEntry);
           } else {
             // 已被纳入L1：交叉entry + totalEntry自身放入对应L1的entries中
@@ -5001,7 +5006,7 @@ function nzQiUpdateEntry() {
       entrySel.appendChild(opt);
     });
     // L1子分组自身
-    l1Entries.filter(e => e.isGroup && !e.isL1Cross && !e.isL1Total && !e.isL1Subtotal).forEach(e => {
+    l1Entries.filter(e => e.isGroup && !e.isL1Cross && !e.isL1Total && !e.isL1Subtotal && !e.isL1Copy).forEach(e => {
       const opt = document.createElement('option');
       opt.value = e.name;
       opt.textContent = `[分组] ${e.name}`;
