@@ -4381,6 +4381,7 @@ function nzComputeStats() {
               const pg = file.grps.find(x => x.id === pid);
               if (!pg || pg.level !== 1) return;
               const rel = parentRels[pi] || 'AND';
+              const l1SubtotalRows = new Set();
               if (pg.childGroupIds && pg.childGroupIds.length) {
                 pg.childGroupIds.forEach(cid => {
                   const cg = file.grps.find(x => x.id === cid);
@@ -4391,6 +4392,7 @@ function nzComputeStats() {
                   let ctx;
                   if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }
                   else { const seen = new Set(); ctx = []; [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } }); }
+                  ctx.forEach(r => l1SubtotalRows.add(r));
                   const crossEntry = {
                     name: `${cg.name} · ${g.name}`, isGroup: true, column: g.column, count: ctx.length,
                     pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
@@ -4407,6 +4409,16 @@ function nzComputeStats() {
                   l1Entries[pg.id].push(crossEntry);
                 });
               }
+              // 为该L1生成小计
+              const subRows = [...l1SubtotalRows];
+              const subtotal = {
+                name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
+                count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
+                _ctx: subRows
+              };
+              if (sumCol) subtotal.sum = subRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+              if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+              l1Entries[pg.id].push(subtotal);
             });
             // 为每个L1父分组创建带l1Name的totalEntry副本
             parentIds.forEach(pid => {
@@ -4439,6 +4451,7 @@ function nzComputeStats() {
               const pg = file.grps.find(x => x.id === pid);
               if (!pg || pg.level !== 1) return;
               const rel = parentRels[pi] || 'AND';
+              const l1SubtotalRows = new Set();
               if (pg.childGroupIds && pg.childGroupIds.length) {
                 pg.childGroupIds.forEach(cid => {
                   const cg = file.grps.find(x => x.id === cid);
@@ -4449,6 +4462,7 @@ function nzComputeStats() {
                   let ctx;
                   if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }
                   else { const seen = new Set(); ctx = []; [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } }); }
+                  ctx.forEach(r => l1SubtotalRows.add(r));
                   const entry = {
                     name: `${cg.name} · ${g.name}`, isGroup: true, column: g.column, count: ctx.length,
                     pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
@@ -4464,6 +4478,16 @@ function nzComputeStats() {
                   totalEntry.crossItems.push(entry);
                 });
               }
+              // 为该L1生成小计
+              const subRows = [...l1SubtotalRows];
+              const subtotal = {
+                name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
+                count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
+                _ctx: subRows
+              };
+              if (sumCol) subtotal.sum = subRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+              if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+              l1Entries[pg.id].push(subtotal);
             });
             // 推送totalEntry自身
             if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
