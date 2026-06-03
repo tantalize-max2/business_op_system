@@ -379,6 +379,13 @@ function getGroupContext(gid, l1Data, grps, cache) {
       const childCtx = getGroupContext(cid, l1Data, grps, cache);
       childCtx.forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
     });
+  } else if (g.level >= 3 && g.parentId) {
+    // 3级+分组：与父分组上下文取交集
+    const parentCtx = getGroupContext(g.parentId, l1Data, grps, cache);
+    const valSet = new Set(g.values.map(v => String(v).trim()));
+    const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+    const ps = new Set(parentCtx);
+    ctx = selfMatch.filter(r => ps.has(r));
   } else if (!g.parentId && (!g.parentIds || !g.parentIds.length)) {
     const valSet = new Set(g.values.map(v => String(v).trim()));
     ctx = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
@@ -495,10 +502,21 @@ function cleanGroupValues(file) {
     g.values = g.values.filter(v => avail.has(String(v).trim()));
     if (g.values.length !== origLen) changed = true;
   });
-  // 移除值已清空的2级分组
+  // 移除值已清空的2级+分组
   const emptyGrpIds = new Set(
     file.grps.filter(g => g.level !== 1 && g.values.length === 0).map(g => g.id)
   );
+  // 级联删除：如果父分组被删除，子分组也应删除
+  let cascaded = true;
+  while (cascaded) {
+    cascaded = false;
+    file.grps.forEach(g => {
+      if (g.level >= 3 && g.parentId && emptyGrpIds.has(g.parentId) && !emptyGrpIds.has(g.id)) {
+        emptyGrpIds.add(g.id);
+        cascaded = true;
+      }
+    });
+  }
   if (emptyGrpIds.size) {
     file.grps = file.grps.filter(g => !emptyGrpIds.has(g.id));
     // 清理1级分组的childGroupIds引用
@@ -1363,7 +1381,8 @@ document.getElementById('btnAddGrp').addEventListener('click', () => {
     parentRels: pGroupIds.length ? pGroupIds.map(() => pRel) : [],
     // 向后兼容
     parentId: pGroupIds.length ? pGroupIds[0] : null,
-    parentRel: pGroupIds.length ? pRel : null
+    parentRel: pGroupIds.length ? pRel : null,
+    level: 2
   });
   S.selGVals = [];
   document.getElementById('gName').value = '';
@@ -1455,9 +1474,140 @@ function showL1GroupDialog() {
     close();
     renderGrpCards();
     popDepGrp();
+    updLxButtons();
     ntf(`1级分组 "${name}" 已创建，包含 ${selectedIds.size} 个子分组`);
   });
 }
+
+// ========== 创建3/4/5级分组 ==========
+function showLxGroupDialog(targetLevel) {
+  const f = getActiveFile();
+  if (!f) { ntf('无活跃文件', 'error'); return; }
+  const parentLevel = targetLevel - 1;
+  // 收集可用的父级分组
+  const parentGrps = f.grps.filter(g => g.level === parentLevel || (parentLevel === 2 && (!g.level || g.level === 2)));
+  if (!parentGrps.length) { ntf(`请先创建${parentLevel}级分组`, 'error'); return; }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'fd-overlay vis';
+  const dd = document.createElement('div');
+  dd.className = 'fd-dropdown vis';
+  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:420px;max-height:600px;';
+  let html = `<div class="fd-head"><span class="fd-cn">创建${targetLevel}级分组</span></div>`;
+  html += '<div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">';
+  // 父级选择
+  html += `<div style="display:flex;gap:8px;align-items:center"><label style="font-size:12px;color:var(--t3);white-space:nowrap">父级分组</label><select id="lxParentSel" style="flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;color:var(--t1);font:12px var(--sf);outline:none">`;
+  parentGrps.forEach(g => {
+    html += `<option value="${g.id}">${esc(g.name)} (${esc(g.column || '聚合')})</option>`;
+  });
+  html += '</select></div>';
+  // 列选择
+  html += `<div style="display:flex;gap:8px;align-items:center"><label style="font-size:12px;color:var(--t3);white-space:nowrap">列</label><select id="lxColSel" style="flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;color:var(--t1);font:12px var(--sf);outline:none">`;
+  f.hdr.forEach(c => { html += `<option value="${esc(c)}">${esc(c)}</option>`; });
+  html += '</select></div>';
+  // 分组名
+  html += '<div style="display:flex;gap:8px;align-items:center"><label style="font-size:12px;color:var(--t3);white-space:nowrap">分组名</label><input id="lxGrpName" placeholder="如：重点项" style="flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;color:var(--t1);font:12px var(--sf);outline:none"></div>';
+  // 颜色
+  html += '<div style="display:flex;gap:8px;align-items:center"><label style="font-size:12px;color:var(--t3);white-space:nowrap">颜色</label><div class="gcolors" id="lxGCols">';
+  GROUP_COLORS.forEach((c, i) => {
+    html += `<div class="gco c-${c}${i === 0 ? ' sel' : ''}" data-c="${c}"></div>`;
+  });
+  html += '</div></div>';
+  // 值选择（动态渲染）
+  html += '<label style="font-size:11px;color:var(--t3)">选择值</label>';
+  html += '<div class="fd-value-list" id="lxValueList" style="max-height:220px"></div>';
+  html += '</div>';
+  html += '<div class="fd-foot"><span class="fd-cnt" id="lxSelCnt">0 个已选</span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="lxCancel">取消</button><button class="btn btn-primary btn-xs" id="lxOk">创建</button></div></div>';
+  dd.innerHTML = html;
+  document.body.appendChild(overlay);
+  document.body.appendChild(dd);
+
+  let lxColor = GROUP_COLORS[0];
+  const lxSelectedValues = [];
+
+  // 颜色选择
+  dd.querySelectorAll('#lxGCols .gco').forEach(el => el.addEventListener('click', () => {
+    dd.querySelectorAll('#lxGCols .gco').forEach(e => e.classList.remove('sel'));
+    el.classList.add('sel');
+    lxColor = el.dataset.c;
+  }));
+
+  // 列变更时刷新值列表
+  function renderLxValues() {
+    const col = dd.querySelector('#lxColSel').value;
+    const list = dd.querySelector('#lxValueList');
+    if (!col) { list.innerHTML = '<div style="padding:8px;color:var(--t3)">请选择列</div>'; return; }
+    const parentSel = dd.querySelector('#lxParentSel').value;
+    const parentGrp = f.grps.find(g => g.id === +parentSel);
+    // 获取父分组的上下文数据
+    const l1Data = getFilteredData_forFile(f);
+    const ctxCache = {};
+    const parentCtx = parentGrp ? getGroupContext(parentGrp.id, l1Data, f.grps, ctxCache) : l1Data;
+    // 在父上下文中提取该列的唯一值
+    const valCounts = {};
+    parentCtx.forEach(r => { const v = String(r[col] ?? '').trim(); if (v) valCounts[v] = (valCounts[v] || 0) + 1; });
+    const sorted = Object.entries(valCounts).sort((a, b) => b[1] - a[1]);
+    list.innerHTML = sorted.map(([v, cnt]) =>
+      `<div class="fd-item lx-val-item" data-v="${esc(v)}" style="gap:6px;padding:6px 12px"><span style="font-size:12px">${esc(v)}</span><span style="font-size:10px;color:var(--t3);margin-left:auto">${cnt}</span></div>`
+    ).join('');
+    lxSelectedValues.length = 0;
+    updLxCnt();
+    list.querySelectorAll('.lx-val-item').forEach(el => el.addEventListener('click', () => {
+      const v = el.dataset.v;
+      const idx = lxSelectedValues.indexOf(v);
+      if (idx >= 0) { lxSelectedValues.splice(idx, 1); el.classList.remove('sel'); }
+      else { lxSelectedValues.push(v); el.classList.add('sel'); }
+      updLxCnt();
+    }));
+  }
+
+  function updLxCnt() {
+    const cntEl = dd.querySelector('#lxSelCnt');
+    if (cntEl) cntEl.textContent = `${lxSelectedValues.length} 个已选`;
+  }
+
+  dd.querySelector('#lxColSel').addEventListener('change', renderLxValues);
+  dd.querySelector('#lxParentSel').addEventListener('change', renderLxValues);
+  renderLxValues();
+
+  const close = () => { overlay.remove(); dd.remove(); };
+  dd.querySelector('#lxCancel').addEventListener('click', close);
+  overlay.addEventListener('click', close);
+
+  dd.querySelector('#lxOk').addEventListener('click', () => {
+    const parentSel = +dd.querySelector('#lxParentSel').value;
+    const col = dd.querySelector('#lxColSel').value;
+    const name = dd.querySelector('#lxGrpName').value.trim();
+    if (!col) { ntf('请选择列', 'error'); return; }
+    if (!name) { ntf('请输入分组名', 'error'); return; }
+    if (!lxSelectedValues.length) { ntf('请选择值', 'error'); return; }
+    f.grps.push({
+      id: ++f.gid, name, color: lxColor, column: col, values: [...lxSelectedValues],
+      l1Dep: null, parentIds: [parentSel], parentRels: ['AND'],
+      parentId: parentSel, parentRel: 'AND',
+      level: targetLevel
+    });
+    close();
+    renderGrpCards();
+    popDepGrp();
+    updLxButtons();
+    ntf(`${targetLevel}级分组 "${name}" 已创建`);
+  });
+}
+
+function updLxButtons() {
+  const f = getActiveFile();
+  const hasL2 = f && f.grps.some(g => g.level === 2 || (!g.level && g.level !== 1));
+  const hasL3 = f && f.grps.some(g => g.level === 3);
+  const hasL4 = f && f.grps.some(g => g.level === 4);
+  document.getElementById('btnAddL3Grp').style.display = hasL2 ? '' : 'none';
+  document.getElementById('btnAddL4Grp').style.display = hasL3 ? '' : 'none';
+  document.getElementById('btnAddL5Grp').style.display = hasL4 ? '' : 'none';
+}
+
+document.getElementById('btnAddL3Grp').addEventListener('click', () => showLxGroupDialog(3));
+document.getElementById('btnAddL4Grp').addEventListener('click', () => showLxGroupDialog(4));
+document.getElementById('btnAddL5Grp').addEventListener('click', () => showLxGroupDialog(5));
 
 function renderGrpCards() {
   const f = getActiveFile();
@@ -1468,6 +1618,36 @@ function renderGrpCards() {
   // 找出被1级分组包含的子分组ID（这些会嵌套在1级分组内展示）
   const childOfL1 = new Set();
   f.grps.filter(g => g.level === 1 && g.childGroupIds).forEach(g => g.childGroupIds.forEach(id => childOfL1.add(id)));
+  // 找出被任何父分组包含的L3+子分组ID（这些会嵌套在父分组内展示）
+  const childOfAny = new Set();
+  f.grps.forEach(g => { if (g.parentId && g.level >= 3) childOfAny.add(g.id); });
+
+  // 构建子分组映射：parentId -> [children]（用于L3+嵌套渲染）
+  const childrenOf = {};
+  f.grps.forEach(g => {
+    if (g.parentId && g.level >= 3) {
+      if (!childrenOf[g.parentId]) childrenOf[g.parentId] = [];
+      childrenOf[g.parentId].push(g);
+    }
+  });
+
+  // 递归渲染子级分组（L3/L4/L5）
+  function renderSubGroups(parentId, depth) {
+    const kids = childrenOf[parentId];
+    if (!kids || !kids.length) return '';
+    let h = '<div class="gc-sub-children" style="margin-left:' + (depth * 16) + 'px">';
+    kids.forEach(kid => {
+      const kcm = CM[kid.color] || CM.blue;
+      const lvLabel = kid.level ? `${kid.level}级` : '2级';
+      h += `<div class="gc gc-sub" draggable="true" data-gid="${kid.id}">
+        <div class="gc-h"><span class="gc-dot" style="background:${kcm.d}"></span><span class="gc-n">${esc(kid.name)}</span><span class="gc-col">${esc(kid.column)} <span class="badge-lv">${lvLabel}</span></span><button class="btn btn-ghost btn-xs" data-edit="${kid.id}">✎</button><button class="btn btn-danger btn-xs" data-del="${kid.id}">✕</button></div>
+        <div class="gc-vs">${kid.values.slice(0, 8).map(v => `<span class="gc-v ${kcm.t}">${esc(v)}</span>`).join('')}${kid.values.length > 8 ? `<span class="gc-v gc-more">+${kid.values.length - 8}</span>` : ''}</div>`;
+      h += renderSubGroups(kid.id, depth + 1);
+      h += '</div>';
+    });
+    h += '</div>';
+    return h;
+  }
 
   let html = '';
   f.grps.forEach(g => {
@@ -1477,14 +1657,13 @@ function renderGrpCards() {
     if (g.level === 1) {
       // 1级分组：可折叠容器，包含子分组（支持链式嵌套展示）
       const childGrps = (g.childGroupIds || []).map(cid => f.grps.find(x => x.id === cid)).filter(Boolean);
-      // 识别链式关系：L2子分组A → L2子分组C（C的parentIds指向同L1内的A）
+      // 识别链式关系
       const childIdSet = new Set(childGrps.map(c => c.id));
-      const chainMap = {}; // parentId -> [childId, ...]
-      const chainChildSet = new Set(); // 所有链式子分组ID
+      const chainMap = {};
+      const chainChildSet = new Set();
       childGrps.forEach(cg => {
         if (cg.level === 1) return;
         const pids = cg.parentIds && cg.parentIds.length ? cg.parentIds : (cg.parentId ? [cg.parentId] : []);
-        // 检查是否依赖同L1内的其他L2分组
         const localParent = pids.find(pid => childIdSet.has(pid) && pid !== cg.id);
         if (localParent) {
           if (!chainMap[localParent]) chainMap[localParent] = [];
@@ -1493,7 +1672,6 @@ function renderGrpCards() {
         }
       });
       const independentCount = childGrps.filter(c => !chainChildSet.has(c.id)).length;
-      const childCount = childGrps.length;
       html += `<div class="gc-l1-card" data-l1id="${g.id}" draggable="true">
         <div class="gc-l1-header" data-toggle-l1="${g.id}">
           <span class="gc-dot" style="background:${cm.d}"></span>
@@ -1505,15 +1683,13 @@ function renderGrpCards() {
           <button class="btn btn-danger btn-xs" data-del="${g.id}" onclick="event.stopPropagation()">✕</button>
         </div>
         <div class="gc-l1-body" data-l1body="${g.id}">`;
-      // 渲染子分组：独立子分组在前，链式子分组嵌套在其父分组下方
       childGrps.forEach(cg => {
-        if (chainChildSet.has(cg.id)) return; // 链式子分组稍后渲染
+        if (chainChildSet.has(cg.id)) return;
         const ccm = CM[cg.color] || CM.blue;
         const hasChain = chainMap[cg.id] && chainMap[cg.id].length;
         html += `<div class="gc gc-nested" draggable="true" data-gid="${cg.id}">
           <div class="gc-h"><span class="gc-dot" style="background:${ccm.d}"></span><span class="gc-n">${esc(cg.name)}</span><span class="gc-col">${esc(cg.column)}</span><button class="btn btn-ghost btn-xs" data-edit="${cg.id}">✎</button><button class="btn btn-danger btn-xs" data-del="${cg.id}">✕</button></div>
           <div class="gc-vs">${cg.values.slice(0, 8).map(v => `<span class="gc-v ${ccm.t}">${esc(v)}</span>`).join('')}${cg.values.length > 8 ? `<span class="gc-v gc-more">+${cg.values.length - 8}</span>` : ''}</div>`;
-        // 渲染该子分组的链式子分组（缩进嵌套）
         if (hasChain) {
           html += '<div class="gc-chain-children">';
           chainMap[cg.id].forEach(chainedId => {
@@ -1525,15 +1701,19 @@ function renderGrpCards() {
               <div class="gc-chain-arrow">└ ${relLabel}</div>
               <div class="gc-h"><span class="gc-dot" style="background:${ccm2.d}"></span><span class="gc-n">${esc(cg2.name)}</span><span class="gc-col">${esc(cg2.column)}</span><button class="btn btn-ghost btn-xs" data-edit="${cg2.id}">✎</button><button class="btn btn-danger btn-xs" data-del="${cg2.id}">✕</button></div>
               <div class="gc-vs">${cg2.values.slice(0, 8).map(v => `<span class="gc-v ${ccm2.t}">${esc(v)}</span>`).join('')}${cg2.values.length > 8 ? `<span class="gc-v gc-more">+${cg2.values.length - 8}</span>` : ''}</div>
+              ${renderSubGroups(cg2.id, 1)}
             </div>`;
           });
           html += '</div>';
         }
+        // 渲染L3+子分组
+        html += renderSubGroups(cg.id, 1);
         html += '</div>';
       });
       html += `</div></div>`;
-    } else if (!childOfL1.has(g.id)) {
+    } else if (!childOfL1.has(g.id) && !childOfAny.has(g.id)) {
       // 不属于1级分组的普通分组
+      const lvLabel = g.level ? `${g.level}级` : '2级';
       let depHtml = '';
       if (g.parentId) {
         const pg = f.grps.find(x => x.id === g.parentId);
@@ -1542,17 +1722,11 @@ function renderGrpCards() {
           depHtml = `<div class="gc-dep"><span class="dep-arrow">↑</span> <span class="gc-rel ${rc}">${g.parentRel}</span> ${esc(pg.name)}</div>`;
         }
       }
-      const children = f.grps.filter(x => x.parentId === g.id);
-      let chHtml = '';
-      if (children.length) {
-        chHtml = '<div class="gc-dep"><span style="color:var(--t3)">↓</span> ' + children.map(c => {
-          const rc = c.parentRel === 'AND' ? 'rel-and' : 'rel-or';
-          return `<span class="gc-rel ${rc}">${c.parentRel}</span> ${esc(c.name)}`;
-        }).join(' · ') + '</div>';
-      }
-      html += `<div class="gc" draggable="true" data-gid="${g.id}"><div class="gc-h"><span class="gc-dot" style="background:${cm.d}"></span><span class="gc-n">${esc(g.name)}</span><span class="gc-col">${esc(g.column)} ${l1Info}</span><button class="btn btn-ghost btn-xs" data-edit="${g.id}">✎</button><button class="btn btn-danger btn-xs" data-del="${g.id}">✕</button></div><div class="gc-vs">${g.values.slice(0, 8).map(v => `<span class="gc-v ${cm.t}">${esc(v)}</span>`).join('')}${g.values.length > 8 ? `<span class="gc-v gc-more">+${g.values.length - 8}</span>` : ''}</div>${depHtml}${chHtml}</div>`;
+      html += `<div class="gc" draggable="true" data-gid="${g.id}"><div class="gc-h"><span class="gc-dot" style="background:${cm.d}"></span><span class="gc-n">${esc(g.name)}</span><span class="gc-col">${esc(g.column)} <span class="badge-lv">${lvLabel}</span> ${l1Info}</span><button class="btn btn-ghost btn-xs" data-edit="${g.id}">✎</button><button class="btn btn-danger btn-xs" data-del="${g.id}">✕</button></div><div class="gc-vs">${g.values.slice(0, 8).map(v => `<span class="gc-v ${cm.t}">${esc(v)}</span>`).join('')}${g.values.length > 8 ? `<span class="gc-v gc-more">+${g.values.length - 8}</span>` : ''}</div>${depHtml}`;
+      // 渲染L3+子分组
+      html += renderSubGroups(g.id, 1);
+      html += '</div>';
     }
-    // 属于1级分组的子分组：已在上面嵌套渲染，跳过
   });
   div.innerHTML = html;
 
@@ -1586,14 +1760,21 @@ function renderGrpCards() {
       // 删除1级分组时，子分组变为独立分组
       f.grps = f.grps.filter(x => x.id !== gid);
     } else {
-      // 删除子分组时，从1级分组的childGroupIds中也移除
-      f.grps = f.grps.filter(x => x.id !== gid);
+      // 删除子分组时，递归删除所有下级子分组，并从1级分组的childGroupIds中移除
+      const toDelete = new Set([gid]);
+      const queue = [gid];
+      while (queue.length) {
+        const pid = queue.shift();
+        f.grps.filter(x => x.parentId === pid).forEach(c => { toDelete.add(c.id); queue.push(c.id); });
+      }
+      f.grps = f.grps.filter(x => !toDelete.has(x.id));
       f.grps.filter(x => x.level === 1 && x.childGroupIds).forEach(l1 => {
-        l1.childGroupIds = l1.childGroupIds.filter(id => id !== gid);
+        l1.childGroupIds = l1.childGroupIds.filter(id => !toDelete.has(id));
       });
     }
     renderGrpCards();
     popDepGrp();
+    updLxButtons();
     ntf('分组已删除');
   }));
 
@@ -1654,6 +1835,7 @@ function showEditGroupDialog(gid) {
     close();
     renderGrpCards();
     popDepGrp();
+    updLxButtons();
     ntf('分组已更新');
   });
 }
@@ -1898,204 +2080,185 @@ document.getElementById('btnCalc').addEventListener('click', calcAllStats);
 function calcAllStats() {
   const area = document.getElementById('resContent');
   if (!S.files.length) { area.innerHTML = '<div class="empty-hint">请先上传文件</div>'; return; }
-  // 检查是否有数据
   const hasData = S.files.some(f => f.raw.length > 0);
   if (!hasData) { area.innerHTML = '<div class="empty-hint">文件数据未加载，请重新上传文件后刷新</div>'; return; }
-  // 注意：不再自动清理分组值，避免意外删除有效值导致数量对不上
   let html = '';
   S.files.forEach((file, fi) => {
     if (!file.raw.length) return;
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
-    // 如果已执行拆分且该文件是拆分文件，排除未匹配行
     if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
       l1Data = filterBySplitMatch(l1Data, file);
     }
     const ctxCache = {};
-    const entries = [];
-    const groupedValsByCol = {};
-    file.grps.forEach(g => {
-      if (!groupedValsByCol[g.column]) groupedValsByCol[g.column] = new Set();
-      g.values.forEach(v => groupedValsByCol[g.column].add(String(v)));
-    });
-    // 收集1级分组信息以便生成合计行
     const l1Groups = file.grps.filter(g => g.level === 1 && g.childGroupIds && g.childGroupIds.length);
-    // 按L1分组归类entries
-    const l1Entries = {}; // l1id -> [entries]
-    const standaloneEntries = []; // 不属于任何L1分组的独立条目
-    // 构建L1子分组ID集合，用于判断L2归属
     const l1ChildSet = new Set();
     l1Groups.forEach(l1g => { (l1g.childGroupIds || []).forEach(cid => l1ChildSet.add(cid)); });
 
+    // 构建子分组映射 (parentId -> [children]) 用于L3+
+    const childrenMap = {};
     file.grps.forEach(g => {
-      // 1级分组：不直接展示
-      if (g.level === 1) return;
-      // 2级分组依托（通过parentIds）
+      if (g.parentId && g.level >= 3) {
+        if (!childrenMap[g.parentId]) childrenMap[g.parentId] = [];
+        childrenMap[g.parentId].push(g);
+      }
+    });
+
+    // ===== 生成条目 =====
+    // 每个非L1分组生成一个条目，包含其context
+    function makeEntry(g, indent, extra) {
+      const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+      const e = {
+        name: g.name, color: g.color, isGroup: true, column: g.column,
+        count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
+        indent, _ctx: ctx, level: g.level || 2, _gid: g.id, ...(extra || {})
+      };
+      if (sumCol) e.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+      file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); e['ac_' + ac] = tc; });
+      return e;
+    }
+
+    // 为L2分组生成L1交叉项和L1小计
+    function makeL1CrossEntries(g, ownerL1) {
       const parentIds = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
       const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
-      // 判断是否属于某个L1分组（在childGroupIds中）
-      const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
+      const hasL1Parent = parentIds.some(pid => { const pg = file.grps.find(x => x.id === pid); return pg && pg.level === 1; });
+      if (!hasL1Parent) return null;
 
-      if (parentIds.length > 0) {
-        const hasL1Parent = parentIds.some(pid => {
-          const pg = file.grps.find(x => x.id === pid);
-          return pg && pg.level === 1;
-        });
-        const hasChainedL2Parent = ownerL1 && parentIds.some(pid => {
-          return ownerL1.childGroupIds && ownerL1.childGroupIds.includes(pid);
-        });
+      const totalCtx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+      const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
+      const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
+      const totalEntry = {
+        name: g.name, color: g.color, isGroup: true, column: g.column,
+        count: totalCtx.length, pct: l1Data.length > 0 ? (totalCtx.length / l1Data.length * 100).toFixed(1) : '0',
+        depInfo: depLabel, indent: 1, _ctx: totalCtx, _gid: g.id, crossItems: [], l1Subtotals: []
+      };
+      if (sumCol) totalEntry.sum = totalCtx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+      file.addedCols.forEach(ac => { const tc = {}; totalCtx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); totalEntry['ac_' + ac] = tc; });
 
-        if (hasL1Parent) {
-          // 依托L1分组：为L1的每个子分组生成交叉entry
-          // 如果此分组未被纳入任何L1（不在ownerL1中），交叉entry放入独立分组的crossItems中
-          if (!ownerL1) {
-            const totalCtx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
-            const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
-            const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
-            const totalEntry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: totalCtx.length, pct: l1Data.length > 0 ? (totalCtx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, _ctx: totalCtx, crossItems: []};
-            if (sumCol) totalEntry.sum = totalCtx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-            file.addedCols.forEach(ac => { const tc = {}; totalCtx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); totalEntry['ac_' + ac] = tc; });
-            // 生成每个L1子分组的交叉entry
-            parentIds.forEach((pid, pi) => {
-              const pg = file.grps.find(x => x.id === pid);
-              if (!pg || pg.level !== 1) return;
-              const rel = parentRels[pi] || 'OR';
-              if (pg.childGroupIds && pg.childGroupIds.length) {
-                pg.childGroupIds.forEach(cid => {
-                  const cg = file.grps.find(x => x.id === cid);
-                  if (!cg) return;
-                  const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
-                  const valSet = new Set(g.values.map(v => String(v).trim()));
-                  const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
-                  let ctx;
-                  if (rel === 'AND') {
-                    const ps = new Set(childCtx);
-                    ctx = selfMatch.filter(r => ps.has(r));
-                  } else {
-                    const seen = new Set();
-                    ctx = [];
-                    [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
-                  }
-                  const crossEntry = {name: `${cg.name} · ${g.name}`, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: `${rel}→${pg.name}.${cg.name}`, indent: 1, l1Name: pg.name, l1Id: pg.id, isL1Cross: true};
-                  if (sumCol) crossEntry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-                  file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); crossEntry['ac_' + ac] = tc; });
-                  totalEntry.crossItems.push(crossEntry);
-                });
-              }
-            });
-            standaloneEntries.push(totalEntry);
-          } else {
-            // 已被纳入L1：交叉entry放入对应L1的entries中
-            parentIds.forEach((pid, pi) => {
-              const pg = file.grps.find(x => x.id === pid);
-              if (!pg || pg.level !== 1) return;
-              const rel = parentRels[pi] || 'OR';
-              if (pg.childGroupIds && pg.childGroupIds.length) {
-                pg.childGroupIds.forEach(cid => {
-                  const cg = file.grps.find(x => x.id === cid);
-                  if (!cg) return;
-                  const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
-                  const valSet = new Set(g.values.map(v => String(v).trim()));
-                  const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
-                  let ctx;
-                  if (rel === 'AND') {
-                    const ps = new Set(childCtx);
-                    ctx = selfMatch.filter(r => ps.has(r));
-                  } else {
-                    const seen = new Set();
-                    ctx = [];
-                    [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } });
-                  }
-                  const depLabel = `${rel}→${pg.name}.${cg.name}`;
-                  const entry = {name: `${cg.name} · ${g.name}`, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, l1Name: pg.name, l1Id: pg.id, isL1Cross: true};
-                  if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-                  file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-                  if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
-                  l1Entries[pg.id].push(entry);
-                });
-              }
-            });
-          }
-          return;
-        } else if (hasChainedL2Parent && ownerL1) {
-          // 链式子分组：parentIds指向同L1内的其他L2分组
-          const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
-          const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
-          const relLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
-          const depLabel = `链式: ${relLabel}`;
-          const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 2, isChained: true, l1Name: ownerL1.name, l1Id: ownerL1.id};
-          if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-          file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-          if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
-          l1Entries[ownerL1.id].push(entry);
-          return;
-        } else {
-          // 普通L2→L2依赖（跨L1或独立L2）
-          const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
-          const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
-          const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
-          const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, _ctx: ctx};
-          if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-          file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
-          standaloneEntries.push(entry);
-          return;
+      // 对每个L1父分组生成交叉项
+      parentIds.forEach((pid, pi) => {
+        const pg = file.grps.find(x => x.id === pid);
+        if (!pg || pg.level !== 1) return;
+        const rel = parentRels[pi] || 'AND';
+        const l1SubtotalRows = new Set();
+        if (pg.childGroupIds && pg.childGroupIds.length) {
+          pg.childGroupIds.forEach(cid => {
+            const cg = file.grps.find(x => x.id === cid);
+            if (!cg) return;
+            const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
+            const valSet = new Set(g.values.map(v => String(v).trim()));
+            const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
+            let ctx;
+            if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }
+            else { const seen = new Set(); ctx = []; [...childCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); ctx.push(r); } }); }
+            ctx.forEach(r => l1SubtotalRows.add(r));
+            const crossEntry = {
+              name: `${cg.name} · ${g.name}`, color: g.color, isGroup: true, column: g.column,
+              count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
+              depInfo: `${rel}→${pg.name}.${cg.name}`, indent: 1, l1Name: pg.name, l1Id: pg.id, isL1Cross: true, _ctx: ctx
+            };
+            if (sumCol) crossEntry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+            file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); crossEntry['ac_' + ac] = tc; });
+            totalEntry.crossItems.push(crossEntry);
+          });
         }
+        // 每个L1父分组一个小计
+        const subRows = [...l1SubtotalRows];
+        const subtotal = {
+          name: `${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
+          count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
+          indent: 1, _ctx: subRows
+        };
+        if (sumCol) subtotal.sum = subRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+        totalEntry.l1Subtotals.push(subtotal);
+      });
+      return totalEntry;
+    }
+
+    // 按L1分组归类
+    const l1Entries = {};
+    const standaloneEntries = [];
+
+    file.grps.forEach(g => {
+      if (g.level === 1) return;
+      // L3+分组：由L2递归处理，不在顶级循环中生成条目
+      if (g.level >= 3) return;
+
+      const parentIds = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
+      const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
+      const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
+      const hasL1Parent = parentIds.some(pid => { const pg = file.grps.find(x => x.id === pid); return pg && pg.level === 1; });
+      const hasChainedL2Parent = ownerL1 && parentIds.some(pid => ownerL1.childGroupIds && ownerL1.childGroupIds.includes(pid));
+
+      if (hasL1Parent) {
+        const totalEntry = makeL1CrossEntries(g, ownerL1);
+        if (!ownerL1) {
+          standaloneEntries.push(totalEntry);
+        } else {
+          // 交叉项放入对应L1的entries中
+          if (totalEntry.crossItems) totalEntry.crossItems.forEach(ce => {
+            if (!l1Entries[ce.l1Id]) l1Entries[ce.l1Id] = [];
+            l1Entries[ce.l1Id].push(ce);
+          });
+          if (totalEntry.l1Subtotals) totalEntry.l1Subtotals.forEach(st => {
+            if (!l1Entries[st.l1Id]) l1Entries[st.l1Id] = [];
+            l1Entries[st.l1Id].push(st);
+          });
+        }
+        return;
+      } else if (hasChainedL2Parent && ownerL1) {
+        const entry = makeEntry(g, 2, { depInfo: `链式: ${parentRels.map((r, i) => { const pg = file.grps.find(x => x.id === parentIds[i]); return `${r || 'AND'}→${pg ? pg.name : '?'}`; }).join(' ')}`, isChained: true, l1Name: ownerL1.name, l1Id: ownerL1.id });
+        if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
+        l1Entries[ownerL1.id].push(entry);
+        return;
+      } else if (parentIds.length > 0) {
+        const entry = makeEntry(g, 1, { depInfo: parentRels.map((r, i) => { const pg = file.grps.find(x => x.id === parentIds[i]); return `${r || 'AND'}→${pg ? pg.name : '?'}`; }).join(' ') });
+        standaloneEntries.push(entry);
+        return;
       }
-      // 无依赖的普通分组——判断是否属于某个L1的childGroupIds
+
+      // 无依赖的普通L2分组
       const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+      const isChained = ownerL1 ? isChainedChild(g, ownerL1, file.grps) : false;
+      const depInfo = ownerL1 ? (isChained ? `链式:${ownerL1.name}` : `L1:${ownerL1.name}`) : '(独立)';
+      const entry = makeEntry(g, 1, { depInfo, l1Name: ownerL1 ? ownerL1.name : '', l1Id: ownerL1 ? ownerL1.id : null, isChained });
       if (ownerL1) {
-        // 归属到L1分组下展示
-        let depLabel = `L1:${ownerL1.name}`;
-        const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, indent: 1, l1Name: ownerL1.name, l1Id: ownerL1.id};
-        if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-        file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
         if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
         l1Entries[ownerL1.id].push(entry);
       } else {
-        // 独立L2分组
-        let depLabel = '(独立)';
-        const entry = {name: g.name, color: g.color, isGroup: true, column: g.column, count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0', depInfo: depLabel, _ctx: ctx};
-        if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-        file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); entry['ac_' + ac] = tc; });
         standaloneEntries.push(entry);
       }
     });
 
-    // 为每个1级分组生成合计行（排除链式子分组和交叉项，避免重复计数）
+    // L1合计行
     l1Groups.forEach(l1g => {
-      const chainedIds = getChainedChildIds(l1g, file.grps);
       const l1Rows = new Set();
-      l1g.childGroupIds.forEach(cid => {
-        if (chainedIds.has(cid)) return; // 跳过链式子分组
-        getGroupContext(cid, l1Data, file.grps, ctxCache).forEach(r => l1Rows.add(r));
+      (l1Entries[l1g.id] || []).forEach(e => {
+        if (e.isChained || e.isL1Cross || e.isL1Subtotal || (e.level && e.level >= 3)) return;
+        if (e._ctx) e._ctx.forEach(r => l1Rows.add(r));
       });
       const l1r = [...l1Rows];
-      const l1entry = {name: `${l1g.name} 合计`, isL1Total: true, count: l1r.length, pct: l1Data.length > 0 ? (l1r.length / l1Data.length * 100).toFixed(1) : '0', sum: sumCol ? l1r.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null};
+      const l1entry = { name: `${l1g.name} 合计`, isL1Total: true, count: l1r.length, pct: l1Data.length > 0 ? (l1r.length / l1Data.length * 100).toFixed(1) : '0', sum: sumCol ? l1r.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null, _ctx: l1r };
       file.addedCols.forEach(ac => { const tc = {}; l1r.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); l1entry['ac_' + ac] = tc; });
       if (!l1Entries[l1g.id]) l1Entries[l1g.id] = [];
       l1Entries[l1g.id].push(l1entry);
     });
 
-    if (!file.grps.length) {
-      standaloneEntries.push({name: '(未分组)', color: null, isGroup: false, column: '', count: l1Data.length, pct: '100', depInfo: ''});
-    }
-    // 总合计：所有L2分组ctx的并集（确保合计=分组之和）
+    // 总合计
     const allGroupRows = new Set();
-    file.grps.forEach(g => {
-      if (g.level === 1) return;
-      getGroupContext(g.id, l1Data, file.grps, ctxCache).forEach(r => allGroupRows.add(r));
-    });
+    file.grps.forEach(g => { if (g.level === 1) return; getGroupContext(g.id, l1Data, file.grps, ctxCache).forEach(r => allGroupRows.add(r)); });
     const coveredRows = [...allGroupRows];
     const uncovered = l1Data.length - coveredRows.length;
-    const total = {name: '合计', isTotal: true, count: coveredRows.length, pct: l1Data.length > 0 ? (coveredRows.length / l1Data.length * 100).toFixed(1) : '0', sum: sumCol ? coveredRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null, totalData: l1Data.length, uncovered};
+    const total = { name: '合计', isTotal: true, count: coveredRows.length, pct: l1Data.length > 0 ? (coveredRows.length / l1Data.length * 100).toFixed(1) : '0', sum: sumCol ? coveredRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0) : null, totalData: l1Data.length, uncovered };
     file.addedCols.forEach(ac => { const tc = {}; coveredRows.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); total['ac_' + ac] = tc; });
 
     const secColor = SEC_COLORS[fi % SEC_COLORS.length];
     let scOpts = '<option value="">-- 无 --</option>';
     file.hdr.forEach(c => { scOpts += `<option value="${esc(c)}"${c === sumCol ? ' selected' : ''}>${esc(c)}</option>`; });
-    html += `<div class="rv-section"><div class="rv-section-hdr" data-toggle-rv><span class="sec-dot" style="background:${secColor}"></span>${esc(file.name)}<span class="sec-info">${file.raw.length}行 / ${file.hdr.length}列 / ${file.grps.length}分组</span><span class="rv-toggle-arrow">&#9660;</span><div class="rv-sum-sel"><label>求和列</label><select data-fid="${file.id}" class="rv-sc">${scOpts}</select></div></div><div class="rv-section-body">`;
+    html += `<div class="rv-section"><div class="rv-section-hdr" data-toggle-rv><span class="sec-dot" style="background:${secColor}"></span>${esc(file.name)}<span class="sec-info">${file.raw.length}行 / ${file.hdr.length}列 / ${file.grps.filter(g => g.level !== 1).length}分组</span><span class="rv-toggle-arrow">&#9660;</span><div class="rv-sum-sel"><label>求和列</label><select data-fid="${file.id}" class="rv-sc">${scOpts}</select></div></div><div class="rv-section-body">`;
 
-    // 表格头部生成函数
+    // 表格头部
     function tableHead() {
       let h = '<table class="rt"><thead><tr><th>类别</th><th>依托</th><th>列</th><th style="text-align:right">数量</th><th style="text-align:right">占比</th>';
       if (sumCol) h += `<th style="text-align:right">${esc(sumCol)} 求和</th>`;
@@ -2103,24 +2266,23 @@ function calcAllStats() {
       h += '</tr></thead><tbody>';
       return h;
     }
-    // 表格行生成函数
+    // 表格行
     function entryRow(e) {
       const cm = e.color ? CM[e.color] : null;
-      const indentPx = e.indent === 2 ? 40 : (e.indent ? 20 : 0);
+      const indentPx = (e.indent || 0) * 20;
       const indentStyle = indentPx ? `style="padding-left:${indentPx}px;color:var(--t2)"` : '';
-      const rowClass = e.isL1Total ? ' class="l1tot"' : '';
+      const rowClass = e.isL1Total ? ' class="l1tot"' : (e.isL1Subtotal ? ' class="l1sub"' : '');
       let r = `<tr${rowClass}>`;
-      const icon = e.isL1Total ? '📊' : (e.isGroup ? (e.indent === 2 ? '🔗' : (e.indent ? '📄' : '📁')) : '📌');
+      const icon = e.isL1Total ? '📊' : (e.isL1Subtotal ? '📋' : (e.isGroup ? (e.indent === 2 ? '🔗' : (e.indent ? '📄' : '📁')) : '📌'));
       r += `<td ${indentStyle}><div class="cc">${cm ? `<span class="cdot" style="background:${cm.d}"></span>` : ''}<span class="gico">${icon}</span> ${esc(e.name)}</div></td>`;
-      r += `<td style="color:var(--cy);font-size:10px;font-family:var(--mf)">${esc(e.depInfo)}</td>`;
-      r += `<td style="color:var(--t3);font-size:10px">${esc(e.column)}</td>`;
+      r += `<td style="color:var(--cy);font-size:10px;font-family:var(--mf)">${esc(e.depInfo || '')}</td>`;
+      r += `<td style="color:var(--t3);font-size:10px">${esc(e.column || '')}</td>`;
       r += `<td class="nc">${e.count}</td><td class="nc">${e.pct}%</td>`;
       if (sumCol) r += `<td class="nc" style="color:var(--wn)">${e.sum !== undefined ? fmtN(e.sum) : '-'}</td>`;
       file.addedCols.forEach(ac => { const tc = e['ac_' + ac] || {}; r += `<td class="nc" style="color:var(--cy)">${Object.keys(tc).length} 种</td>`; });
       r += '</tr>';
       return r;
     }
-    // 合计行
     function totalRow(t) {
       const uncoveredHint = t.uncovered > 0 ? `<span style="color:var(--wn);font-size:10px;margin-left:6px">(未覆盖 ${t.uncovered} 条)</span>` : '';
       const totalHint = t.totalData != null ? `<span style="color:var(--t3);font-size:10px;margin-left:6px">/ 总${t.totalData}条</span>` : '';
@@ -2131,10 +2293,22 @@ function calcAllStats() {
       return r;
     }
 
-    // === 按L1分组手风琴展示 ===
+    // 递归渲染L3+子分组的条目行
+    function renderSubEntries(parentId, indent) {
+      const kids = childrenMap[parentId];
+      if (!kids || !kids.length) return '';
+      let h = '';
+      kids.forEach(kid => {
+        const e = makeEntry(kid, indent, { depInfo: `父:${(() => { const pg = file.grps.find(x => x.id === kid.parentId); return pg ? pg.name : '?'; })()}` });
+        h += entryRow(e);
+        h += renderSubEntries(kid.id, indent + 1);
+      });
+      return h;
+    }
+
+    // === L1手风琴展示 ===
     l1Groups.forEach(l1g => {
       const l1EntriesList = l1Entries[l1g.id] || [];
-      // L1分组的总行数和总占比
       const l1TotalEntry = l1EntriesList.find(e => e.isL1Total);
       const l1Count = l1TotalEntry ? l1TotalEntry.count : l1EntriesList.reduce((a, e) => a + e.count, 0);
       const l1Pct = l1TotalEntry ? l1TotalEntry.pct : (l1Data.length > 0 ? (l1Count / l1Data.length * 100).toFixed(1) : '0');
@@ -2144,43 +2318,49 @@ function calcAllStats() {
       html += `<div class="rv-acc-body" data-accbody="${l1g.id}">`;
       html += tableHead();
       l1EntriesList.forEach(e => { html += entryRow(e); });
+      // L3+子分组（挂在L1的L2子分组下）
+      (l1g.childGroupIds || []).forEach(cid => { html += renderSubEntries(cid, 2); });
       html += '</tbody></table></div></div>';
     });
 
-    // 独立分组（非L1的）——每个独立分组单独一个手风琴，含交叉项和合计
+    // 独立分组（每个独立分组单独一个手风琴）
     if (standaloneEntries.length) {
       standaloneEntries.forEach(e => {
         const crossItems = e.crossItems || [];
+        const l1Subtotals = e.l1Subtotals || [];
         const mainCount = e.count;
         const mainPct = e.pct;
         html += `<div class="rv-acc rv-acc-standalone">`;
         html += `<div class="rv-acc-hdr" data-toggle-acc="sa_${e.name}"><span class="rv-acc-dot" style="background:${e.color ? (CM[e.color] || {}).d : 'var(--t3)'}"></span><span class="rv-acc-title">${esc(e.name)}</span><span class="rv-acc-info">${mainCount}条 · ${mainPct}%</span><span class="rv-acc-arrow">&#9660;</span></div>`;
         html += `<div class="rv-acc-body" data-accbody="sa_${e.name}">`;
         html += tableHead();
-        // 先展示交叉项（依赖L1的每个子分组）
         crossItems.forEach(ce => { html += entryRow(ce); });
-        // 展示自身总entry
+        // 每个L1父分组的小计
+        l1Subtotals.forEach(st => { html += entryRow(st); });
         html += entryRow(e);
-        // 合计行
-        const saTotal = {name: `${e.name} 合计`, isL1Total: true, count: mainCount, pct: mainPct, sum: e.sum, column: e.column || ''};
+        const saTotal = { name: `${e.name} 合计`, isL1Total: true, count: mainCount, pct: mainPct, sum: e.sum, column: e.column || '' };
         file.addedCols.forEach(ac => { saTotal['ac_' + ac] = e['ac_' + ac] || {}; });
         html += entryRow(saTotal);
+        // L3+子分组
+        html += renderSubEntries(e._gid || 0, 1);
         html += '</tbody></table></div></div>';
       });
     }
 
-    // 总合计（始终显示）
+    // 总合计
     html += tableHead();
     html += totalRow(total);
     html += '</tbody></table>';
 
     // 附加列详细分布
     if (file.addedCols.length) {
-      // 收集所有entries用于详细分布
       const allEntries = [];
       l1Groups.forEach(l1g => { (l1Entries[l1g.id] || []).forEach(e => allEntries.push(e)); });
       standaloneEntries.forEach(e => allEntries.push(e));
-
+      file.grps.filter(g => g.level >= 3).forEach(g => {
+        const e = makeEntry(g, 1, {});
+        allEntries.push(e);
+      });
       file.addedCols.forEach(ac => {
         html += `<div class="det-sec"><div class="det-hdr">${esc(ac)} 详细分布</div><table class="rt"><thead><tr><th>类别</th><th>${esc(ac)} 值</th><th style="text-align:right">数量</th></tr></thead><tbody>`;
         allEntries.forEach(e => {
@@ -2205,26 +2385,18 @@ function calcAllStats() {
       if (e.target.closest('.rv-sum-sel')) return;
       const body = hdr.nextElementSibling;
       const section = hdr.closest('.rv-section');
-      if (body) {
-        body.classList.toggle('rv-body-hidden');
-        section.classList.toggle('rv-section-collapsed');
-      }
+      if (body) { body.classList.toggle('rv-body-hidden'); section.classList.toggle('rv-section-collapsed'); }
     });
   });
   // 折叠/展开L1手风琴
   area.querySelectorAll('[data-toggle-acc]').forEach(hdr => {
     hdr.addEventListener('click', e => {
       const key = hdr.dataset.toggleAcc;
-      // 在最近的文件section内查找body，避免多文件时key冲突
       const section = hdr.closest('.rv-section');
       const body = section ? section.querySelector(`[data-accbody="${key}"]`) : null;
       const acc = hdr.closest('.rv-acc');
-      if (body) {
-        body.classList.toggle('rv-acc-body-hidden');
-      }
-      if (acc) {
-        acc.classList.toggle('rv-acc-collapsed');
-      }
+      if (body) body.classList.toggle('rv-acc-body-hidden');
+      if (acc) acc.classList.toggle('rv-acc-collapsed');
     });
   });
   // 求和列切换
@@ -2287,7 +2459,7 @@ function buildConfigData() {
   // 只保存当前活跃文件的配置
   const f = getActiveFile();
   if (!f) return {files: []};
-  const fc = {name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentIds: g.parentIds || (g.parentId ? [g.parentId] : []), parentRels: g.parentRels || (g.parentRel ? [g.parentRel] : []), parentId: g.parentId || null, parentRel: g.parentRel || null, level: g.level || null, childGroupIds: g.childGroupIds || null})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]};
+  const fc = {name: f.name, hdr: f.hdr, l1: {}, grps: f.grps.map(g => ({id: g.id, name: g.name, color: g.color, column: g.column, values: g.values, l1Dep: g.l1Dep, parentIds: g.parentIds || (g.parentId ? [g.parentId] : []), parentRels: g.parentRels || (g.parentRel ? [g.parentRel] : []), parentId: g.parentId || null, parentRel: g.parentRel || null, level: g.level || null, childGroupIds: g.childGroupIds || null})), addedCols: f.addedCols, sumCol: f.sumCol || '', hiddenCols: [...f.hiddenCols]};
   f.hdr.forEach(col => {
     fc.l1[col] = {checked: f.l1[col].checked ? [...f.l1[col].checked] : null, cascade: f.l1[col].cascade || false, dependCol: f.l1[col].dependCol || null, sort: f.l1[col].sort || null, condOn: f.l1[col].condOn || false, condOp: f.l1[col].condOp || 'eq', condVal: f.l1[col].condVal || ''};
   });
@@ -2479,12 +2651,34 @@ function applyConfig(cfg) {
     if (fc.grps) {
       targetFile.grps = [];
       targetFile.gid = 0;
-      fc.grps.forEach(g => {
-        const pids = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
-        const prels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
-        targetFile.grps.push({id: ++targetFile.gid, name: g.name, color: g.color, column: g.column, values: g.values || [], l1Dep: g.l1Dep || null, parentIds: pids, parentRels: prels, parentId: pids[0] || null, parentRel: prels[0] || null, level: g.level || null, childGroupIds: g.childGroupIds || null});
+      // 第一遍：建立旧ID→新ID映射
+      const idMap = {};
+      const tempGroups = fc.grps.map(g => {
+        const newId = ++targetFile.gid;
+        if (g.id != null) idMap[g.id] = newId;
+        return { ...g, _newId: newId };
       });
-      // 注意：不再自动cleanGroupValues，避免基于当前数据误删配置中的有效分组值
+      // 兼容旧配置（无id字段）：按数组索引+1映射
+      if (fc.grps.length && fc.grps[0].id == null) {
+        fc.grps.forEach((g, idx) => { idMap[idx + 1] = tempGroups[idx]._newId; });
+      }
+      // 第二遍：创建分组并重映射所有ID引用
+      targetFile.grps = [];
+      targetFile.gid = 0;
+      tempGroups.forEach(g => {
+        const newId = ++targetFile.gid;
+        const remapIds = ids => ids ? ids.map(id => idMap[id] || id) : ids;
+        const rawPids = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
+        const pids = remapIds(rawPids) || [];
+        const prels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
+        const childGroupIds = g.childGroupIds ? remapIds(g.childGroupIds) : null;
+        targetFile.grps.push({
+          id: newId, name: g.name, color: g.color, column: g.column, values: g.values || [],
+          l1Dep: g.l1Dep || null, parentIds: pids, parentRels: prels,
+          parentId: pids[0] || null, parentRel: prels[0] || null,
+          level: g.level || null, childGroupIds
+        });
+      });
     }
   });
   // 恢复分局映射排序
@@ -2919,6 +3113,7 @@ function initActiveFile() {
   popGCol();
   renderGrpCards();
   renderL2FileTabs();
+  updLxButtons();
 }
 
 // 一级过滤区导航
@@ -3849,13 +4044,52 @@ function nzComputeStats() {
     const l1ChildSet = new Set();
     l1Groups.forEach(l1g => { (l1g.childGroupIds || []).forEach(cid => l1ChildSet.add(cid)); });
 
-    // 遍历所有2级分组
+    // 遍历所有2级+分组
     file.grps.forEach(g => {
       if (g.level === 1) return; // 跳过1级分组
 
       const parentIds = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
       const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
       const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
+
+      // L3+分组：直接计算context并添加到entries
+      if (g.level >= 3) {
+        const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+        const parentGrp = file.grps.find(x => x.id === g.parentId);
+        const depInfo = parentGrp ? `${g.level}级→${parentGrp.name}` : `${g.level}级`;
+        const entry = {
+          name: g.name, isGroup: true, column: g.column, count: ctx.length,
+          pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
+          depInfo, _ctx: ctx, level: g.level
+        };
+        if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+        file.addedCols.forEach(ac => {
+          const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+          entry['ac_' + ac] = tc;
+        });
+        // L3+如果其祖先L2属于某个L1，则归入该L1
+        if (ownerL1) {
+          if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
+          l1Entries[ownerL1.id].push(entry);
+        } else {
+          // 查找祖先链中是否属于某个L1
+          let ancestor = parentGrp;
+          let foundL1 = null;
+          while (ancestor && !foundL1) {
+            const ancOwner = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(ancestor.id));
+            if (ancOwner) { foundL1 = ancOwner; break; }
+            if (ancestor.parentId) ancestor = file.grps.find(x => x.id === ancestor.parentId);
+            else break;
+          }
+          if (foundL1) {
+            if (!l1Entries[foundL1.id]) l1Entries[foundL1.id] = [];
+            l1Entries[foundL1.id].push(entry);
+          } else {
+            standaloneEntries.push(entry);
+          }
+        }
+        return;
+      }
 
       if (parentIds.length > 0) {
         const hasL1Parent = parentIds.some(pid => {
