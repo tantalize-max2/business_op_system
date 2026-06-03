@@ -178,9 +178,10 @@ function switchStep(step) {
     populateSplitColSel();
     updSplitActiveFile();
   }
-  // 进入数据标准化时加载模板列表
+  // 进入数据标准化时加载模板列表并刷新快速插入面板
   if (step === 'normalize') {
     loadNzTemplates();
+    nzPopulateQiSelects();
   }
   // 进入在线推送时加载数据
   if (step === 'kdocs') {
@@ -473,6 +474,86 @@ function getChainedChildIds(l1g, allGrps) {
     const g = allGrps.find(x => x.id === cid);
     if (g && isChainedChild(g, l1g, allGrps)) result.add(cid);
   });
+  return result;
+}
+
+// ========== 层级路径工具 ==========
+/**
+ * 获取一个分组的完整层级名称路径（从最顶层L2到当前分组）
+ * 返回数组，如 ['行业一组', '重点项', '核心']
+ */
+function getGroupPath(gid, grps) {
+  const g = grps.find(x => x.id === gid);
+  if (!g) return [];
+  if (g.level === 1) return [g.name]; // L1 不应出现在路径中，但做保护
+  if (!g.parentId || g.level === 2 || (!g.level)) return [g.name]; // L2 或独立分组
+  // L3+：递归找父级路径
+  const parentPath = getGroupPath(g.parentId, grps);
+  return [...parentPath, g.name];
+}
+
+/**
+ * 获取一个L2分组在L1下的完整路径名（用于结果展示和公式）
+ * 格式: L1子项名称·L2名称 或 L1子项名称·L2名称·L3名称
+ * 如果不在L1内，返回自身名称
+ */
+function getFullGroupName(gid, grps, l1Groups) {
+  const g = grps.find(x => x.id === gid);
+  if (!g) return '?';
+  if (g.level === 1) return g.name;
+  const path = getGroupPath(gid, grps);
+  // 查找所在L1
+  const ownerL1 = findOwnerL1(gid, grps, l1Groups);
+  if (ownerL1) {
+    return path.join(' · ');
+  }
+  // 独立分组：路径直接作为名称
+  return path.join(' · ');
+}
+
+/**
+ * 查找一个分组所属的L1分组
+ */
+function findOwnerL1(gid, grps, l1Groups) {
+  // 直接查
+  const direct = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(gid));
+  if (direct) return direct;
+  // 向上递归查
+  const g = grps.find(x => x.id === gid);
+  if (g && g.parentId) {
+    return findOwnerL1(g.parentId, grps, l1Groups);
+  }
+  return null;
+}
+
+/**
+ * 查找一个分组所属的所有祖先L1分组（通过parentId/parentIds向上遍历）
+ */
+function findAncestorL1s(gid, grps, l1Groups) {
+  const visited = new Set();
+  const result = [];
+  function walk(id) {
+    if (visited.has(id)) return;
+    visited.add(id);
+    // 检查是否直接在某个L1的childGroupIds中
+    l1Groups.forEach(l1 => {
+      if (l1.childGroupIds && l1.childGroupIds.includes(id)) {
+        if (!result.find(r => r.id === l1.id)) result.push(l1);
+      }
+    });
+    const g = grps.find(x => x.id === id);
+    if (!g) return;
+    const pids = (g.parentIds && g.parentIds.length) ? g.parentIds : (g.parentId ? [g.parentId] : []);
+    pids.forEach(pid => {
+      const pg = grps.find(x => x.id === pid);
+      if (pg && pg.level === 1) {
+        if (!result.find(r => r.id === pg.id)) result.push(pg);
+      } else if (pg) {
+        walk(pid);
+      }
+    });
+  }
+  walk(gid);
   return result;
 }
 
@@ -2095,15 +2176,6 @@ function calcAllStats() {
     const l1ChildSet = new Set();
     l1Groups.forEach(l1g => { (l1g.childGroupIds || []).forEach(cid => l1ChildSet.add(cid)); });
 
-    // 构建子分组映射 (parentId -> [children]) 用于L3+
-    const childrenMap = {};
-    file.grps.forEach(g => {
-      if (g.parentId && g.level >= 3) {
-        if (!childrenMap[g.parentId]) childrenMap[g.parentId] = [];
-        childrenMap[g.parentId].push(g);
-      }
-    });
-
     // ===== 生成条目 =====
     // 每个非L1分组生成一个条目，包含其context
     function makeEntry(g, indent, extra) {
@@ -2182,21 +2254,67 @@ function calcAllStats() {
 
     file.grps.forEach(g => {
       if (g.level === 1) return;
-      // L3+分组：由L2递归处理，不在顶级循环中生成条目
-      if (g.level >= 3) return;
 
       const parentIds = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
       const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
-      const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
-      const hasL1Parent = parentIds.some(pid => { const pg = file.grps.find(x => x.id === pid); return pg && pg.level === 1; });
-      const hasChainedL2Parent = ownerL1 && parentIds.some(pid => ownerL1.childGroupIds && ownerL1.childGroupIds.includes(pid));
+      const ownerL1 = findOwnerL1(g.id, file.grps, l1Groups);
 
-      if (hasL1Parent) {
-        const totalEntry = makeL1CrossEntries(g, ownerL1);
-        if (!ownerL1) {
-          standaloneEntries.push(totalEntry);
-        } else {
-          // 交叉项放入对应L1的entries中
+      // L3+分组：与上一级每项结果相交展示
+      if (g.level >= 3) {
+        const totalCtx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+        const pathParts = getGroupPath(g.id, file.grps);
+        const fullName = pathParts.join(' · ');
+        const parentGrp = file.grps.find(x => x.id === g.parentId);
+        const depInfo = parentGrp ? `${g.level}级→${parentGrp.name}` : `${g.level}级`;
+        // 查找所有祖先L1分组（通过parentId/parentIds向上遍历）
+        const ancestorL1s = findAncestorL1s(g.id, file.grps, l1Groups);
+        // 总entry
+        const totalEntry = {
+          name: fullName, color: g.color, isGroup: true, column: g.column,
+          count: totalCtx.length, pct: l1Data.length > 0 ? (totalCtx.length / l1Data.length * 100).toFixed(1) : '0',
+          depInfo, indent: 1, _ctx: totalCtx, level: g.level, _gid: g.id,
+          l1Name: '', l1Id: null,
+          crossItems: [], l1Subtotals: []
+        };
+        if (sumCol) totalEntry.sum = totalCtx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+        file.addedCols.forEach(ac => { const tc = {}; totalCtx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); totalEntry['ac_' + ac] = tc; });
+
+        // 对每个祖先L1生成交叉项
+        ancestorL1s.forEach(ancL1 => {
+          if (ancL1.childGroupIds && ancL1.childGroupIds.length) {
+            const l1SubtotalRows = new Set();
+            ancL1.childGroupIds.forEach(cid => {
+              const cg = file.grps.find(x => x.id === cid);
+              if (!cg) return;
+              const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
+              const childSet = new Set(childCtx);
+              const ctx = totalCtx.filter(r => childSet.has(r));
+              ctx.forEach(r => l1SubtotalRows.add(r));
+              const parentName = parentGrp ? parentGrp.name : '?';
+              const crossEntry = {
+                name: `${cg.name} · ${parentName} · ${g.name}`, color: g.color, isGroup: true, column: g.column,
+                count: ctx.length, pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
+                depInfo: `AND→${ancL1.name}.${cg.name}`, indent: 1, l1Name: ancL1.name, l1Id: ancL1.id, isL1Cross: true, _ctx: ctx
+              };
+              if (sumCol) crossEntry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+              file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); crossEntry['ac_' + ac] = tc; });
+              totalEntry.crossItems.push(crossEntry);
+            });
+            // L1小计
+            const subRows = [...l1SubtotalRows];
+            const subtotal = {
+              name: `${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
+              count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
+              indent: 1, _ctx: subRows
+            };
+            if (sumCol) subtotal.sum = subRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+            totalEntry.l1Subtotals.push(subtotal);
+          }
+        });
+
+        // 分发到l1Entries或standaloneEntries
+        if (ancestorL1s.length) {
+          // 分发交叉项和小计到各自L1
           if (totalEntry.crossItems) totalEntry.crossItems.forEach(ce => {
             if (!l1Entries[ce.l1Id]) l1Entries[ce.l1Id] = [];
             l1Entries[ce.l1Id].push(ce);
@@ -2205,6 +2323,61 @@ function calcAllStats() {
             if (!l1Entries[st.l1Id]) l1Entries[st.l1Id] = [];
             l1Entries[st.l1Id].push(st);
           });
+          // 为每个L1创建带l1Name的totalEntry副本
+          ancestorL1s.forEach(l1 => {
+            if (!l1Entries[l1.id]) l1Entries[l1.id] = [];
+            const copy = Object.assign({}, totalEntry, { l1Name: l1.name, l1Id: l1.id });
+            delete copy.crossItems;
+            delete copy.l1Subtotals;
+            l1Entries[l1.id].push(copy);
+          });
+        } else {
+          standaloneEntries.push(totalEntry);
+        }
+        return;
+      }
+
+      // L2分组逻辑
+      const hasL1Parent = parentIds.some(pid => { const pg = file.grps.find(x => x.id === pid); return pg && pg.level === 1; });
+      const hasChainedL2Parent = ownerL1 && parentIds.some(pid => ownerL1.childGroupIds && ownerL1.childGroupIds.includes(pid));
+
+      if (hasL1Parent) {
+        const totalEntry = makeL1CrossEntries(g, ownerL1);
+        if (!ownerL1) {
+          // 无ownerL1但hasL1Parent=true：分发给每个L1父分组
+          // 分发交叉项和小计到各自L1
+          if (totalEntry.crossItems) totalEntry.crossItems.forEach(ce => {
+            if (!l1Entries[ce.l1Id]) l1Entries[ce.l1Id] = [];
+            l1Entries[ce.l1Id].push(ce);
+          });
+          if (totalEntry.l1Subtotals) totalEntry.l1Subtotals.forEach(st => {
+            if (!l1Entries[st.l1Id]) l1Entries[st.l1Id] = [];
+            l1Entries[st.l1Id].push(st);
+          });
+          // 为每个L1父分组创建带l1Name的totalEntry副本
+          parentIds.forEach(pid => {
+            const pg = file.grps.find(x => x.id === pid);
+            if (!pg || pg.level !== 1) return;
+            if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+            const copy = Object.assign({}, totalEntry, { l1Name: pg.name, l1Id: pg.id });
+            delete copy.crossItems;
+            delete copy.l1Subtotals;
+            l1Entries[pg.id].push(copy);
+          });
+          standaloneEntries.push(totalEntry);
+        } else {
+          // 交叉项和totalEntry都放入对应L1的entries中（与L3+一致）
+          if (totalEntry.crossItems) totalEntry.crossItems.forEach(ce => {
+            if (!l1Entries[ce.l1Id]) l1Entries[ce.l1Id] = [];
+            l1Entries[ce.l1Id].push(ce);
+          });
+          if (totalEntry.l1Subtotals) totalEntry.l1Subtotals.forEach(st => {
+            if (!l1Entries[st.l1Id]) l1Entries[st.l1Id] = [];
+            l1Entries[st.l1Id].push(st);
+          });
+          // 推送totalEntry自身（与L3+一致）
+          if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
+          l1Entries[ownerL1.id].push(totalEntry);
         }
         return;
       } else if (hasChainedL2Parent && ownerL1) {
@@ -2293,19 +2466,6 @@ function calcAllStats() {
       return r;
     }
 
-    // 递归渲染L3+子分组的条目行
-    function renderSubEntries(parentId, indent) {
-      const kids = childrenMap[parentId];
-      if (!kids || !kids.length) return '';
-      let h = '';
-      kids.forEach(kid => {
-        const e = makeEntry(kid, indent, { depInfo: `父:${(() => { const pg = file.grps.find(x => x.id === kid.parentId); return pg ? pg.name : '?'; })()}` });
-        h += entryRow(e);
-        h += renderSubEntries(kid.id, indent + 1);
-      });
-      return h;
-    }
-
     // === L1手风琴展示 ===
     l1Groups.forEach(l1g => {
       const l1EntriesList = l1Entries[l1g.id] || [];
@@ -2318,8 +2478,6 @@ function calcAllStats() {
       html += `<div class="rv-acc-body" data-accbody="${l1g.id}">`;
       html += tableHead();
       l1EntriesList.forEach(e => { html += entryRow(e); });
-      // L3+子分组（挂在L1的L2子分组下）
-      (l1g.childGroupIds || []).forEach(cid => { html += renderSubEntries(cid, 2); });
       html += '</tbody></table></div></div>';
     });
 
@@ -2335,14 +2493,11 @@ function calcAllStats() {
         html += `<div class="rv-acc-body" data-accbody="sa_${e.name}">`;
         html += tableHead();
         crossItems.forEach(ce => { html += entryRow(ce); });
-        // 每个L1父分组的小计
         l1Subtotals.forEach(st => { html += entryRow(st); });
         html += entryRow(e);
         const saTotal = { name: `${e.name} 合计`, isL1Total: true, count: mainCount, pct: mainPct, sum: e.sum, column: e.column || '' };
         file.addedCols.forEach(ac => { saTotal['ac_' + ac] = e['ac_' + ac] || {}; });
         html += entryRow(saTotal);
-        // L3+子分组
-        html += renderSubEntries(e._gid || 0, 1);
         html += '</tbody></table></div></div>';
       });
     }
@@ -2357,10 +2512,6 @@ function calcAllStats() {
       const allEntries = [];
       l1Groups.forEach(l1g => { (l1Entries[l1g.id] || []).forEach(e => allEntries.push(e)); });
       standaloneEntries.forEach(e => allEntries.push(e));
-      file.grps.filter(g => g.level >= 3).forEach(g => {
-        const e = makeEntry(g, 1, {});
-        allEntries.push(e);
-      });
       file.addedCols.forEach(ac => {
         html += `<div class="det-sec"><div class="det-hdr">${esc(ac)} 详细分布</div><table class="rt"><thead><tr><th>类别</th><th>${esc(ac)} 值</th><th style="text-align:right">数量</th></tr></thead><tbody>`;
         allEntries.forEach(e => {
@@ -3985,21 +4136,73 @@ function nzParseFormula(str) {
   const metric = inner.substring(slashIdx + 1).trim();
   const path = inner.substring(0, slashIdx).trim();
   const parts = path.split(':').map(p => p.trim());
-  // {{文件序号:L1:L2:列/指标}} 或 {{文件序号:L1:L2/指标}} 或 {{文件序号:总合计/指标}}
-  let fileIdx, l1, l2, col;
+  // 格式: {{文件序号:L1:entryName:col/指标}} 或 {{文件序号::entryName/指标}}
+  // 兼容旧格式: {{文件序号:L1:L2/指标}} 或 {{文件序号:总合计/指标}}
+  let fileIdx, l1 = '', l2 = '', col = '';
   if (parts.length >= 1) fileIdx = parseInt(parts[0], 10);
   if (isNaN(fileIdx) || fileIdx < 1) return null;
+
   if (parts.length === 2) {
-    // {{1:总合计/指标}} 或 {{1:L2名/指标}} (独立L2)
+    // {{1:总合计/指标}} 或 {{1:entryName/指标}}
     l2 = parts[1];
   } else if (parts.length === 3) {
-    l1 = parts[1];
-    l2 = parts[2];
-  } else if (parts.length >= 4) {
-    l1 = parts[1];
-    l2 = parts[2];
-    col = parts[3];
+    // {{1:L1:entryName/指标}} 或 {{1::entryName/指标}}
+    l1 = parts[1]; l2 = parts[2];
+  } else if (parts.length === 4) {
+    // {{1:L1:entryName:col/指标}} 或 {{1::entryName:col/指标}}
+    l1 = parts[1]; l2 = parts[2]; col = parts[3];
+  } else if (parts.length >= 5) {
+    // 兼容旧多级格式: {{fileIdx:L1:L1Sub:L2:L3:...:col/metric}}
+    // 判断是否旧格式：parts[2]在L1的values中则为旧格式L1Sub
+    const fi2 = fileIdx - 1;
+    const file2 = S.files && S.files[fi2];
+    let isOldFormat = false;
+    if (file2 && parts[1]) {
+      const l1g = file2.grps && file2.grps.find(g => g.level === 1 && g.name === parts[1]);
+      if (l1g) {
+        const l1Values = l1g.values || [];
+        if (l1Values.includes(parts[2]) || parts[2] === '') {
+          isOldFormat = true;
+        }
+      }
+    }
+    if (isOldFormat) {
+      // 旧格式: 拼接parts[3..N-1]为entryName，最后一段可能是col
+      l1 = parts[1];
+      const remaining = parts.slice(2);  // L1Sub + L2 + L3 + ... + col
+      // 最后一段如果包含.或在表头中，则为col
+      let colIdx = -1;
+      for (let i = remaining.length - 1; i >= 1; i--) {
+        if (remaining[i] && (remaining[i].includes('.') || _nzLooksLikeCol(remaining[i], file2))) {
+          colIdx = i; break;
+        }
+      }
+      if (colIdx >= 0) {
+        col = remaining[colIdx];
+        l2 = remaining.slice(0, colIdx).join(' · ');
+      } else {
+        l2 = remaining.join(' · ');
+      }
+    } else {
+      // 更旧的多级格式: {{fileIdx:L1:L2:L3:...:col/metric}}
+      l1 = parts[1]; l2 = parts[2];
+      const remaining = parts.slice(3);
+      let colIdx = -1;
+      for (let i = remaining.length - 1; i >= 0; i--) {
+        if (remaining[i] && (remaining[i].includes('.') || _nzLooksLikeCol(remaining[i], file2))) {
+          colIdx = i; break;
+        }
+      }
+      if (colIdx >= 0) {
+        col = remaining[colIdx];
+        const lvls = remaining.slice(0, colIdx);
+        if (lvls.length) l2 += ' · ' + lvls.join(' · ');
+      } else {
+        if (remaining.length) l2 += ' · ' + remaining.join(' · ');
+      }
+    }
   }
+
   // 解析附加列.值
   let acCol, acVal;
   if (col && col.includes('.')) {
@@ -4008,13 +4211,21 @@ function nzParseFormula(str) {
     acVal = dp.slice(1).join('.');
     col = acCol;
   }
-  return { fileIdx, l1: l1 || '', l2: l2 || '', col: col || '', metric, acCol, acVal };
+  return { fileIdx, l1, l2, col: col || '', metric, acCol, acVal };
+}
+
+/** 辅助函数：判断一个字符串是否像列名（在文件表头中存在） */
+function _nzLooksLikeCol(name, file) {
+  if (!file || !file.hdr) return false;
+  return file.hdr.includes(name);
 }
 
 function nzBuildFormula(p) {
+  // 格式: {{fileIdx:L1:entryName/指标}} 或 {{fileIdx::entryName/指标}}（无L1用:占位）
+  // entryName可以是简单名（如"重点项"）或·分隔路径（如"重点项·核心项"、"子项·重点项·核心项"）
   let inner = p.fileIdx;
-  if (p.l1) inner += ':' + p.l1;
-  if (p.l2) inner += ':' + p.l2;
+  inner += ':' + (p.l1 || '');  // L1，可能为空
+  inner += ':' + (p.l2 || '');  // entryName（直接匹配entry.name）
   if (p.col) {
     if (p.acVal) inner += ':' + p.col + '.' + p.acVal;
     else inner += ':' + p.col;
@@ -4052,41 +4263,87 @@ function nzComputeStats() {
       const parentRels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
       const ownerL1 = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(g.id));
 
-      // L3+分组：直接计算context并添加到entries
+      // L3+分组：与L2每项相交展示，名称为完整层级路径
       if (g.level >= 3) {
         const ctx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+        const pathParts = getGroupPath(g.id, file.grps);
+        const fullName = pathParts.join(' · ');
         const parentGrp = file.grps.find(x => x.id === g.parentId);
         const depInfo = parentGrp ? `${g.level}级→${parentGrp.name}` : `${g.level}级`;
+        // 查找所有祖先L1分组
+        const ancestorL1s = findAncestorL1s(g.id, file.grps, l1Groups);
         const entry = {
-          name: g.name, isGroup: true, column: g.column, count: ctx.length,
+          name: fullName, isGroup: true, column: g.column, count: ctx.length,
           pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
-          depInfo, _ctx: ctx, level: g.level
+          depInfo, _ctx: ctx, level: g.level,
+          l1Name: '', l1Id: null,
+          crossItems: [], l1Subtotals: []
         };
         if (sumCol) entry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
         file.addedCols.forEach(ac => {
           const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
           entry['ac_' + ac] = tc;
         });
-        // L3+如果其祖先L2属于某个L1，则归入该L1
-        if (ownerL1) {
-          if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
-          l1Entries[ownerL1.id].push(entry);
+
+        // 对每个祖先L1生成交叉项
+        ancestorL1s.forEach(ancL1 => {
+          if (ancL1.childGroupIds && ancL1.childGroupIds.length) {
+            const l1SubtotalRows = new Set();
+            ancL1.childGroupIds.forEach(cid => {
+              const cg = file.grps.find(x => x.id === cid);
+              if (!cg) return;
+              const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
+              const childSet = new Set(childCtx);
+              const crossCtx = ctx.filter(r => childSet.has(r));
+              crossCtx.forEach(r => l1SubtotalRows.add(r));
+              const parentName = parentGrp ? parentGrp.name : '?';
+              const crossEntry = {
+                name: `${cg.name} · ${parentName} · ${g.name}`, isGroup: true, column: g.column,
+                count: crossCtx.length,
+                pct: l1Data.length > 0 ? (crossCtx.length / l1Data.length * 100).toFixed(1) : '0',
+                depInfo: `AND→${ancL1.name}.${cg.name}`, l1Name: ancL1.name, l1Id: ancL1.id,
+                isL1Cross: true, _ctx: crossCtx
+              };
+              if (sumCol) crossEntry.sum = crossCtx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+              file.addedCols.forEach(ac => {
+                const tc = {}; crossCtx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+                crossEntry['ac_' + ac] = tc;
+              });
+              entry.crossItems.push(crossEntry);
+            });
+            // L1小计
+            const subRows = [...l1SubtotalRows];
+            const subtotal = {
+              name: `${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
+              count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
+              _ctx: subRows
+            };
+            if (sumCol) subtotal.sum = subRows.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+            entry.l1Subtotals.push(subtotal);
+          }
+        });
+
+        // 分发到l1Entries或standaloneEntries
+        if (ancestorL1s.length) {
+          // 分发交叉项和小计到各自L1
+          entry.crossItems.forEach(ce => {
+            if (!l1Entries[ce.l1Id]) l1Entries[ce.l1Id] = [];
+            l1Entries[ce.l1Id].push(ce);
+          });
+          entry.l1Subtotals.forEach(st => {
+            if (!l1Entries[st.l1Id]) l1Entries[st.l1Id] = [];
+            l1Entries[st.l1Id].push(st);
+          });
+          // 为每个L1创建带l1Name的entry副本
+          ancestorL1s.forEach(l1 => {
+            if (!l1Entries[l1.id]) l1Entries[l1.id] = [];
+            const copy = Object.assign({}, entry, { l1Name: l1.name, l1Id: l1.id });
+            delete copy.crossItems;
+            delete copy.l1Subtotals;
+            l1Entries[l1.id].push(copy);
+          });
         } else {
-          // 查找祖先链中是否属于某个L1
-          let ancestor = parentGrp;
-          let foundL1 = null;
-          while (ancestor && !foundL1) {
-            const ancOwner = l1Groups.find(l1 => l1.childGroupIds && l1.childGroupIds.includes(ancestor.id));
-            if (ancOwner) { foundL1 = ancOwner; break; }
-            if (ancestor.parentId) ancestor = file.grps.find(x => x.id === ancestor.parentId);
-            else break;
-          }
-          if (foundL1) {
-            if (!l1Entries[foundL1.id]) l1Entries[foundL1.id] = [];
-            l1Entries[foundL1.id].push(entry);
-          } else {
-            standaloneEntries.push(entry);
-          }
+          standaloneEntries.push(entry);
         }
         return;
       }
@@ -4103,7 +4360,7 @@ function nzComputeStats() {
         if (hasL1Parent) {
           // 依托L1分组
           if (!ownerL1) {
-            // 未被纳入L1：生成交叉entry + 自身总entry，归入独立分组
+            // 未被L1的childGroupIds收纳，但parentIds中有L1（通过依赖关系）
             const totalCtx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
             const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
             const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
@@ -4142,12 +4399,37 @@ function nzComputeStats() {
                     crossEntry['ac_' + ac] = tc;
                   });
                   totalEntry.crossItems.push(crossEntry);
+                  // 分发交叉项到对应L1
+                  if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+                  l1Entries[pg.id].push(crossEntry);
                 });
               }
             });
+            // 为每个L1父分组创建带l1Name的totalEntry副本
+            parentIds.forEach(pid => {
+              const pg = file.grps.find(x => x.id === pid);
+              if (!pg || pg.level !== 1) return;
+              if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
+              const copy = Object.assign({}, totalEntry, { l1Name: pg.name, l1Id: pg.id });
+              delete copy.crossItems;
+              l1Entries[pg.id].push(copy);
+            });
             standaloneEntries.push(totalEntry);
           } else {
-            // 已被纳入L1：交叉entry放入对应L1的entries中
+            // 已被纳入L1：交叉entry + totalEntry自身放入对应L1的entries中
+            const totalCtx = getGroupContext(g.id, l1Data, file.grps, ctxCache);
+            const parentNames = parentIds.map(pid => { const pg = file.grps.find(x => x.id === pid); return pg ? pg.name : '?'; });
+            const depLabel = parentRels.map((r, i) => `${r || 'AND'}→${parentNames[i]}`).join(' ');
+            const totalEntry = {
+              name: g.name, isGroup: true, column: g.column, count: totalCtx.length,
+              pct: l1Data.length > 0 ? (totalCtx.length / l1Data.length * 100).toFixed(1) : '0',
+              depInfo: depLabel, _ctx: totalCtx, crossItems: [], l1Subtotals: []
+            };
+            if (sumCol) totalEntry.sum = totalCtx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
+            file.addedCols.forEach(ac => {
+              const tc = {}; totalCtx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
+              totalEntry['ac_' + ac] = tc;
+            });
             parentIds.forEach((pid, pi) => {
               const pg = file.grps.find(x => x.id === pid);
               if (!pg || pg.level !== 1) return;
@@ -4174,9 +4456,15 @@ function nzComputeStats() {
                   });
                   if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
                   l1Entries[pg.id].push(entry);
+                  totalEntry.crossItems.push(entry);
                 });
               }
             });
+            // 推送totalEntry自身
+            if (!l1Entries[ownerL1.id]) l1Entries[ownerL1.id] = [];
+            totalEntry.l1Name = ownerL1.name;
+            totalEntry.l1Id = ownerL1.id;
+            l1Entries[ownerL1.id].push(totalEntry);
           }
           return;
         } else if (hasChainedL2Parent && ownerL1) {
@@ -4286,12 +4574,17 @@ function nzComputeStats() {
       _ctx: nzCovered
     };
 
-    // 汇总entries
+    // 汇总entries（展平所有交叉项）
     const allEntries = [];
     l1Groups.forEach(l1g => {
       if (l1Entries[l1g.id]) allEntries.push(...l1Entries[l1g.id]);
     });
-    allEntries.push(...standaloneEntries);
+    standaloneEntries.forEach(e => {
+      // 展平独立分组的crossItems和l1Subtotals
+      if (e.crossItems) e.crossItems.forEach(ce => allEntries.push(ce));
+      if (e.l1Subtotals) e.l1Subtotals.forEach(st => allEntries.push(st));
+      allEntries.push(e);
+    });
 
     result[fileIdx] = { entries: allEntries, l1Groups, total, file, l1Data };
   });
@@ -4317,12 +4610,16 @@ function nzResolveFormula(parsed, statsData) {
     return nzResolveMetric(l1Total, col, metric, file, l1Data, acCol, acVal);
   }
 
-  // 常规匹配
+  // 按 entry.name 直接匹配（l2就是entry.name）
   let entry;
   if (l1) {
     entry = entries.find(e => e.isGroup && e.l1Name === l1 && e.name === l2);
+    // 尝试匹配 L1小计名（如"分局 合计"）
+    if (!entry) {
+      entry = entries.find(e => e.isL1Total && e.l1Name === l1);
+    }
   } else {
-    entry = entries.find(e => e.isGroup && !e.l1Name && e.name === l2 && e.depInfo === '(独立)');
+    entry = entries.find(e => e.isGroup && !e.l1Name && e.name === l2);
   }
   if (!entry) return { ok: false, value: '未匹配' };
   return nzResolveMetric(entry, col, metric, file, l1Data, acCol, acVal);
@@ -4572,14 +4869,14 @@ document.getElementById('nzQuickInsertBtn').addEventListener('click', () => {
   const body = document.getElementById('nzQiBody');
   const visible = body.style.display !== 'none';
   body.style.display = visible ? 'none' : '';
-  if (!visible) nzPopulateQiSelects();
+  if (!visible) nzPopulateQiSelects(); // 每次展开时刷新
 });
 
 document.getElementById('nzQiToggle').addEventListener('click', () => {
   const body = document.getElementById('nzQiBody');
   const visible = body.style.display !== 'none';
   body.style.display = visible ? 'none' : '';
-  if (!visible) nzPopulateQiSelects();
+  if (!visible) nzPopulateQiSelects(); // 每次展开时刷新
 });
 
 document.getElementById('nzScanToggle').addEventListener('click', () => {
@@ -4605,8 +4902,8 @@ function nzPopulateQiSelects() {
 }
 
 document.getElementById('nzQiFile').addEventListener('change', nzQiUpdateL1);
-document.getElementById('nzQiL1').addEventListener('change', nzQiUpdateL2);
-document.getElementById('nzQiL2').addEventListener('change', nzQiUpdateCol);
+document.getElementById('nzQiL1').addEventListener('change', nzQiUpdateEntry);
+document.getElementById('nzQiEntry').addEventListener('change', nzQiUpdateCol);
 document.getElementById('nzQiCol').addEventListener('change', nzQiUpdatePreview);
 document.getElementById('nzQiMetric').addEventListener('change', nzQiUpdatePreview);
 
@@ -4623,78 +4920,102 @@ function nzQiUpdateL1() {
     opt.textContent = g.name;
     l1Sel.appendChild(opt);
   });
-  // 独立分组选项
-  const standalone = file.grps.filter(g => g.level !== 1 && (!g.parentIds || !g.parentIds.length) && (!g.parentId));
-  if (standalone.length) {
-    const opt = document.createElement('option');
-    opt.value = '__standalone__';
-    opt.textContent = '(独立分组)';
-    l1Sel.appendChild(opt);
-  }
-  nzQiUpdateL2();
+  nzQiUpdateEntry();
 }
 
-function nzQiUpdateL2() {
+function nzQiUpdateEntry() {
   const fi = parseInt(document.getElementById('nzQiFile').value);
   const l1Val = document.getElementById('nzQiL1').value;
-  const l2Sel = document.getElementById('nzQiL2');
-  l2Sel.innerHTML = '<option value="">-- 选择 --</option><option value="总合计">总合计</option>';
-  if (!fi || !S.files[fi - 1]) return;
-  const file = S.files[fi - 1];
+  const entryRow = document.getElementById('nzQiEntryRow');
+  const entrySel = document.getElementById('nzQiEntry');
+  entrySel.innerHTML = '';
 
-  if (l1Val === '__standalone__') {
-    const standalone = file.grps.filter(g => g.level !== 1 && (!g.parentIds || !g.parentIds.length) && (!g.parentId));
-    standalone.forEach(g => {
-      const opt = document.createElement('option');
-      opt.value = g.name;
-      opt.textContent = g.name;
-      l2Sel.appendChild(opt);
-    });
-  } else if (l1Val) {
-    const l1g = file.grps.find(g => g.level === 1 && g.name === l1Val);
-    if (l1g && l1g.childGroupIds) {
-      // 构建链式关系映射，展示层级
-      const childIdSet = new Set(l1g.childGroupIds);
-      const chainMap = {}; // parentId -> [childId]
-      const chainChildSet = new Set();
-      l1g.childGroupIds.forEach(cid => {
-        const cg = file.grps.find(x => x.id === cid);
-        if (!cg) return;
-        const pids = cg.parentIds && cg.parentIds.length ? cg.parentIds : (cg.parentId ? [cg.parentId] : []);
-        const localParent = pids.find(pid => childIdSet.has(pid) && pid !== cid);
-        if (localParent) {
-          if (!chainMap[localParent]) chainMap[localParent] = [];
-          chainMap[localParent].push(cid);
-          chainChildSet.add(cid);
-        }
-      });
-      // 先渲染独立子分组
-      l1g.childGroupIds.forEach(cid => {
-        const cg = file.grps.find(x => x.id === cid);
-        if (!cg) return;
-        if (chainChildSet.has(cid)) return; // 链式子分组稍后渲染
-        const opt = document.createElement('option');
-        opt.value = cg.name;
-        opt.textContent = cg.name;
-        l2Sel.appendChild(opt);
-        // 渲染该子分组的链式子分组（缩进显示）
-        if (chainMap[cid]) {
-          chainMap[cid].forEach(chainedId => {
-            const cg2 = file.grps.find(x => x.id === chainedId);
-            if (!cg2) return;
-            const opt = document.createElement('option');
-            opt.value = cg2.name;
-            opt.textContent = `  └ ${cg2.name}`;
-            l2Sel.appendChild(opt);
-          });
-        }
-      });
-    }
-    const opt = document.createElement('option');
-    opt.value = '合计';
-    opt.textContent = `${l1Val} 合计`;
-    l2Sel.appendChild(opt);
+  if (!fi || !S.files[fi - 1]) {
+    entryRow.style.display = 'none';
+    nzQiUpdateCol();
+    return;
   }
+
+  // 计算统计数据
+  const statsData = nzComputeStats();
+  const fd = statsData[fi];
+  if (!fd) {
+    entryRow.style.display = 'none';
+    nzQiUpdateCol();
+    return;
+  }
+
+  entryRow.style.display = '';
+
+  if (!l1Val) {
+    // 无L1选择：显示总合计和独立分组（含交叉项）
+    const opt = document.createElement('option');
+    opt.value = '总合计';
+    opt.textContent = '总合计';
+    entrySel.appendChild(opt);
+    // 交叉项
+    fd.entries.filter(e => e.isL1Cross && !e.l1Name).forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = `[交叉] ${e.name}`;
+      entrySel.appendChild(opt);
+    });
+    // 独立分组自身
+    fd.entries.filter(e => e.isGroup && !e.isL1Cross && !e.l1Name).forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = `[分组] ${e.name}`;
+      entrySel.appendChild(opt);
+    });
+  } else if (l1Val === '__standalone__') {
+    // 独立分组（含交叉项）
+    fd.entries.filter(e => e.isL1Cross && !e.l1Name).forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = `[交叉] ${e.name}`;
+      entrySel.appendChild(opt);
+    });
+    fd.entries.filter(e => e.isGroup && !e.isL1Cross && !e.l1Name).forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = `[分组] ${e.name}`;
+      entrySel.appendChild(opt);
+    });
+  } else {
+    // 选了L1：列出该L1下所有条目（交叉项、合计、小计等）
+    // 按类型分组：交叉项、自身名称、小计、L1合计
+    const l1Entries = fd.entries.filter(e => e.l1Name === l1Val);
+    // 先加L1合计
+    const l1Total = l1Entries.find(e => e.isL1Total);
+    if (l1Total) {
+      const opt = document.createElement('option');
+      opt.value = l1Total.name;
+      opt.textContent = `[合计] ${l1Val}`;
+      entrySel.appendChild(opt);
+    }
+    // 交叉项
+    l1Entries.filter(e => e.isL1Cross).forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = `[交叉] ${e.name}`;
+      entrySel.appendChild(opt);
+    });
+    // L1子分组自身
+    l1Entries.filter(e => e.isGroup && !e.isL1Cross && !e.isL1Total && !e.isL1Subtotal).forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = `[分组] ${e.name}`;
+      entrySel.appendChild(opt);
+    });
+    // 小计
+    l1Entries.filter(e => e.isL1Subtotal).forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = `[小计] ${e.name}`;
+      entrySel.appendChild(opt);
+    });
+  }
+
   nzQiUpdateCol();
 }
 
@@ -4722,6 +5043,7 @@ function nzQiUpdatePreview() {
 
   // 尝试解析预览值
   const statsData = nzComputeStats();
+  // nzResolveFormula需要 l2=entryName，p.l2已经是entryName
   const result = nzResolveFormula(p, statsData);
   if (result.ok) {
     preview.textContent += ` = ${result.value}`;
@@ -4734,17 +5056,18 @@ function nzQiBuildParsed() {
   const fi = parseInt(document.getElementById('nzQiFile').value);
   if (!fi) return null;
   const l1Val = document.getElementById('nzQiL1').value;
-  const l2Val = document.getElementById('nzQiL2').value;
+  const entryVal = document.getElementById('nzQiEntry')?.value || '';
   const colVal = document.getElementById('nzQiCol').value;
   const metric = document.getElementById('nzQiMetric').value;
-  if (!l2Val) return null;
-  const p = { fileIdx: fi, l1: '', l2: l2Val, col: colVal || '', metric };
+  if (!entryVal) return null;
+
+  let l1 = '';
   if (l1Val === '__standalone__') {
-    p.l1 = '';
+    l1 = '';
   } else {
-    p.l1 = l1Val || '';
+    l1 = l1Val || '';
   }
-  return p;
+  return { fileIdx: fi, l1, l2: entryVal, col: colVal || '', metric };
 }
 
 document.getElementById('nzQiInsertBtn').addEventListener('click', () => {
@@ -4913,6 +5236,7 @@ document.getElementById('nzFillBtn').addEventListener('click', async () => {
     statsPayload[fi] = {
       entries: fd.entries.map(e => ({
         name: e.name, isGroup: e.isGroup, isL1Total: e.isL1Total, isTotal: e.isTotal,
+        isL1Cross: e.isL1Cross || false, isL1Subtotal: e.isL1Subtotal || false,
         l1Name: e.l1Name || '', count: e.count, pct: e.pct,
         sum: e.sum, column: e.column || '',
         acCols: fd.file.addedCols,
@@ -4924,6 +5248,13 @@ document.getElementById('nzFillBtn').addEventListener('click', async () => {
       total: { count: fd.total.count, pct: fd.total.pct, sum: fd.total.sum },
       sumCol: fd.file.sumCol || '',
       hdr: fd.file.hdr,
+      l1Groups: fd.l1Groups.map(l1g => ({
+        name: l1g.name, values: l1g.values || [],
+        childGroupNames: (l1g.childGroupIds || []).map(cid => {
+          const cg = fd.file.grps.find(x => x.id === cid);
+          return cg ? cg.name : '';
+        })
+      })),
     };
   }
 

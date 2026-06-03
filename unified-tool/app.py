@@ -1066,7 +1066,11 @@ def _nz_template_path(name):
 
 
 def _nz_resolve_formula_str(formula_str, stats_data):
-    """解析并计算单个公式字符串的值"""
+    """解析并计算单个公式字符串的值
+    格式: {{fileIdx:L1:entryName:col/metric}} 或 {{fileIdx::entryName/metric}}
+    entryName直接匹配entry.name（如"重点项"、"子项·重点项·核心项"等）
+    兼容旧格式: {{fileIdx:L1:L2:L3/指标}} 或 {{fileIdx:总合计/指标}}
+    """
     m = re.match(r'^\{\{(.+?)\}\}$', formula_str.strip())
     if not m:
         return {'ok': False, 'value': '格式错误'}
@@ -1080,7 +1084,6 @@ def _nz_resolve_formula_str(formula_str, stats_data):
     parts = [p.strip() for p in parts]
 
     file_idx = None
-    l1, l2, col = '', '', ''
     try:
         file_idx = int(parts[0])
     except (ValueError, IndexError):
@@ -1098,32 +1101,46 @@ def _nz_resolve_formula_str(formula_str, stats_data):
     total = fd.get('total', {})
     sum_col = fd.get('sumCol', '')
 
-    # 解析附加列.值
-    ac_col, ac_val = None, None
-    if len(parts) >= 4:
-        col = parts[3]
-        if '.' in col:
-            dp = col.split('.', 1)
-            ac_col, ac_val = dp[0], dp[1]
+    # 解析各层级
+    l1, col = '', ''
+    entry_name = ''
 
     # 总合计
     if len(parts) == 2 and parts[1] == '总合计':
-        return _nz_resolve_metric(total, col, metric, sum_col, ac_col, ac_val, fd)
-    if len(parts) >= 2 and parts[1] == '总合计' and len(parts) <= 3:
-        return _nz_resolve_metric(total, col, metric, sum_col, ac_col, ac_val, fd)
+        return _nz_resolve_metric(total, '', metric, sum_col, None, None, fd)
 
-    # 确定 L1 和 L2
     if len(parts) == 2:
-        l2 = parts[1]
+        # {{1:entryName/指标}}
+        entry_name = parts[1]
     elif len(parts) == 3:
+        # {{1:L1:entryName/指标}} 或 {{1::entryName/指标}}
         l1 = parts[1]
-        l2 = parts[2]
-    elif len(parts) >= 4:
+        entry_name = parts[2]
+    elif len(parts) == 4:
+        # {{1:L1:entryName:col/指标}}
         l1 = parts[1]
-        l2 = parts[2]
+        entry_name = parts[2]
+        col = parts[3]
+    elif len(parts) >= 5:
+        # 旧多级格式兼容: {{fileIdx:L1:L2:L3:...:col/metric}}
+        # 合并L2..L(N-1)为entry_name
+        l1 = parts[1]
+        remaining = parts[2:]
+        # 最后一段如果包含.则为列名
+        if remaining and '.' in remaining[-1]:
+            col = remaining[-1]
+            entry_name = ' · '.join(remaining[:-1])
+        else:
+            entry_name = ' · '.join(remaining)
+
+    # 解析附加列.值
+    ac_col, ac_val = None, None
+    if col and '.' in col:
+        dp = col.split('.', 1)
+        ac_col, ac_val = dp[0], dp[1]
 
     # L1合计
-    if l2 == '合计' and l1:
+    if l1 and entry_name == '合计':
         l1_total = None
         for e in entries:
             if e.get('isL1Total') and e.get('l1Name') == l1:
@@ -1133,16 +1150,26 @@ def _nz_resolve_formula_str(formula_str, stats_data):
             return {'ok': False, 'value': '未匹配'}
         return _nz_resolve_metric(l1_total, col, metric, sum_col, ac_col, ac_val, fd)
 
-    # 常规匹配
+    # 总合计（entry_name='总合计'）
+    if entry_name == '总合计' or (not l1 and entry_name == '总合计'):
+        return _nz_resolve_metric(total, col, metric, sum_col, ac_col, ac_val, fd)
+
+    # 按 entry.name 直接匹配
     entry = None
     if l1:
         for e in entries:
-            if e.get('isGroup') and e.get('l1Name') == l1 and e.get('name') == l2:
+            if e.get('isGroup') and e.get('l1Name') == l1 and e.get('name', '') == entry_name:
                 entry = e
                 break
+        # 尝试L1合计
+        if not entry:
+            for e in entries:
+                if e.get('isL1Total') and e.get('l1Name') == l1:
+                    entry = e
+                    break
     else:
         for e in entries:
-            if e.get('isGroup') and not e.get('l1Name') and e.get('name') == l2:
+            if e.get('isGroup') and not e.get('l1Name') and e.get('name', '') == entry_name:
                 entry = e
                 break
 
