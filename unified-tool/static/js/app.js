@@ -2238,7 +2238,7 @@ function calcAllStats() {
         // 每个L1父分组一个小计
         const subRows = [...l1SubtotalRows];
         const subtotal = {
-          name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
+          name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, isGroup: true, l1Name: pg.name, l1Id: pg.id,
           count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
           indent: 1, _ctx: subRows
         };
@@ -2303,7 +2303,7 @@ function calcAllStats() {
             // L1小计
             const subRows = [...l1SubtotalRows];
             const subtotal = {
-              name: `${fullName} · ${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
+              name: `${fullName} · ${ancL1.name} 小计`, isL1Subtotal: true, isGroup: true, l1Name: ancL1.name, l1Id: ancL1.id,
               count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
               indent: 1, _ctx: subRows
             };
@@ -4317,7 +4317,7 @@ function nzComputeStats() {
             // L1小计
             const subRows = [...l1SubtotalRows];
             const subtotal = {
-              name: `${fullName} · ${ancL1.name} 小计`, isL1Subtotal: true, l1Name: ancL1.name, l1Id: ancL1.id,
+              name: `${fullName} · ${ancL1.name} 小计`, isL1Subtotal: true, isGroup: true, l1Name: ancL1.name, l1Id: ancL1.id,
               count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
               _ctx: subRows
             };
@@ -4412,7 +4412,7 @@ function nzComputeStats() {
               // 为该L1生成小计
               const subRows = [...l1SubtotalRows];
               const subtotal = {
-                name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
+                name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, isGroup: true, l1Name: pg.name, l1Id: pg.id,
                 count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
                 _ctx: subRows
               };
@@ -4481,7 +4481,7 @@ function nzComputeStats() {
               // 为该L1生成小计
               const subRows = [...l1SubtotalRows];
               const subtotal = {
-                name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, l1Name: pg.name, l1Id: pg.id,
+                name: `${g.name} · ${pg.name} 小计`, isL1Subtotal: true, isGroup: true, l1Name: pg.name, l1Id: pg.id,
                 count: subRows.length, pct: l1Data.length > 0 ? (subRows.length / l1Data.length * 100).toFixed(1) : '0',
                 _ctx: subRows
               };
@@ -4643,10 +4643,6 @@ function nzResolveFormula(parsed, statsData) {
   let entry;
   if (l1) {
     entry = entries.find(e => e.isGroup && e.l1Name === l1 && e.name === l2);
-    // 尝试匹配 L1小计名（如"分局 合计"）
-    if (!entry) {
-      entry = entries.find(e => e.isL1Total && e.l1Name === l1);
-    }
   } else {
     entry = entries.find(e => e.isGroup && !e.l1Name && e.name === l2);
   }
