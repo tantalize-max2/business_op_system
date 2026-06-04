@@ -1,7 +1,7 @@
 // ========== 主题切换（必须在最前面，防止闪烁） ==========
 const THEMES = ['light', 'dark', 'eyecare'];
 const THEME_LABELS = { light: '白天', dark: '黑夜', eyecare: '护眼' };
-const THEME_ICONS = { light: '&#9728;', dark: '&#9790;', eyecare: '&#127811;' };
+const THEME_ICONS = { light: 'icon-sun', dark: 'icon-moon', eyecare: 'icon-eye' };
 
 (function initTheme() {
   const saved = localStorage.getItem('ba-theme');
@@ -10,9 +10,12 @@ const THEME_ICONS = { light: '&#9728;', dark: '&#9790;', eyecare: '&#127811;' };
 })();
 
 function applyThemeUI(theme) {
-  const icon = document.getElementById('themeIcon');
+  const iconSvg = document.getElementById('themeIconSvg');
   const label = document.getElementById('themeLabel');
-  if (icon) icon.innerHTML = THEME_ICONS[theme] || THEME_ICONS.light;
+  if (iconSvg) {
+    const use = iconSvg.querySelector('use');
+    if (use) use.setAttribute('xlink:href', '#' + (THEME_ICONS[theme] || THEME_ICONS.light));
+  }
   if (label) label.textContent = THEME_LABELS[theme] || '白天';
 }
 
@@ -65,14 +68,14 @@ const S = {
 };
 
 const CM = {
-  blue:   {d:'#4c8bf5', t:'t-blue'},
+  teal:   {d:'#14b8a6', t:'t-blue'},
   green:  {d:'#2dd4a0', t:'t-green'},
   orange: {d:'#f0a030', t:'t-orange'},
   purple: {d:'#a78bfa', t:'t-purple'},
   cyan:   {d:'#22c8dc', t:'t-cyan'},
   red:    {d:'#f05050', t:'t-red'}
 };
-const SEC_COLORS = ['#4c8bf5','#2dd4a0','#f0a030','#a78bfa','#22c8dc','#f05050','#ec4899','#84cc16'];
+const SEC_COLORS = ['#14b8a6','#2dd4a0','#f0a030','#a78bfa','#22c8dc','#f05050','#ec4899','#84cc16'];
 
 // ========== 拆分列选择器 & 预处理列选择器 ==========
 function populateSplitColSel() {
@@ -731,7 +734,7 @@ function renderFileList() {
   let html = '';
   S.files.forEach(f => {
     html += `<div class="file-card" data-fid="${f.id}">
-      <span class="file-card-icon">&#128202;</span>
+      <span class="file-card-icon"><svg class="icon icon-lg" aria-hidden="true"><use xlink:href="#icon-file"/></svg></span>
       <div class="file-card-info">
         <div class="file-card-name">${esc(f.name)}</div>
         <div class="file-card-meta">${f.raw.length} 行 &middot; ${f.hdr.length} 列</div>
@@ -1501,7 +1504,7 @@ function showL1GroupDialog() {
   html += '<label style="font-size:11px;color:var(--t3)">选择子分组（点击选择/取消）</label>';
   html += '<div class="fd-value-list" style="max-height:260px">';
   nonL1Grps.forEach(g => {
-    const cm = CM[g.color] || CM.blue;
+    const cm = CM[g.color] || CM.teal;
     html += `<div class="fd-item l1-child-item" data-gid="${g.id}" style="gap:8px;padding:8px 14px"><span class="cdot" style="background:${cm.d};width:8px;height:8px;border-radius:50%;flex-shrink:0"></span><span style="font-size:12px">${esc(g.name)}</span><span style="font-size:10px;color:var(--t3);margin-left:auto">${esc(g.column)}</span></div>`;
   });
   html += '</div></div>';
@@ -1718,7 +1721,7 @@ function renderGrpCards() {
     if (!kids || !kids.length) return '';
     let h = '<div class="gc-sub-children" style="margin-left:' + (depth * 16) + 'px">';
     kids.forEach(kid => {
-      const kcm = CM[kid.color] || CM.blue;
+      const kcm = CM[kid.color] || CM.teal;
       const lvLabel = kid.level ? `${kid.level}级` : '2级';
       h += `<div class="gc gc-sub" draggable="true" data-gid="${kid.id}">
         <div class="gc-h"><span class="gc-dot" style="background:${kcm.d}"></span><span class="gc-n">${esc(kid.name)}</span><span class="gc-col">${esc(kid.column)} <span class="badge-lv">${lvLabel}</span></span><button class="btn btn-ghost btn-xs" data-edit="${kid.id}">✎</button><button class="btn btn-danger btn-xs" data-del="${kid.id}">✕</button></div>
@@ -1732,7 +1735,7 @@ function renderGrpCards() {
 
   let html = '';
   f.grps.forEach(g => {
-    const cm = CM[g.color] || CM.blue;
+    const cm = CM[g.color] || CM.teal;
     const l1Info = g.l1Dep ? `L1:${esc(g.l1Dep.col)}` : '';
 
     if (g.level === 1) {
@@ -1766,7 +1769,7 @@ function renderGrpCards() {
         <div class="gc-l1-body" data-l1body="${g.id}">`;
       childGrps.forEach(cg => {
         if (chainChildSet.has(cg.id)) return;
-        const ccm = CM[cg.color] || CM.blue;
+        const ccm = CM[cg.color] || CM.teal;
         const hasChain = chainMap[cg.id] && chainMap[cg.id].length;
         html += `<div class="gc gc-nested" draggable="true" data-gid="${cg.id}">
           <div class="gc-h"><span class="gc-dot" style="background:${ccm.d}"></span><span class="gc-n">${esc(cg.name)}</span><span class="gc-col">${esc(cg.column)}</span><button class="btn btn-ghost btn-xs" data-edit="${cg.id}">✎</button><button class="btn btn-danger btn-xs" data-del="${cg.id}">✕</button></div>
@@ -1776,7 +1779,7 @@ function renderGrpCards() {
           chainMap[cg.id].forEach(chainedId => {
             const cg2 = f.grps.find(x => x.id === chainedId);
             if (!cg2) return;
-            const ccm2 = CM[cg2.color] || CM.blue;
+            const ccm2 = CM[cg2.color] || CM.teal;
             const relLabel = cg2.parentRel || (cg2.parentRels && cg2.parentRels[0]) || 'AND';
             html += `<div class="gc gc-chained" draggable="true" data-gid="${cg2.id}">
               <div class="gc-chain-arrow">└ ${relLabel}</div>
@@ -2450,7 +2453,8 @@ function calcAllStats() {
       const rowClass = e.isL1Total ? ' class="l1tot"' : (e.isL1Subtotal ? ' class="l1sub"' : '');
       let r = `<tr${rowClass}>`;
       const icon = e.isL1Total ? '📊' : (e.isL1Subtotal ? '📋' : (e.isGroup ? (e.indent === 2 ? '🔗' : (e.indent ? '📄' : '📁')) : '📌'));
-      r += `<td ${indentStyle}><div class="cc">${cm ? `<span class="cdot" style="background:${cm.d}"></span>` : ''}<span class="gico">${icon}</span> ${esc(e.name)}</div></td>`;
+      const iconSvg = e.isL1Total ? 'icon-chart' : (e.isL1Subtotal ? 'icon-table' : (e.isGroup ? (e.indent === 2 ? 'icon-link' : (e.indent ? 'icon-file' : 'icon-folder')) : 'icon-tag'));
+      r += `<td ${indentStyle}><div class="cc">${cm ? `<span class="cdot" style="background:${cm.d}"></span>` : ''}<svg class="icon" style="font-size:12px" aria-hidden="true"><use xlink:href="#${iconSvg}"/></svg> ${esc(e.name)}</div></td>`;
       r += `<td style="color:var(--cy);font-size:10px;font-family:var(--mf)">${esc(e.depInfo || '')}</td>`;
       r += `<td style="color:var(--t3);font-size:10px">${esc(e.column || '')}</td>`;
       r += `<td class="nc">${e.count}</td><td class="nc">${e.pct}%</td>`;
@@ -3268,6 +3272,7 @@ function initActiveFile() {
   renderGrpCards();
   renderL2FileTabs();
   updLxButtons();
+  syncPreprocessColSel();
 }
 
 // 一级过滤区导航
@@ -3321,7 +3326,16 @@ document.getElementById('btnPreprocess').addEventListener('click', async () => {
   let processedCount = 0;
   const details = [];
 
+  // 只对一级过滤后的行统计和修改
+  const filteredRawIdx = new Set();
+  const fd = getFilteredData();
+  fd.forEach(fr => {
+    const idx = f.raw.indexOf(fr);
+    if (idx >= 0) filteredRawIdx.add(idx);
+  });
+
   f.raw.forEach((r, i) => {
+    if (!filteredRawIdx.has(i)) return; // 跳过被过滤掉的行
     const raw = String(r[col] ?? '').trim();
     if (!raw) {
       emptyCount++;
@@ -3329,6 +3343,13 @@ document.getElementById('btnPreprocess').addEventListener('click', async () => {
     }
     // 按常见分隔符拆分
     const names = raw.split(/[,，、;；\s]+/).map(n => n.trim()).filter(n => n);
+    // 拆分后为空（原始值全是分隔符，如 "，"），视为空值
+    if (!names.length) {
+      emptyCount++;
+      r[col] = '';
+      details.push(`行${i+2}: "${raw}" → (全为分隔符，已清空)`);
+      return;
+    }
     if (names.length <= 1) return; // 单人名无需处理
 
     multiCount++;
@@ -3488,7 +3509,7 @@ function renderKdocsCatBar() {
   let html = `<span class="kd-cat-tag ${KD.activeCat === '' ? 'on' : ''}" data-cat="">全部</span>`;
   KD.cats.forEach(c => {
     html += `<span class="kd-cat-tag ${KD.activeCat === c.id ? 'on' : ''}" data-cat="${c.id}" style="${c.color && KD.activeCat === c.id ? `border-color:${c.color};color:${c.color}` : ''}">
-      <span class="kd-cat-dot" style="background:${c.color || '#6366f1'}"></span>${esc(c.name)}<span class="kd-cat-count">${c.count || 0}</span>
+      <span class="kd-cat-dot" style="background:${c.color || '#0d9488'}"></span>${esc(c.name)}<span class="kd-cat-count">${c.count || 0}</span>
     </span>`;
   });
   bar.innerHTML = html;
@@ -3511,7 +3532,7 @@ document.getElementById('kdCatBtn').addEventListener('click', () => {
     let listHtml = '';
     KD.cats.forEach(c => {
       listHtml += `<div class="kd-cat-mgr-item">
-        <span class="kd-cat-dot" style="background:${c.color || '#6366f1'}"></span>
+        <span class="kd-cat-dot" style="background:${c.color || '#0d9488'}"></span>
         <span class="kd-cat-mgr-name">${esc(c.name)}</span>
         <span class="kd-cat-mgr-count">${c.count || 0}个</span>
         ${c.id !== 'default' ? `<button class="btn btn-danger btn-xs kd-cat-del" data-cid="${c.id}">删除</button>` : ''}
@@ -3523,7 +3544,7 @@ document.getElementById('kdCatBtn').addEventListener('click', () => {
   let html = '<div class="fd-head"><span class="fd-cn">管理分类</span></div>';
   html += '<div style="padding:14px;display:flex;flex-direction:column;gap:10px">';
   html += '<div class="kd-cat-mgr-list" id="kdCatMgrList">' + renderCatList() + '</div>';
-  html += '<div class="kd-cat-add-row"><input id="kdCatAddName" placeholder="新分类名称"><input id="kdCatAddColor" type="color" value="#6366f1" style="width:36px;height:30px;padding:2px;border:1px solid var(--bd);border-radius:6px;cursor:pointer"><button class="btn btn-primary btn-xs" id="kdCatAddBtn">添加</button></div>';
+  html += '<div class="kd-cat-add-row"><input id="kdCatAddName" placeholder="新分类名称"><input id="kdCatAddColor" type="color" value="#0d9488" style="width:36px;height:30px;padding:2px;border:1px solid var(--bd);border-radius:6px;cursor:pointer"><button class="btn btn-primary btn-xs" id="kdCatAddBtn">添加</button></div>';
   html += '</div>';
   html += '<div class="fd-foot"><span></span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="kdCatClose">关闭</button></div></div>';
   dd.innerHTML = html;
@@ -3563,7 +3584,7 @@ document.getElementById('kdCatBtn').addEventListener('click', () => {
 function renderKdocsList() {
   const div = document.getElementById('kdSheetList');
   if (!KD.sheets.length) {
-    div.innerHTML = '<div class="kd-empty"><div class="kd-empty-icon">&#128203;</div><div class="kd-empty-text">暂无在线表格配置</div><div class="kd-empty-hint">点击"添加在线表格"开始配置</div></div>';
+    div.innerHTML = '<div class="kd-empty"><div class="kd-empty-icon"><svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-cloud-upload"/></svg></div><div class="kd-empty-text">暂无在线表格配置</div><div class="kd-empty-hint">点击"添加在线表格"开始配置</div></div>';
     return;
   }
 
@@ -3571,12 +3592,12 @@ function renderKdocsList() {
   let html = '';
   if (!KD.activeCat) {
     const grouped = {};
-    KD.cats.forEach(c => { grouped[c.id] = { name: c.name, color: c.color || '#6366f1', items: [] }; });
+    KD.cats.forEach(c => { grouped[c.id] = { name: c.name, color: c.color || '#0d9488', items: [] }; });
     // 未分类的归入默认
-    if (!grouped['default']) grouped['default'] = { name: '默认', color: '#6366f1', items: [] };
+    if (!grouped['default']) grouped['default'] = { name: '默认', color: '#0d9488', items: [] };
     KD.sheets.forEach(s => {
       const catId = s.category || 'default';
-      if (!grouped[catId]) grouped[catId] = { name: catId, color: '#6366f1', items: [] };
+      if (!grouped[catId]) grouped[catId] = { name: catId, color: '#0d9488', items: [] };
       grouped[catId].items.push(s);
     });
     for (const [catId, group] of Object.entries(grouped)) {
@@ -3714,18 +3735,18 @@ function showFileBrowser(targetInput, selectMode) {
       // 上级目录按钮
       if (data.parent) {
         const parentLabel = data.parent === '__drives__' ? '.. (此电脑)' : '.. (上级目录)';
-        html += `<div class="kb-item kb-dir" data-path="${esc(data.parent)}"><span class="kb-icon">📂</span><span class="kb-name">${parentLabel}</span></div>`;
+        html += `<div class="kb-item kb-dir" data-path="${esc(data.parent)}"><span class="kb-icon"><svg class="icon" aria-hidden="true"><use xlink:href="#icon-folder"/></svg></span><span class="kb-name">${parentLabel}</span></div>`;
       }
       // 目录/驱动器列表
       data.dirs.forEach(d => {
-        const icon = d.is_drive ? '💿' : '📁';
+        const icon = d.is_drive ? '<svg class="icon" aria-hidden="true"><use xlink:href="#icon-save"/></svg>' : '<svg class="icon" aria-hidden="true"><use xlink:href="#icon-folder"/></svg>';
         const cls = d.is_drive ? 'kb-item kb-dir kb-drive' : 'kb-item kb-dir';
         const label = d.is_drive ? `${d.name} 驱动器` : d.name;
         html += `<div class="${cls}" data-path="${esc(d.path)}"><span class="kb-icon">${icon}</span><span class="kb-name">${esc(label)}</span></div>`;
       });
       // 文件列表（仅非驱动器视图显示）
       if (!data.is_drives) {
-        data.files.forEach(f => { html += `<div class="kb-item kb-file" data-path="${esc(f.path)}"><span class="kb-icon">📄</span><span class="kb-name">${esc(f.name)}</span><span class="kb-size">${(f.size / 1024).toFixed(0)}KB</span></div>`; });
+        data.files.forEach(f => { html += `<div class="kb-item kb-file" data-path="${esc(f.path)}"><span class="kb-icon"><svg class="icon" aria-hidden="true"><use xlink:href="#icon-file"/></svg></span><span class="kb-name">${esc(f.name)}</span><span class="kb-size">${(f.size / 1024).toFixed(0)}KB</span></div>`; });
       }
       if (!data.dirs.length && !data.files.length) html = '<div class="kd-batch-hint">此目录为空</div>';
       dd.querySelector('#kbList').innerHTML = html;

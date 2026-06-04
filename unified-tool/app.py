@@ -91,7 +91,11 @@ def clean_name(name):
         return ""
     name = re.sub(r'\([^)]*\)', '', name)
     name = re.sub(r'\（[^）]*\）', '', name)
-    return name.strip()
+    # 清理常见分隔符（逗号、顿号、分号等），保留首个名字
+    # 与前端预处理逻辑保持一致：按分隔符拆分后取第一个非空值
+    parts = re.split(r'[,，、;；\s]+', name)
+    parts = [p.strip() for p in parts if p.strip()]
+    return parts[0] if parts else name.strip()
 
 
 def copy_row_with_format(source_sheet, target_sheet, source_row, target_row, max_col):
@@ -582,7 +586,7 @@ def _load_kdocs_cats():
                 return json.load(f)
         except:
             pass
-    return [{'id': 'default', 'name': '默认', 'color': '#6366f1'}]
+    return [{'id': 'default', 'name': '默认', 'color': '#0d9488'}]
 
 def _save_kdocs_cats(cats):
     """保存分类列表"""
@@ -664,7 +668,7 @@ def add_kdocs_cat():
     """添加分类"""
     data = request.json or {}
     name = data.get('name', '').strip()
-    color = data.get('color', '#6366f1').strip()
+    color = data.get('color', '#0d9488').strip()
     if not name:
         return jsonify({'error': '分类名不能为空'}), 400
     cats = _load_kdocs_cats()
