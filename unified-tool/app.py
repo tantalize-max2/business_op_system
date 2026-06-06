@@ -22,6 +22,7 @@ from flask_cors import CORS
 import pandas as pd
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, Alignment
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
@@ -1077,7 +1078,10 @@ def _nz_resolve_formula_str(formula_str, stats_data):
     """
     m = re.match(r'^\{\{(.+?)\}\}$', formula_str.strip())
     if not m:
-        return {'ok': False, 'value': '格式错误'}
+        # 尝试匹配 {{...}}（可能在表达式内）
+        m = re.search(r'\{\{(.+?)\}\}', formula_str.strip())
+        if not m:
+            return {'ok': False, 'value': '格式错误'}
     inner = m.group(1).strip()
     slash_idx = inner.rfind('/')
     if slash_idx < 0:
@@ -1361,10 +1365,159 @@ def nz_fill_template():
         else:
             cell.value = val
 
-    # 2. 扫描公式并替换值
-    formula_pattern = re.compile(r'^\{\{(.+?)\}\}$')
+    # 2. 应用单元格格式
+    cell_formats = data.get('cellFormats', [])
+    for fmt_item in cell_formats:
+        si = fmt_item.get('sheet', 0)
+        r = fmt_item.get('row', 0)
+        c = fmt_item.get('col', 0)
+        fmt = fmt_item.get('fmt', {})
+        if si < 0 or si >= len(wb.sheetnames):
+            continue
+        ws = wb.worksheets[si]
+        cell = ws.cell(row=r + 1, column=c + 1)
+        if fmt.get('bold') or fmt.get('italic') or fmt.get('fontSize') or fmt.get('fontName'):
+            cell.font = Font(
+                bold=fmt.get('bold', False),
+                italic=fmt.get('italic', False),
+                size=fmt.get('fontSize'),
+                name=fmt.get('fontName')
+            )
+        if fmt.get('align'):
+            align_map = {'left': 'left', 'center': 'center', 'right': 'right'}
+            cell.alignment = Alignment(horizontal=align_map.get(fmt['align'], 'left'))
+
+    # 3. 扫描公式并替换值（支持多公式表达式、单元格引用和混合文本）
+    formula_pattern = re.compile(r'\{\{(.+?)\}\}')
+    # 单元格引用正则：A1, B2, AA10 等
+    cell_ref_pattern = re.compile(r'\b([A-Z]{1,3})(\d{1,5})\b')
     fill_count = 0
     fail_count = 0
+
+    # 先构建每个sheet的值缓存（用于单元格引用解析）
+    def get_cell_value(ws_obj, col_str, row_str):
+        """根据列字母和行号获取单元格值"""
+        try:
+            col_idx = 0
+            for ch in col_str:
+                col_idx = col_idx * 26 + (ord(ch) - ord('A') + 1)
+            row_idx = int(row_str)
+            if row_idx < 1 or col_idx < 1:
+                return None
+            c = ws_obj.cell(row=row_idx, column=col_idx)
+            if c.value is None:
+                return 0
+            return c.value
+        except:
+            return None
+
+    def resolve_cell_refs_in_expr(expr_str, ws_obj, visited=None):
+        """解析表达式中的单元格引用，替换为实际值"""
+        if visited is None:
+            visited = set()
+        def replace_ref(m):
+            col_s, row_s = m.group(1), m.group(2)
+            ref_key = f"{col_s}{row_s}"
+            if ref_key in visited:
+                return 'NaN'
+            visited.add(ref_key)
+            val = get_cell_value(ws_obj, col_s, row_s)
+            if val is None:
+                return 'NaN'
+            val_str = str(val).strip()
+            # 递归解析：如果引用的单元格也是表达式
+            if val_str.startswith('='):
+                inner = val_str[1:]
+                # 先替换 {{}}
+                inner = formula_pattern.sub(lambda fm: str(_nz_resolve_formula_str(fm.group(0), stats_data).get('value', 'NaN')), inner)
+                # 再替换引用
+                inner = resolve_cell_refs_in_expr(inner, ws_obj, visited)
+                try:
+                    safe = re.sub(r'[^0-9+\-*/().eE\s]', '', inner)
+                    result = eval(safe)
+                    if isinstance(result, (int, float)):
+                        return str(round(result, 2))
+                    return 'NaN'
+                except:
+                    return 'NaN'
+            try:
+                num = float(val)
+                if '.' not in str(val) and isinstance(val, int):
+                    return str(val)
+                return str(num)
+            except (ValueError, TypeError):
+                return 'NaN'
+        return cell_ref_pattern.sub(replace_ref, expr_str)
+
+    # 解析范围引用中的所有单元格值
+    def resolve_range_values(range_str, ws_obj, visited=None):
+        """解析 A1:B5 或 A1,B2,C3 格式，返回数值列表"""
+        if visited is None:
+            visited = set()
+        values = []
+        parts = [p.strip() for p in range_str.split(',')]
+        range_re = re.compile(r'^([A-Z]{1,3})(\d{1,5}):([A-Z]{1,3})(\d{1,5})$')
+        cell_re = re.compile(r'^([A-Z]{1,3})(\d{1,5})$')
+        for part in parts:
+            rm = range_re.match(part)
+            if rm:
+                c1 = 0
+                for ch in rm.group(1):
+                    c1 = c1 * 26 + (ord(ch) - ord('A') + 1)
+                r1 = int(rm.group(2))
+                c2 = 0
+                for ch in rm.group(3):
+                    c2 = c2 * 26 + (ord(ch) - ord('A') + 1)
+                r2 = int(rm.group(4))
+                min_r, max_r = min(r1, r2), max(r1, r2)
+                min_c, max_c = min(c1, c2), max(c1, c2)
+                for rr in range(min_r, max_r + 1):
+                    for cc in range(min_c, max_c + 1):
+                        ref_key = f"{rr},{cc}"
+                        if ref_key in visited:
+                            continue
+                        visited.add(ref_key)
+                        cv = ws_obj.cell(row=rr, column=cc).value
+                        if cv is not None:
+                            try:
+                                v = float(cv)
+                                values.append(v)
+                            except (ValueError, TypeError):
+                                pass
+            else:
+                cm = cell_re.match(part)
+                if cm:
+                    col_s, row_s = cm.group(1), cm.group(2)
+                    ref_key = f"{col_s}{row_s}"
+                    if ref_key not in visited:
+                        visited.add(ref_key)
+                        val = get_cell_value(ws_obj, col_s, row_s)
+                        if val is not None:
+                            try:
+                                values.append(float(val))
+                            except (ValueError, TypeError):
+                                pass
+        return values
+
+    # 替换 SUM(...)/AVG(...) 函数
+    func_pattern = re.compile(r'\b(SUM|AVG)\s*\(([^)]+)\)', re.IGNORECASE)
+
+    def resolve_funcs(expr_str, ws_obj, visited=None):
+        """解析 SUM/AVG 函数，替换为计算结果"""
+        if visited is None:
+            visited = set()
+        def replace_func(m):
+            fn = m.group(1).upper()
+            args = m.group(2)
+            vals = resolve_range_values(args, ws_obj, visited)
+            if not vals:
+                return 'NaN'
+            if fn == 'SUM':
+                return str(round(sum(vals), 2))
+            elif fn == 'AVG':
+                return str(round(sum(vals) / len(vals), 2))
+            return 'NaN'
+        return func_pattern.sub(replace_func, expr_str)
 
     for ws in wb.worksheets:
         # 遍历所有单元格
@@ -1373,21 +1526,94 @@ def nz_fill_template():
                 if cell.value is None:
                     continue
                 cell_str = str(cell.value).strip()
-                if not formula_pattern.match(cell_str):
+
+                # 判断是否包含公式
+                has_formula = formula_pattern.search(cell_str) or cell_str.startswith('=')
+                if not has_formula:
                     continue
-                # 解析公式并取值
-                result = _nz_resolve_formula_str(cell_str, stats_data)
-                if result['ok']:
-                    val = result['value']
-                    # 根据类型设置单元格值（保留格式）
-                    if isinstance(val, (int, float)):
+
+                # 判断公式模式
+                if cell_str.startswith('='):
+                    # 表达式模式：=A1+B2 或 ={{...}}+A1 或混合
+                    expr = cell_str[1:]  # 去掉 = 前缀
+                    all_ok = True
+
+                    # 1. 替换 {{...}} 公式
+                    def resolve_expr(match):
+                        nonlocal all_ok
+                        result = _nz_resolve_formula_str(match.group(0), stats_data)
+                        if result['ok']:
+                            return str(result['value'])
+                        all_ok = False
+                        return 'NaN'
+
+                    expr = formula_pattern.sub(resolve_expr, expr)
+                    if not all_ok:
+                        cell.value = '公式解析失败'
+                        fail_count += 1
+                        continue
+
+                    # 2. 替换 SUM(...)/AVG(...) 函数
+                    visited = set()
+                    self_col = get_column_letter(cell.column)
+                    self_row = str(cell.row)
+                    visited.add(f"{self_col}{self_row}")
+                    expr = resolve_funcs(expr, ws, visited)
+                    if 'NaN' in expr:
+                        cell.value = '函数解析失败'
+                        fail_count += 1
+                        continue
+
+                    # 3. 替换单元格引用
+                    expr = resolve_cell_refs_in_expr(expr, ws, visited)
+                    if 'NaN' in expr:
+                        cell.value = '引用解析失败'
+                        fail_count += 1
+                        continue
+
+                    # 4. 安全计算
+                    safe_expr = re.sub(r'[^0-9+\-*/().eE\s]', '', expr)
+                    try:
+                        num_result = eval(safe_expr)
+                        if isinstance(num_result, (int, float)) and str(num_result) != 'nan':
+                            cell.value = round(num_result, 2)
+                            fill_count += 1
+                        else:
+                            cell.value = '计算错误'
+                            fail_count += 1
+                    except:
+                        cell.value = '表达式错误'
+                        fail_count += 1
+
+                elif re.match(r'^\{\{(.+?)\}\}$', cell_str):
+                    # 单公式模式（向后兼容）
+                    result = _nz_resolve_formula_str(cell_str, stats_data)
+                    if result['ok']:
+                        val = result['value']
                         cell.value = val
+                        fill_count += 1
                     else:
-                        cell.value = val
-                    fill_count += 1
+                        cell.value = str(result['value'])
+                        fail_count += 1
+
                 else:
-                    cell.value = str(result['value'])
-                    fail_count += 1
+                    # 混合文本模式：替换所有 {{...}} 为数值
+                    any_fail = False
+
+                    def resolve_text(match):
+                        nonlocal any_fail
+                        result = _nz_resolve_formula_str(match.group(0), stats_data)
+                        if result['ok']:
+                            return str(result['value'])
+                        any_fail = True
+                        return match.group(0)
+
+                    final_val = formula_pattern.sub(resolve_text, cell_str)
+                    cell.value = final_val
+                    if any_fail:
+                        fail_count += 1
+                    else:
+                        fill_count += 1
 
     try:
         wb.save(tmp_out.name)

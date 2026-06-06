@@ -241,8 +241,43 @@
       <div class="tb-sep"></div>
       <button class="btn btn-ghost btn-sm" id="nzDownloadBtn">下载模板</button>
       <div class="tb-spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="nzPreviewBtn">预览</button>
       <button class="btn btn-ghost btn-sm" id="nzScanBtn">扫描公式</button>
       <button class="btn btn-warn btn-sm" id="nzFillBtn">填充并下载</button>
+    </div>
+
+    <!-- 格式工具栏 -->
+    <div class="nz-format-bar" id="nzFormatBar" style="display:none">
+      <select id="nzFontName" title="字体">
+        <option value="">默认字体</option>
+        <option value="微软雅黑">微软雅黑</option>
+        <option value="宋体">宋体</option>
+        <option value="黑体">黑体</option>
+        <option value="楷体">楷体</option>
+        <option value="Arial">Arial</option>
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Calibri">Calibri</option>
+      </select>
+      <select id="nzFontSize" title="字号">
+        <option value="">默认字号</option>
+        <option value="10">10</option>
+        <option value="11">11</option>
+        <option value="12">12</option>
+        <option value="14">14</option>
+        <option value="16">16</option>
+        <option value="18">18</option>
+        <option value="20">20</option>
+        <option value="24">24</option>
+        <option value="28">28</option>
+        <option value="36">36</option>
+      </select>
+      <div class="tb-sep"></div>
+      <button class="btn btn-ghost btn-xs nz-fmt-btn" id="nzBoldBtn" title="加粗"><strong>B</strong></button>
+      <button class="btn btn-ghost btn-xs nz-fmt-btn" id="nzItalicBtn" title="斜体"><em>I</em></button>
+      <div class="tb-sep"></div>
+      <button class="btn btn-ghost btn-xs nz-fmt-btn" id="nzAlignLeftBtn" title="靠左对齐">&#8676;</button>
+      <button class="btn btn-ghost btn-xs nz-fmt-btn" id="nzAlignCenterBtn" title="居中对齐">&#8596;</button>
+      <button class="btn btn-ghost btn-xs nz-fmt-btn" id="nzAlignRightBtn" title="靠右对齐">&#8677;</button>
     </div>
     <input type="file" id="nzFileInput" accept=".xlsx,.xls" style="display:none">
 
@@ -261,8 +296,17 @@
         <!-- 单元格编辑栏 -->
         <div class="nz-edit-bar" id="nzEditBar" style="display:none">
           <span class="nz-cell-ref" id="nzCellRef">-</span>
-          <input type="text" id="nzCellInput" placeholder="输入 {{文件序号:L1:L2:列/指标}} 公式或普通文本">
+          <input type="text" id="nzCellInput" placeholder="输入公式，如 =SUM(A1:A5) 或 =A1*B2+{{1:L1:L2/数量}}，支持 SUM/AVG/括号">
+          <div class="nz-func-btns">
+            <button class="btn btn-ghost btn-xs nz-func-btn" id="nzFuncSumBtn" title="选取范围求和">SUM</button>
+            <button class="btn btn-ghost btn-xs nz-func-btn" id="nzFuncAvgBtn" title="选取范围求平均">AVG</button>
+          </div>
           <button class="btn btn-ghost btn-xs" id="nzQuickInsertBtn">快速插入</button>
+        </div>
+        <!-- 范围选取提示条 -->
+        <div class="nz-range-hint" id="nzRangeHint" style="display:none">
+          <span>正在选取范围，拖动鼠标选择单元格，松开完成</span>
+          <button class="btn btn-ghost btn-xs" id="nzRangeCancelBtn">取消</button>
         </div>
       </div>
       <!-- 右侧面板：扫描结果 + 快速插入 -->
