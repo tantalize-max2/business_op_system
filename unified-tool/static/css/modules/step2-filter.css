@@ -1,0 +1,60 @@
+/* ================================================================
+   step2-filter.css — Filter dropdown (fd-overlay, fd-dropdown,
+   filter column manager, cascade info, conditions)
+   ================================================================ */
+
+/* ================================================================
+   MAIN CONTENT
+   ================================================================ */
+.main-content { flex:1; overflow-y:auto; height:100vh; position:relative; background:var(--bg0); transition:background .35s; }
+.step-panel { display:none; padding:36px 42px; min-height:100vh; flex-direction:column; animation:fadeIn .3s ease; }
+.step-panel.active { display:flex; }
+#stepFilter1 { height:100vh; overflow:hidden; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
+
+.step-header { margin-bottom:28px; }
+.step-title {
+  font-size:24px; font-weight:800; margin-bottom:6px; letter-spacing:-.5px;
+  background:var(--gradient-ac);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+.step-desc { font-size:14px; color:var(--t3); }
+.split-active-file { display:inline-flex; align-items:center; gap:8px; margin-top:8px; padding:6px 14px; background:var(--acg); border:1px solid var(--bd); border-radius:10px; font-size:12px; color:var(--cy); font-family:var(--mf); }
+.split-active-file .saf-name { font-weight:600; color:var(--t1); }
+.split-active-file .saf-meta { color:var(--t3); }
+.step-actions { display:flex; gap:10px; align-items:center; margin-top:20px; }
+
+/* ================================================================
+   BUTTONS
+   ================================================================ */
+.btn {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 18px; border:1px solid var(--bd); border-radius:10px;
+  background:var(--bg2); color:var(--t1); font:500 12px var(--sf);
+  cursor:pointer; transition:all .2s; white-space:nowrap;
+  position:relative; overflow:hidden;
+}
+.btn:hover { background:var(--bg3); border-color:var(--bd2); transform:translateY(-1px); box-shadow:var(--sh2); }
+.btn:active { transform:translateY(0); }
+.btn-primary {
+  background:var(--gradient-ac); border-color:transparent; color:#fff;
+  box-shadow:0 4px 14px rgba(13,148,136,.3);
+}
+.btn.btn-primary:hover { background:linear-gradient(135deg, #0d9488, #06b6d4); box-shadow:0 6px 20px rgba(13,148,136,.4); color:#fff; }
+[data-theme="light"] .btn.btn-primary:hover { background:linear-gradient(135deg, #0f766e, #0e7490); color:#fff; }
+.btn-outline { background:transparent; border-color:var(--bd2); color:var(--t2); }
+.btn-outline:hover { border-color:var(--ac); color:var(--ac); background:var(--acg); }
+.btn-ghost { border-color:transparent; background:transparent; color:var(--t2); }
+.btn-ghost:hover { color:var(--t1); background:var(--bg3); border-color:var(--bd); }
+.btn-success { color:var(--ok); border-color:rgba(52,211,153,.3); background:var(--okbg); }
+.btn-success:hover { background:var(--ok); color:#fff; }
+.btn-warn { color:var(--wn); border-color:rgba(251,191,36,.3); background:var(--wnbg); }
+.btn.btn-warn:hover { background:var(--wn); color:#1a1a1a; border-color:var(--wn); }
+[data-theme="dark"] .btn.btn-warn:hover { color:#1a1600; }
+[data-theme="light"] .btn.btn-warn:hover { color:#fff; background:#b45309; border-color:#b45309; }
+.btn-danger { color:var(--err); border-color:rgba(248,113,113,.3); background:var(--errbg); }
+.btn-danger:hover { background:var(--err); color:#fff; }
+.btn-sm { padding:5px 14px; font-size:11px; }
+.btn-xs { padding:3px 9px; font-size:10px; border-radius:7px; }
+.btn .arr { font-size:12px; transition:transform .15s; }
+.btn:hover .arr { transform:translateX(2px); }

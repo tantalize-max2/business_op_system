@@ -1,0 +1,46 @@
+/* ================================================================
+   step3-split.css — Bureau split (mapping area, bureau cards,
+   drag, split results)
+   ================================================================ */
+
+/* ================================================================
+   UPLOAD ZONE
+   ================================================================ */
+.upload-zone {
+  border:2px dashed var(--bd2); border-radius:20px;
+  padding:56px 32px; text-align:center; cursor:pointer;
+  transition:all .3s; background:var(--bg2); position:relative; overflow:hidden;
+}
+.upload-zone::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(circle at 30% 40%, var(--acg) 0%, transparent 60%);
+  opacity:0; transition:opacity .3s;
+}
+.upload-zone:hover::before { opacity:1; }
+.upload-zone:hover { border-color:var(--ac); transform:translateY(-2px); box-shadow:var(--sh); }
+.upload-zone.dragover { border-color:var(--cy); background:var(--cybg); }
+.upload-zone.dragover::before { opacity:1; }
+.upload-zone input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer; z-index:2; }
+.up-icon { color:var(--t3); margin-bottom:14px; transition:all .3s; position:relative; z-index:1; }
+.upload-zone:hover .up-icon { color:var(--ac); transform:translateY(-4px); }
+.up-text { font-size:15px; color:var(--t2); position:relative; z-index:1; }
+.up-text em { color:var(--ac); font-style:normal; font-weight:700; }
+.up-hint { font-size:12px; color:var(--t3); margin-top:6px; position:relative; z-index:1; }
+
+/* File list */
+.file-list { display:flex; flex-direction:column; gap:8px; margin-top:18px; }
+.file-card {
+  display:flex; align-items:center; gap:14px;
+  background:var(--bg2); border:1px solid var(--bd); border-radius:14px;
+  padding:14px 18px; transition:all .2s;
+}
+.file-card:hover { border-color:var(--ac); box-shadow:var(--sh2); transform:translateY(-1px); }
+.file-card-icon { font-size:26px; flex-shrink:0; }
+.file-card-info { flex:1; }
+.file-card-name { font-size:13px; font-weight:600; }
+.file-card-meta { font-size:11px; color:var(--t3); font-family:var(--mf); margin-top:2px; }
+.file-card-remove {
+  cursor:pointer; color:var(--t3); font-size:18px;
+  transition:all .15s; padding:4px; border-radius:6px;
+}
+.file-card-remove:hover { color:var(--err); background:var(--errbg); }

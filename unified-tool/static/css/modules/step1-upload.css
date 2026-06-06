@@ -1,0 +1,60 @@
+/* ================================================================
+   step1-upload.css — Upload zone, file list, file tabs
+   ================================================================ */
+
+/* ================================================================
+   SIDEBAR
+   ================================================================ */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg2);
+  border-right: 1px solid var(--bd);
+  display: flex; flex-direction: column; flex-shrink: 0;
+  height: 100vh; position: sticky; top: 0; z-index: 100;
+  transition: background .35s, border-color .35s;
+}
+.sb-logo {
+  padding: 20px 18px;
+  border-bottom: 1px solid var(--bd);
+  display: flex; align-items: center; gap: 12px;
+}
+.sb-logo-icon {
+  width: 36px; height: 36px;
+  background: var(--gradient-ac);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 13px var(--mf); color: #fff; letter-spacing: -.5px;
+  box-shadow: 0 4px 14px rgba(13,148,136,.35);
+}
+.sb-logo-text { font-size: 16px; font-weight: 700; letter-spacing: .3px; }
+.sb-nav { flex:1; padding: 14px 0; }
+.sb-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 20px; cursor: pointer;
+  color: var(--t3); font-size: 13px; font-weight: 500;
+  transition: all .18s; border-left: 3px solid transparent;
+}
+.sb-item:hover { color:var(--t2); background:var(--acg); }
+.sb-item.active { color:var(--ac); background:var(--acg); border-left-color:var(--ac); }
+.sb-item.active .icon { color:var(--ac); }
+.sb-item .icon { font-size: 18px; transition: color .18s; }
+
+.sb-label { white-space: nowrap; }
+.sb-footer { border-top:1px solid var(--bd); padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+
+/* 主题切换 */
+.theme-toggle {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border-radius: var(--r);
+  background: var(--bg3); cursor: pointer;
+  transition: all .2s; border: 1px solid var(--bd);
+  font-size: 13px; color: var(--t2); user-select: none;
+}
+.theme-toggle:hover { background:var(--bg4); border-color:var(--bd2); }
+.theme-toggle .icon { font-size:16px; transition:transform .4s; display:inline-block; }
+.theme-toggle:hover .icon { transform:rotate(30deg); }
+
+.sb-stats { display:flex; gap:10px; justify-content:space-around; }
+.sb-stat { text-align:center; }
+.sb-sv { display:block; font:600 14px var(--mf); color:var(--cy); }
+.sb-sl { display:block; font-size:9px; color:var(--t3); letter-spacing:.5px; text-transform:uppercase; }

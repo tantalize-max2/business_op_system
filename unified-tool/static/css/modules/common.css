@@ -1,0 +1,123 @@
+/* ================================================================
+   common.css — Theme variables, CSS reset, layout, shared components
+   ================================================================ */
+
+/* ---- 亮色主题 (默认) ---- */
+:root {
+  --bg0: #f0f4f8;
+  --bg: #f8fafc;
+  --bg2: #ffffff;
+  --bg3: #f1f5f9;
+  --bg4: #e2e8f0;
+  --bd: #cbd5e1;
+  --bd2: #94a3b8;
+  --t1: #1e293b;
+  --t2: #475569;
+  --t3: #94a3b8;
+  --ac: #0d9488;
+  --ac2: #14b8a6;
+  --acg: rgba(13,148,136,.08);
+  --ok: #059669;
+  --okbg: rgba(5,150,105,.08);
+  --wn: #d97706;
+  --wnbg: rgba(217,119,6,.08);
+  --err: #dc2626;
+  --errbg: rgba(220,38,38,.08);
+  --cy: #0891b2;
+  --cybg: rgba(8,145,178,.08);
+  --pu: #7c3aed;
+  --pubg: rgba(124,58,237,.08);
+  --sh: 0 8px 32px rgba(0,0,0,.08);
+  --sh2: 0 2px 8px rgba(0,0,0,.05);
+  --glass: rgba(255,255,255,.82);
+  --glass-bd: rgba(13,148,136,.12);
+  --gradient-ac: linear-gradient(135deg, #0d9488, #14b8a6);
+  --gradient-ok: linear-gradient(135deg, #059669, #06b6d4);
+  --r: 10px;
+  --rl: 14px;
+  --mf: 'IBM Plex Mono', 'Cascadia Code', monospace;
+  --sf: 'Noto Sans SC', 'Inter', system-ui, sans-serif;
+  --sidebar-w: 210px;
+}
+
+/* ---- 暗色主题 ---- */
+[data-theme="dark"] {
+  --bg0: #0f172a;
+  --bg: #131c2e;
+  --bg2: #1a2540;
+  --bg3: #213052;
+  --bg4: #2a3f6a;
+  --bd: #2e4064;
+  --bd2: #3d5584;
+  --t1: #e8edf5;
+  --t2: #94a3c0;
+  --t3: #5a6f90;
+  --ac: #2dd4bf;
+  --ac2: #5eead4;
+  --acg: rgba(45,212,191,.12);
+  --ok: #34d399;
+  --okbg: rgba(52,211,153,.1);
+  --wn: #fbbf24;
+  --wnbg: rgba(251,191,36,.1);
+  --err: #f87171;
+  --errbg: rgba(248,113,113,.1);
+  --cy: #22d3ee;
+  --cybg: rgba(34,211,238,.1);
+  --pu: #a78bfa;
+  --pubg: rgba(167,139,250,.1);
+  --sh: 0 8px 32px rgba(0,0,0,.35);
+  --sh2: 0 2px 12px rgba(0,0,0,.2);
+  --glass: rgba(26,37,64,.75);
+  --glass-bd: rgba(45,212,191,.18);
+  --gradient-ac: linear-gradient(135deg, #2dd4bf, #06b6d4);
+  --gradient-ok: linear-gradient(135deg, #34d399, #06b6d4);
+}
+
+/* ---- 护眼主题 ---- */
+[data-theme="eyecare"] {
+  --bg0: #f5f0e6;
+  --bg: #faf6ed;
+  --bg2: #fefcf5;
+  --bg3: #f0ece2;
+  --bg4: #e6e0d2;
+  --bd: #d4cbba;
+  --bd2: #b8ad98;
+  --t1: #3d3524;
+  --t2: #6b5f48;
+  --t3: #9e917a;
+  --ac: #7c6f3e;
+  --ac2: #9e8e52;
+  --acg: rgba(124,111,62,.08);
+  --ok: #5a8a50;
+  --okbg: rgba(90,138,80,.08);
+  --wn: #a67c2e;
+  --wnbg: rgba(166,124,46,.08);
+  --err: #a04040;
+  --errbg: rgba(160,64,64,.08);
+  --cy: #5a7e8a;
+  --cybg: rgba(90,126,138,.08);
+  --pu: #7a6080;
+  --pubg: rgba(122,96,128,.08);
+  --sh: 0 8px 32px rgba(60,50,30,.1);
+  --sh2: 0 2px 8px rgba(60,50,30,.06);
+  --glass: rgba(254,252,245,.85);
+  --glass-bd: rgba(124,111,62,.15);
+  --gradient-ac: linear-gradient(135deg, #7c6f3e, #9e8e52);
+  --gradient-ok: linear-gradient(135deg, #5a8a50, #5a7e8a);
+}
+
+/* ================================================================ */
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: var(--sf);
+  background: var(--bg0);
+  color: var(--t1);
+  min-height: 100vh;
+  display: flex;
+  overflow: hidden;
+  transition: background .35s, color .35s;
+}
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--bd); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--t3); }

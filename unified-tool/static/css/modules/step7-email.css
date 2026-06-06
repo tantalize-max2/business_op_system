@@ -1,0 +1,255 @@
+/* ================================================================
+   step7-email.css — Email module (login status, sub-nav, compose,
+   form, batch toggle, variables, tag-input, rich editor,
+   attachments, preview, contacts table, template grid, login card,
+   steps, spinner, sending overlay, modal mask/box, locked state,
+   select styling, form inputs, picker rows)
+   ================================================================ */
+
+/* ================================================================
+   STEP 7: 邮件发送模块样式
+   ================================================================ */
+
+/* ---- 登录状态指示 ---- */
+.em-login-status { display:inline-flex; align-items:center; gap:8px; margin-left:16px; font-size:13px; color:var(--t2); }
+.em-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.em-dot-green { background:var(--ok); box-shadow:0 0 6px var(--ok); }
+.em-dot-gray { background:var(--t3); }
+.em-dot-yellow { background:var(--wn); box-shadow:0 0 6px var(--wn); }
+
+/* ---- 邮件子面板导航 ---- */
+.em-sub-nav { display:flex; gap:2px; background:var(--bg2); border:1px solid var(--bd); border-radius:var(--r); padding:4px; margin-bottom:16px; }
+.em-sub-item { display:flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:500; color:var(--t2); transition:all .2s; }
+.em-sub-item:hover { background:var(--bg3); }
+.em-sub-item.active { background:var(--acg); color:var(--ac); }
+.em-sub-item .icon { width:16px; height:16px; }
+.em-badge { margin-left:4px; background:var(--acg); color:var(--ac); font-size:11px; padding:1px 7px; border-radius:10px; min-width:18px; text-align:center; font-weight:600; }
+
+/* ---- 子面板 ---- */
+.em-subpanel { display:none; }
+.em-subpanel.active { display:block; }
+
+/* ---- 写信面板 ---- */
+.em-compose-row { display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+.em-tpl-sel { display:flex; align-items:center; gap:8px; background:var(--bg2); padding:8px 16px; border-radius:var(--r); border:1px solid var(--bd); }
+.em-tpl-sel span { font-size:13px; color:var(--t2); font-weight:500; white-space:nowrap; }
+.em-compose-body { padding:20px 22px; }
+
+/* ---- 表单通用 ---- */
+.em-form-group { margin-bottom:16px; }
+.em-form-label { display:block; font-size:13px; color:var(--t2); margin-bottom:6px; font-weight:500; }
+
+/* ---- 个性化切换 ---- */
+.em-batch-toggle { display:flex; align-items:center; gap:10px; padding:12px 16px; background:var(--acg); border-radius:var(--r); border:1px solid var(--glass-bd); margin-bottom:16px; }
+.em-batch-toggle label { font-size:14px; font-weight:500; color:var(--ac); cursor:pointer; user-select:none; }
+.em-batch-toggle .em-batch-hint { font-size:12px; color:var(--t3); margin-left:8px; }
+.em-batch-toggle input[type=checkbox] { width:18px; height:18px; accent-color:var(--ac); cursor:pointer; }
+
+/* ---- 变量 ---- */
+.em-var-helper { display:flex; align-items:center; gap:8px; padding:10px 14px; background:var(--bg3); border-radius:var(--r); margin-bottom:12px; flex-wrap:wrap; border:1px solid var(--bd); }
+.em-vh-label { font-size:12px; color:var(--t3); font-weight:600; letter-spacing:.5px; white-space:nowrap; }
+.em-var-btn { display:inline-flex; align-items:center; padding:4px 12px; font-size:12px; border-radius:14px; border:1px solid var(--acg); background:var(--acg); color:var(--ac); cursor:pointer; font-family:monospace; font-weight:500; transition:all .2s; }
+.em-var-btn:hover { background:var(--ac); color:#fff; border-color:var(--ac); }
+.em-var-btn-new { background:var(--okbg); color:var(--ok); border-color:var(--okbg); }
+.em-var-btn-new:hover { background:var(--ok); color:#fff; }
+.em-var-btn-import { background:var(--wnbg); color:var(--wn); border-color:var(--wnbg); }
+.em-var-btn-import:hover { background:var(--wn); color:#fff; }
+
+/* ---- 标签输入 ---- */
+.em-tag-input-wrap { border:1px solid var(--bd); border-radius:var(--r); padding:6px 10px; min-height:40px; display:flex; flex-wrap:wrap; align-items:center; gap:5px; cursor:text; transition:all .2s; background:var(--bg2); }
+.em-tag-input-wrap:hover { border-color:var(--bd2); }
+.em-tag-input-wrap:focus-within { border-color:var(--ac); box-shadow:0 0 0 3px var(--acg); }
+.em-tag-input-wrap input { border:none; outline:none; flex:1; min-width:120px; font-size:13px; padding:3px; font-family:inherit; background:transparent; color:var(--t1); }
+.em-tag-input-wrap input::placeholder { color:var(--t3); }
+/* textarea 在 tag-input-wrap 内 */
+.em-tag-input-wrap textarea { border:none; outline:none; flex:1; width:100%; font-size:13px; padding:6px 3px; font-family:inherit; background:transparent; color:var(--t1); resize:vertical; min-height:160px; line-height:1.7; }
+.em-tag-input-wrap textarea::placeholder { color:var(--t3); }
+.em-tag-input-wrap textarea:focus { background:transparent; }
+/* 分组输入框 - 带下拉箭头 */
+.em-tag-input-wrap #emContactGroup { padding-right:28px; background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 8px center; }
+.em-tag { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:14px; font-size:12px; font-weight:500; }
+.em-tag-green { background:var(--okbg); color:var(--ok); }
+.em-tag-blue { background:var(--acg); color:var(--ac); }
+.em-tag-x { cursor:pointer; font-size:15px; line-height:1; opacity:.6; margin-left:2px; }
+.em-tag-x:hover { opacity:1; }
+
+/* ---- 富文本编辑器 ---- */
+.em-rich-toolbar { display:flex; align-items:center; gap:2px; padding:6px 10px; background:var(--bg3); border:1px solid var(--bd); border-bottom:none; border-radius:var(--r) var(--r) 0 0; flex-wrap:wrap; }
+.em-tb-btn { width:32px; height:30px; display:flex; align-items:center; justify-content:center; border:none; background:transparent; border-radius:4px; cursor:pointer; font-size:14px; color:var(--t2); transition:all .2s; }
+.em-tb-btn:hover { background:var(--acg); color:var(--ac); }
+.em-tb-btn.active { background:var(--ac); color:#fff; }
+.em-tb-sep { width:1px; height:20px; background:var(--bd); margin:0 4px; }
+.em-tb-color { width:28px; height:20px; border:2px solid var(--bd); border-radius:3px; cursor:pointer; padding:0; overflow:hidden; }
+.em-tb-color input { width:32px; height:24px; border:none; padding:0; cursor:pointer; margin:-2px; }
+.em-rich-body { border:1px solid var(--bd); border-top:none; border-radius:0 0 var(--r) var(--r); min-height:220px; padding:10px 14px; font-size:14px; line-height:1.7; outline:none; overflow-y:auto; background:var(--bg2); color:var(--t1); }
+.em-rich-body:focus { border-color:var(--ac); box-shadow:0 0 0 3px var(--acg); }
+.em-rich-body:empty::before { content:attr(data-placeholder); color:var(--t3); }
+
+/* ---- 附件 ---- */
+.em-drop-zone { border:2px dashed var(--bd); border-radius:var(--r); padding:28px 20px; text-align:center; cursor:pointer; transition:all .2s; color:var(--t3); }
+.em-drop-zone:hover, .em-drop-zone.drag-over { border-color:var(--ac); background:var(--acg); color:var(--ac); }
+.em-dz-text { font-size:13px; }
+.em-attach-list { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+.em-attach-item { display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg3); border-radius:var(--r); font-size:13px; }
+.em-att-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.em-att-size { color:var(--t3); font-size:12px; }
+.em-att-del { background:none; border:none; color:var(--err); cursor:pointer; font-size:16px; padding:2px 6px; border-radius:4px; opacity:.6; }
+.em-att-del:hover { opacity:1; background:var(--errbg); }
+.em-divider { height:1px; background:var(--bd); margin:16px 0; }
+
+/* ---- 预览 ---- */
+.em-preview-section { margin-top:16px; border:1px solid var(--bd); border-radius:var(--r); overflow:hidden; }
+.em-preview-head { padding:12px 16px; background:var(--bg3); border-bottom:1px solid var(--bd); display:flex; align-items:center; justify-content:space-between; }
+.em-preview-head h3 { font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px; color:var(--t1); }
+.em-preview-body { max-height:500px; overflow-y:auto; }
+.em-preview-item { padding:12px 16px; border-bottom:1px solid var(--bd); transition:background .15s; }
+.em-preview-item:hover { background:var(--bg3); }
+.em-preview-item:last-child { border-bottom:none; }
+.em-pi-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.em-pi-name { font-weight:600; font-size:13px; color:var(--t1); }
+.em-pi-email { color:var(--t2); font-size:12px; }
+.em-pi-group { font-size:11px; padding:1px 8px; border-radius:10px; background:var(--acg); color:var(--ac); }
+.em-pi-subject { font-size:13px; font-weight:500; color:var(--t1); margin-bottom:4px; }
+.em-pi-body { font-size:12px; color:var(--t2); line-height:1.6; white-space:pre-wrap; max-height:80px; overflow:hidden; text-overflow:ellipsis; }
+.em-pi-attach-row { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+.em-pi-attach-tag { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--wnbg); color:var(--wn); }
+.em-pi-attach-add { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--acg); color:var(--ac); cursor:pointer; border:1px dashed var(--ac); transition:all .2s; }
+.em-pi-attach-add:hover { background:var(--ac); color:#fff; }
+.em-pi-edit-area { display:none; margin-top:8px; }
+.em-pi-edit-area textarea { width:100%; min-height:100px; font-size:12px; padding:8px; border:1px solid var(--bd); border-radius:var(--r); resize:vertical; font-family:inherit; line-height:1.5; background:var(--bg2); color:var(--t1); }
+.em-pi-edit-area input { width:100%; font-size:12px; padding:6px 8px; border:1px solid var(--bd); border-radius:var(--r); margin-bottom:4px; background:var(--bg2); color:var(--t1); }
+.em-pi-edit-area textarea:focus, .em-pi-edit-area input:focus { border-color:var(--ac); outline:none; box-shadow:0 0 0 2px var(--acg); }
+
+/* ---- 联系人表格 ---- */
+.em-table { width:100%; border-collapse:collapse; }
+.em-table th, .em-table td { text-align:left; padding:12px 16px; font-size:13px; border-bottom:1px solid var(--bd); }
+.em-table th { background:var(--bg3); font-weight:600; color:var(--t2); font-size:12px; }
+.em-table tbody tr { transition:background .15s; }
+.em-table tbody tr:hover { background:var(--bg3); }
+.em-td-actions { display:flex; gap:6px; }
+
+/* ---- 模板网格 ---- */
+.em-tpl-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+.em-tpl-card { border:1px solid var(--bd); border-radius:var(--r); padding:16px; cursor:pointer; transition:all .2s; position:relative; background:var(--bg2); }
+.em-tpl-card:hover { border-color:var(--ac); box-shadow:var(--sh2); }
+.em-tpl-name { font-size:14px; font-weight:600; margin-bottom:4px; color:var(--t1); }
+.em-tpl-tags { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
+.em-tpl-tags .em-tag { font-size:11px; padding:1px 7px; }
+.em-tpl-preview { font-size:12px; color:var(--t3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:4px; }
+.em-tpl-actions { display:flex; gap:6px; opacity:0; transition:opacity .2s; }
+.em-tpl-card:hover .em-tpl-actions { opacity:1; }
+
+/* ---- 登录面板 ---- */
+.em-login-card { text-align:center; padding:40px 24px; }
+.em-lc-icon { font-size:56px; margin-bottom:20px; }
+.em-lc-text { font-size:15px; color:var(--t2); margin-bottom:8px; line-height:1.6; }
+.em-lc-sub { font-size:13px; color:var(--t3); margin-bottom:24px; }
+.em-lc-actions { display:flex; gap:10px; justify-content:center; }
+
+/* ---- 步骤指示器 ---- */
+.em-steps { display:flex; align-items:center; justify-content:center; gap:0; margin-bottom:28px; padding:0 20px; }
+.em-step { display:flex; align-items:center; gap:8px; }
+.em-step-num { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; border:2px solid var(--bd); color:var(--t3); transition:all .2s; }
+.em-step.active .em-step-num { background:var(--ac); border-color:var(--ac); color:#fff; }
+.em-step.done .em-step-num { background:var(--ok); border-color:var(--ok); color:#fff; }
+.em-step-text { font-size:12px; color:var(--t3); font-weight:500; }
+.em-step.active .em-step-text { color:var(--ac); }
+.em-step.done .em-step-text { color:var(--ok); }
+.em-step-line { width:40px; height:2px; background:var(--bd); margin:0 8px; }
+.em-step-line.done { background:var(--ok); }
+
+/* ---- 旋转加载 ---- */
+.em-spinner { display:inline-block; width:22px; height:22px; border:3px solid var(--bd); border-top-color:var(--ac); border-radius:50%; animation:em-spin .8s linear infinite; }
+@keyframes em-spin { to { transform:rotate(360deg); } }
+
+/* ---- 发送遮罩 ---- */
+.em-sending-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:300; display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px; backdrop-filter:blur(4px); }
+.em-sending-overlay.show { display:flex; }
+.em-sending-text { font-size:15px; color:#fff; font-weight:500; }
+
+/* ---- 邮件模态框遮罩 ---- */
+.em-modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:400; display:none; align-items:center; justify-content:center; backdrop-filter:blur(3px); }
+.em-modal-mask.show { display:flex; }
+
+/* ---- 邮件模态框弹窗 ---- */
+.em-modal-box { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:401; width:500px; max-height:88vh; background:var(--bg2); border-radius:var(--rl); box-shadow:var(--sh); display:none; flex-direction:column; overflow:hidden; animation:em-modal-in .25s ease; }
+.em-modal-box.show { display:flex; }
+@keyframes em-modal-in { from { transform:scale(.95) translate(-50%,-45%); opacity:0; } to { transform:scale(1) translate(-50%,-50%); opacity:1; } }
+
+.em-mb-head { display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid var(--bd); background:var(--bg3); }
+.em-mb-title { font-size:15px; font-weight:600; color:var(--t1); }
+.em-mb-close { width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:none; border:none; font-size:20px; color:var(--t3); cursor:pointer; border-radius:6px; transition:all .15s; line-height:1; }
+.em-mb-close:hover { background:var(--errbg); color:var(--err); }
+
+.em-mb-body { padding:18px 22px; overflow-y:auto; flex:1; }
+
+.em-mb-foot { padding:14px 22px; border-top:1px solid var(--bd); display:flex; justify-content:flex-end; gap:10px; background:var(--bg3); }
+
+/* ---- 登录守卫锁定状态 ---- */
+.em-locked { position:relative; pointer-events:none; opacity:.5; }
+.em-locked::after { content:'请先登录邮箱'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(248,250,252,.7); color:var(--t3); font-size:14px; font-weight:500; z-index:10; border-radius:var(--r); backdrop-filter:blur(2px); }
+[data-theme="dark"] .em-locked::after { background:rgba(19,28,46,.7); }
+.em-sub-item.em-locked { opacity:.4; pointer-events:none; }
+
+/* ---- 邮件模块下拉框美化 (Issue 7) ---- */
+.em-select-styled,
+#stepEmail select,
+#stepEmail .em-rich-toolbar select,
+#stepEmail .em-tpl-sel select {
+  appearance:none; -webkit-appearance:none;
+  background:var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  padding:7px 32px 7px 12px; border:1px solid var(--bd); border-radius:8px;
+  font-size:13px; font-family:var(--sf); color:var(--t1); outline:none; cursor:pointer;
+  transition:all .2s; height:auto;
+}
+.em-select-styled:hover,
+#stepEmail select:hover { border-color:var(--ac); }
+.em-select-styled:focus,
+#stepEmail select:focus { border-color:var(--ac); box-shadow:0 0 0 3px var(--acg); }
+#stepEmail .em-rich-toolbar select {
+  height:auto; min-height:30px; font-size:12px; padding-right:28px; padding-left:8px; padding-top:4px; padding-bottom:4px; line-height:1.4;
+}
+
+/* ---- 联系人选择器行 ---- */
+.em-picker-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:var(--r); cursor:pointer; transition:background .15s; }
+.em-picker-row:hover { background:var(--bg3); }
+.em-pk-name { font-weight:500; min-width:60px; color:var(--t1); }
+.em-pk-email { color:var(--t2); flex:1; font-family:var(--mf); font-size:12px; }
+
+/* ---- 分组选择器 ---- */
+.em-gp-group-head { display:flex; align-items:center; padding:10px 12px; cursor:pointer; gap:10px; border-radius:var(--r); transition:all .2s; border-bottom:1px solid var(--bd); }
+.em-gp-group-head:hover { background:var(--bg3); }
+.em-gp-name { flex:1; font-weight:600; font-size:14px; color:var(--t1); }
+.em-gp-count { font-size:12px; color:var(--t3); background:var(--bg3); padding:2px 10px; border-radius:10px; }
+.em-gp-member { display:flex; align-items:center; padding:8px 12px 8px 40px; gap:10px; font-size:13px; border-bottom:1px solid var(--bd); }
+.em-gp-member:hover { background:var(--bg3); }
+.em-gp-mname { font-weight:500; min-width:60px; color:var(--t1); }
+.em-gp-memail { color:var(--t2); flex:1; }
+
+/* ---- 表单输入框统一美化 ---- */
+#stepEmail .form-input,
+#stepEmail .form-select {
+  width:100%; box-sizing:border-box;
+  padding:9px 14px; border:1px solid var(--bd); border-radius:var(--r);
+  font-size:14px; outline:none; transition:all .25s; font-family:inherit;
+  background:var(--bg2); color:var(--t1);
+}
+#stepEmail .form-input:hover,
+#stepEmail .form-select:hover {
+  border-color:var(--bd2);
+}
+#stepEmail .form-input:focus,
+#stepEmail .form-select:focus {
+  border-color:var(--ac); box-shadow:0 0 0 3px var(--acg);
+}
+#stepEmail .form-input::placeholder { color:var(--t3); }
+
+/* 模态框内 input/textarea 确保不溢出 */
+.em-modal-box .form-input,
+.em-modal-box .form-select {
+  width:100%; box-sizing:border-box;
+}
+
+/* 模态框内表单组间距微调 */
+.em-modal-box .em-form-group { margin-bottom:14px; }
+.em-modal-box .em-form-group:last-child { margin-bottom:0; }
