@@ -483,11 +483,12 @@
         <div class="em-form-group">
           <div class="em-form-label">收件人 <span style="color:var(--err);">*</span></div>
           <div class="em-tag-input-wrap" onclick="document.getElementById('emToInput').focus()"><div id="emToTags"></div><input type="text" id="emToInput" placeholder="输入邮箱地址，按 Enter 添加" onkeydown="EmailTool.handleToKey(event)"></div>
-          <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="EmailTool.openContactPicker()">从联系人添加</button><button class="btn btn-ghost btn-sm" onclick="EmailTool.openGroupPicker()">按分组添加</button></div>
+          <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="EmailTool.openContactPicker('to')">从联系人添加</button><button class="btn btn-ghost btn-sm" onclick="EmailTool.openGroupPicker('to')">按分组添加</button></div>
         </div>
         <div class="em-form-group" id="emCcGroup">
           <div class="em-form-label">抄送 <span style="color:var(--t3);font-weight:400;">(可选)</span></div>
           <div class="em-tag-input-wrap" onclick="document.getElementById('emCcInput').focus()"><div id="emCcTags"></div><input type="text" id="emCcInput" placeholder="输入抄送邮箱" onkeydown="EmailTool.handleCcKey(event)"></div>
+          <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="EmailTool.openContactPicker('cc')">从联系人添加</button><button class="btn btn-ghost btn-sm" onclick="EmailTool.openGroupPicker('cc')">按分组添加</button></div>
         </div>
         <div class="em-form-group">
           <div class="em-form-label">主题 <span style="color:var(--err);">*</span></div>

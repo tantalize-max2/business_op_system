@@ -7,7 +7,7 @@ const EmailTool = (() => {
     const API = '/api/email';
 
     let recipients = [], ccList = [], attachments = [], contacts = [], templates = [];
-    let pickerChecked = [], groupPickerChecked = [];
+    let pickerChecked = [], groupPickerChecked = [], pickerTarget = 'to';
     let batchMode = false, currentStep = 1;
     let previewEdits = {};
     let perRecipientFiles = {};
@@ -242,9 +242,10 @@ const EmailTool = (() => {
     }
 
     // ============ 联系人选择器 ============
-    function _openContactPicker() {
+    function _openContactPicker(target = 'to') {
         if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         pickerChecked = [];
+        pickerTarget = target;
         const body = document.getElementById('emPickerBody');
         if (!contacts.length) {
             body.innerHTML = '<div style="text-align:center;color:var(--t3);padding:30px;">暂无联系人</div>';
@@ -265,17 +266,20 @@ const EmailTool = (() => {
 
     function _confirmPicker() {
         let added = 0;
-        pickerChecked.forEach(e => { if (!recipients.includes(e)) { recipients.push(e); added++; } });
-        _renderToTags();
+        const targetList = pickerTarget === 'cc' ? ccList : recipients;
+        pickerChecked.forEach(e => { if (!targetList.includes(e)) { targetList.push(e); added++; } });
+        if (pickerTarget === 'cc') { _renderCcTags(); } else { _renderToTags(); }
         _hideModal('emPickerModal');
-        if (added > 0) _toast(`已添加 ${added} 位收件人`, 'success');
-        else _toast('选中的联系人已都在收件人列表中', 'info');
+        if (added > 0) _toast(`已添加 ${added} 位${pickerTarget === 'cc' ? '抄送人' : '收件人'}`, 'success');
+        else _toast('选中的联系人已都在列表中', 'info');
+        if (batchMode) _renderRecipientPreview();
     }
 
     // ============ 分组选择器 ============
-    async function _openGroupPicker() {
+    async function _openGroupPicker(target = 'to') {
         if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         groupPickerChecked = [];
+        pickerTarget = target;
         const body = document.getElementById('emGroupPickerBody');
         try {
             const r = await fetch(`${API}/groups`);
@@ -320,12 +324,13 @@ const EmailTool = (() => {
 
     function _confirmGroupPicker() {
         const emails = groupPickerChecked.map(g => g.email);
+        const targetList = pickerTarget === 'cc' ? ccList : recipients;
         let added = 0;
-        emails.forEach(e => { if (!recipients.includes(e)) { recipients.push(e); added++; } });
-        _renderToTags();
+        emails.forEach(e => { if (!targetList.includes(e)) { targetList.push(e); added++; } });
+        if (pickerTarget === 'cc') { _renderCcTags(); } else { _renderToTags(); }
         _hideModal('emGroupPickerModal');
-        if (added > 0) _toast(`已添加 ${added} 位收件人`, 'success');
-        else _toast('选中的联系人已都在收件人列表中', 'info');
+        if (added > 0) _toast(`已添加 ${added} 位${pickerTarget === 'cc' ? '抄送人' : '收件人'}`, 'success');
+        else _toast('选中的联系人已都在列表中', 'info');
         if (batchMode) _renderRecipientPreview();
     }
 

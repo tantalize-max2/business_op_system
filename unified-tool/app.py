@@ -1957,19 +1957,12 @@ def _email_upload_attachment(session, csrftoken, file_path, filename):
     }
     with open(file_path, 'rb') as f:
         file_data = f.read()
-    # 手动构造 multipart，确保 Content-Disposition 中 filename 使用 UTF-8 编码
-    # 避免 requests 库对中文文件名产生 =?UTF-8B?...?= 编码问题
-    boundary = '----WebHostFormBoundary' + ''.join(random.choices('0123456789abcdef', k=16))
+    # 手动构造 multipart，filename 使用原始 UTF-8 字节
+    # 避免 requests 库自动 RFC 2231 编码导致中文文件名显示为 =?UTF-8B?...?=
+    boundary = '----WebKitFormBoundary' + ''.join(random.choices('0123456789abcdef', k=16))
     body_parts = []
     body_parts.append(f'--{boundary}'.encode('utf-8'))
-    # 对文件名进行 RFC 2047 编码
-    try:
-        filename.encode('ascii')
-        disp_filename = filename
-    except UnicodeEncodeError:
-        b64_name = base64.b64encode(filename.encode('utf-8')).decode('ascii')
-        disp_filename = f'=?UTF-8?B?{b64_name}?='
-    cd = f'Content-Disposition: form-data; name="file"; filename="{disp_filename}"'
+    cd = f'Content-Disposition: form-data; name="file"; filename="{filename}"'
     body_parts.append(cd.encode('utf-8'))
     body_parts.append(b'Content-Type: application/octet-stream')
     body_parts.append(b'')
@@ -2041,14 +2034,7 @@ def email_send():
                     file_key = _email_upload_attachment(session, csrftoken, tmp_path, f.filename)
                     if file_key:
                         attachment_list.append(file_key)
-                        # 附件名使用 RFC 2047 编码，确保中文正确显示
-                        try:
-                            f.filename.encode('ascii')
-                            safe_name = f.filename
-                        except UnicodeEncodeError:
-                            b64 = base64.b64encode(f.filename.encode('utf-8')).decode('ascii')
-                            safe_name = f'=?UTF-8?B?{b64}?='
-                        attachment_name_list.append(safe_name)
+                        attachment_name_list.append(f.filename)
                     else:
                         upload_errors.append(f"附件 '{f.filename}' 上传失败")
                 except Exception as e:
@@ -2156,13 +2142,7 @@ def email_batch_send():
                     file_key = _email_upload_attachment(session, csrftoken, tmp_path, orig_name)
                     if file_key:
                         common_keys.append(file_key)
-                        try:
-                            orig_name.encode('ascii')
-                            safe_name = orig_name
-                        except UnicodeEncodeError:
-                            b64 = base64.b64encode(orig_name.encode('utf-8')).decode('ascii')
-                            safe_name = f'=?UTF-8?B?{b64}?='
-                        common_names.append(safe_name)
+                        common_names.append(orig_name)
                 except Exception:
                     pass
             per_files = request.files.getlist(f'files_{idx}')
@@ -2175,13 +2155,7 @@ def email_batch_send():
                         file_key = _email_upload_attachment(session, csrftoken, per_tmp, f.filename)
                         if file_key:
                             per_keys.append(file_key)
-                            try:
-                                f.filename.encode('ascii')
-                                safe_name = f.filename
-                            except UnicodeEncodeError:
-                                b64 = base64.b64encode(f.filename.encode('utf-8')).decode('ascii')
-                                safe_name = f'=?UTF-8?B?{b64}?='
-                            per_names.append(safe_name)
+                            per_names.append(f.filename)
                     except Exception:
                         pass
                     finally:
