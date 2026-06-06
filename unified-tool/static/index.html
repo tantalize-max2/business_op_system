@@ -652,9 +652,9 @@
   <div class="em-mb-head"><span class="em-mb-title" id="emContactModalTitle">添加联系人</span><button class="em-mb-close" onclick="EmailTool.hideContactModal()">&times;</button></div>
   <div class="em-mb-body">
     <input type="hidden" id="emEditContactId">
-    <div class="em-form-group"><div class="em-form-label">姓名</div><input type="text" class="form-input" id="emContactName" placeholder="请输入姓名"></div>
-    <div class="em-form-group"><div class="em-form-label">邮箱</div><input type="email" class="form-input" id="emContactEmail" placeholder="请输入邮箱地址"></div>
-    <div class="em-form-group"><div class="em-form-label">分组</div><input type="text" class="form-input" id="emContactGroup" list="emGroupList" placeholder="选择或输入分组名" value="默认分组"><datalist id="emGroupList"></datalist></div>
+    <div class="em-form-group"><div class="em-form-label">姓名</div><div class="em-tag-input-wrap" onclick="document.getElementById('emContactName').focus()"><input type="text" id="emContactName" placeholder="请输入姓名"></div></div>
+    <div class="em-form-group"><div class="em-form-label">邮箱</div><div class="em-tag-input-wrap" onclick="document.getElementById('emContactEmail').focus()"><input type="email" id="emContactEmail" placeholder="请输入邮箱地址"></div></div>
+    <div class="em-form-group"><div class="em-form-label">分组</div><div class="em-tag-input-wrap" onclick="document.getElementById('emContactGroup').focus()"><input type="text" id="emContactGroup" list="emGroupList" placeholder="选择或输入分组名" value="默认分组"><datalist id="emGroupList"></datalist></div></div>
   </div>
   <div class="em-mb-foot">
     <button class="btn btn-outline btn-sm" onclick="EmailTool.hideContactModal()">取消</button>
@@ -668,11 +668,11 @@
   <div class="em-mb-head"><span class="em-mb-title" id="emTemplateModalTitle">新建模板</span><button class="em-mb-close" onclick="EmailTool.hideTemplateModal()">&times;</button></div>
   <div class="em-mb-body">
     <input type="hidden" id="emEditTplId">
-    <div class="em-form-group"><div class="em-form-label">模板名称</div><input type="text" class="form-input" id="emTplName" placeholder="给模板起个名字"></div>
+    <div class="em-form-group"><div class="em-form-label">模板名称</div><div class="em-tag-input-wrap" onclick="document.getElementById('emTplName').focus()"><input type="text" id="emTplName" placeholder="给模板起个名字"></div></div>
     <div class="em-form-group"><div class="em-form-label">收件人 <span style="color:var(--t3);font-weight:400;">(可选)</span></div><div class="em-tag-input-wrap" onclick="document.getElementById('emTplToInput').focus()"><div id="emTplToTags"></div><input type="text" id="emTplToInput" placeholder="输入邮箱，按Enter添加" onkeydown="EmailTool.handleTplToKey(event)"></div></div>
     <div class="em-form-group"><div class="em-form-label">抄送 <span style="color:var(--t3);font-weight:400;">(可选)</span></div><div class="em-tag-input-wrap" onclick="document.getElementById('emTplCcInput').focus()"><div id="emTplCcTags"></div><input type="text" id="emTplCcInput" placeholder="输入抄送邮箱" onkeydown="EmailTool.handleTplCcKey(event)"></div></div>
-    <div class="em-form-group"><div class="em-form-label">邮件主题</div><input type="text" class="form-input" id="emTplSubject" placeholder="邮件主题模板"></div>
-    <div class="em-form-group"><div class="em-form-label">正文内容</div><textarea class="form-input" id="emTplBody" style="min-height:160px;resize:vertical;" placeholder="邮件正文模板"></textarea></div>
+    <div class="em-form-group"><div class="em-form-label">邮件主题</div><div class="em-tag-input-wrap" onclick="document.getElementById('emTplSubject').focus()"><input type="text" id="emTplSubject" placeholder="邮件主题模板"></div></div>
+    <div class="em-form-group"><div class="em-form-label">正文内容</div><div class="em-tag-input-wrap" onclick="document.getElementById('emTplBody').focus()" style="padding:0;"><textarea id="emTplBody" style="min-height:160px;resize:vertical;" placeholder="邮件正文模板"></textarea></div></div>
     <div class="em-form-group"><div class="em-batch-toggle" style="margin-bottom:0;"><input type="checkbox" id="emTplBatchMode"><label for="emTplBatchMode">个性化发送</label><span class="em-batch-hint">使用此模板时自动切换批量模式</span></div></div>
   </div>
   <div class="em-mb-foot">
