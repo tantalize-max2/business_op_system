@@ -162,10 +162,10 @@ function switchStep(step) {
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('step' + capitalize(step)).classList.add('active');
   document.querySelectorAll('.sb-item').forEach(n => n.classList.remove('active'));
-  const navMap = {upload:'navUpload', filter1:'navFilter1', split:'navSplit', filter2:'navFilter2', normalize:'navNormalize', kdocs:'navKdocs'};
+  const navMap = {upload:'navUpload', filter1:'navFilter1', split:'navSplit', filter2:'navFilter2', normalize:'navNormalize', kdocs:'navKdocs', email:'navEmail'};
   document.getElementById(navMap[step])?.classList.add('active');
   // 更新侧栏统计
-  if (step !== 'upload' && step !== 'kdocs' && step !== 'normalize') {
+  if (step !== 'upload' && step !== 'kdocs' && step !== 'normalize' && step !== 'email') {
     document.getElementById('sbStats').style.display = '';
     updSbStats();
   } else {
@@ -191,9 +191,19 @@ function switchStep(step) {
     loadKdocsCats();
     loadKdocsSheets();
   }
+  // 进入邮件发送时初始化
+  if (step === 'email') {
+    if (typeof EmailTool !== 'undefined') {
+      const navEmail = document.getElementById('navEmail');
+      if (navEmail && !navEmail._inited) {
+        EmailTool.init();
+        navEmail._inited = true;
+      }
+    }
+  }
 }
 function capitalize(s) {
-  const map = {upload:'Upload', filter1:'Filter1', split:'Split', filter2:'Filter2', normalize:'Normalize', kdocs:'Kdocs'};
+  const map = {upload:'Upload', filter1:'Filter1', split:'Split', filter2:'Filter2', normalize:'Normalize', kdocs:'Kdocs', email:'Email'};
   return map[s] || s;
 }
 
@@ -3300,7 +3310,7 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
 document.querySelectorAll('.sb-item').forEach(item => {
   item.addEventListener('click', () => {
     const step = item.dataset.step;
-    if (step === 'upload' || step === 'kdocs' || step === 'normalize' || step === 'split' || S.files.length) switchStep(step);
+    if (step === 'upload' || step === 'kdocs' || step === 'normalize' || step === 'email' || step === 'split' || S.files.length) switchStep(step);
   });
 });
 
