@@ -19,6 +19,14 @@ login_state = {
     'browser_open': False,
 }
 
+# 启动时自动加载持久化的登录凭证到 MAIL_CONFIG
+_saved_creds = load_json(EMAIL_LOGIN_CREDS_FILE, default=None)
+if _saved_creds:
+    if _saved_creds.get('account'): MAIL_CONFIG['account'] = _saved_creds['account']
+    if _saved_creds.get('password'): MAIL_CONFIG['password'] = _saved_creds['password']
+    if _saved_creds.get('phone'): MAIL_CONFIG['phone'] = _saved_creds['phone']
+    if _saved_creds.get('username'): MAIL_CONFIG['username'] = _saved_creds['username']
+
 
 def get_login_state():
     return login_state
@@ -33,11 +41,15 @@ def load_login_creds():
     data = load_json(EMAIL_LOGIN_CREDS_FILE, default=None)
     if data and data.get('account'):
         return data
-    return {'account': MAIL_CONFIG['account'], 'password': MAIL_CONFIG['password'], 'phone': MAIL_CONFIG['phone']}
+    return {'account': MAIL_CONFIG['account'], 'password': MAIL_CONFIG['password'],
+            'phone': MAIL_CONFIG['phone'], 'username': MAIL_CONFIG['username']}
 
 
-def save_login_creds(account, password, phone):
-    save_json(EMAIL_LOGIN_CREDS_FILE, {'account': account, 'password': password, 'phone': phone})
+def save_login_creds(account, password, phone, username=None):
+    save_json(EMAIL_LOGIN_CREDS_FILE, {
+        'account': account, 'password': password, 'phone': phone,
+        'username': username or f'{account}@chinatelecom.cn'
+    })
 
 
 def get_contacts():
@@ -356,7 +368,10 @@ def start_login(account, password, phone):
     if account: MAIL_CONFIG['account'] = account
     if password: MAIL_CONFIG['password'] = password
     if phone: MAIL_CONFIG['phone'] = phone
-    save_login_creds(MAIL_CONFIG['account'], MAIL_CONFIG['password'], MAIL_CONFIG['phone'])
+    # 根据账号生成发件人邮箱（ telecom 企业邮箱格式: account@chinatelecom.cn）
+    if account:
+        MAIL_CONFIG['username'] = f'{account}@chinatelecom.cn'
+    save_login_creds(MAIL_CONFIG['account'], MAIL_CONFIG['password'], MAIL_CONFIG['phone'], MAIL_CONFIG['username'])
     login_state = {'status': 'logging_in', 'message': '正在启动浏览器自动登录...', 'code': None, 'browser_open': False}
     thread = threading.Thread(target=_blackbox_login_worker, daemon=True)
     thread.start()
@@ -530,6 +545,20 @@ def _blackbox_login_worker():
                     if csrftoken:
                         with open(os.path.join(EMAIL_DATA_DIR, 'csrftoken.txt'), 'w') as f:
                             f.write(csrftoken)
+                except Exception: pass
+                # 登录成功后提取当前登录用户邮箱，更新MAIL_CONFIG['username']
+                try:
+                    logged_in_email = page.evaluate(
+                        '() => { try {'
+                        '  const el = document.querySelector(".user-info .email, .user-name, .account-info, [class*=user][class*=name], [class*=account]");'
+                        '  if (el && el.textContent.includes("@")) return el.textContent.trim();'
+                        '  const userInfo = document.querySelector(".user-info, .header-user, .login-user, [class*=userInfo], [class*=loginInfo]");'
+                        '  if (userInfo) { const m = userInfo.textContent.match(/[\\w.-]+@[\\w.-]+/); if (m) return m[0]; }'
+                        '  return "";'
+                        '} catch(e) { return ""; } }')
+                    if logged_in_email and '@' in logged_in_email:
+                        MAIL_CONFIG['username'] = logged_in_email
+                    save_login_creds(MAIL_CONFIG['account'], MAIL_CONFIG['password'], MAIL_CONFIG['phone'], MAIL_CONFIG['username'])
                 except Exception: pass
                 login_state['status'] = 'success'
                 login_state['message'] = '登录成功！可以正常发送邮件了。'
