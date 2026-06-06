@@ -487,20 +487,46 @@ function closeFD() { fdOv.classList.remove('vis'); fdDd.classList.remove('vis');
 // ========== 列管理 ==========
 const cmOv = document.getElementById('cmOv'), cmDd = document.getElementById('cmDd'), cmList = document.getElementById('cmList');
 
-// 清空过滤按钮
+// 清空过滤按钮（清除所有过滤条件 + 配置：分组、隐藏列、求和列、预处理等）
 document.getElementById('btnClrL1').addEventListener('click', () => {
   const f = getActiveFile();
   if (!f) return;
+  // 重置一级过滤
   f.hdr.forEach(col => { f.l1[col] = newL1(); });
+  // 重置配置
+  f.grps = [];
+  f.gid = 0;
+  f.addedCols = [];
+  f.sumCol = '';
+  f.hiddenCols = new Set();
+  // 重置拆分关联状态
+  S.splitMatchedRows = null;
+  S.splitFileId = null;
+  S.splitResult = null;
+  const splitResults = document.getElementById('splitResults');
+  if (splitResults) splitResults.style.display = 'none';
+  // 刷新所有视图
   renderTable();
   updHdr();
   popGCol();
-  ntf('已清空所有过滤条件');
+  renderGrpCards();
+  renderL2FileTabs();
+  updLxButtons();
+  debouncedSave();
+  ntf('已清空所有过滤条件和配置');
 });
 
-// 列管理按钮
+// 列管理按钮（定位到表格右上角）
 document.getElementById('btnColMgr').addEventListener('click', () => {
   updColMgr();
+  const tableWrap = document.getElementById('tableWrap');
+  if (tableWrap) {
+    const rect = tableWrap.getBoundingClientRect();
+    cmDd.style.left = 'auto';
+    cmDd.style.right = (window.innerWidth - rect.right) + 'px';
+    cmDd.style.top = rect.top + 'px';
+    cmDd.style.maxHeight = (rect.height - 10) + 'px';
+  }
   cmOv.classList.add('vis');
   cmDd.classList.add('vis');
 });
