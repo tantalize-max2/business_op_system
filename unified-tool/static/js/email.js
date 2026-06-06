@@ -4,21 +4,18 @@
  * 所有函数和状态封装在 EmailTool 对象中，避免污染全局命名空间
  */
 const EmailTool = (() => {
-    // ============ 常量与全局状态 ============
     const API = '/api/email';
 
     let recipients = [], ccList = [], attachments = [], contacts = [], templates = [];
     let pickerChecked = [], groupPickerChecked = [];
     let batchMode = false, currentStep = 1;
-    let previewEdits = {};      // {email: {subject, body}}
-    let perRecipientFiles = {}; // {email: [File]}
+    let previewEdits = {};
+    let perRecipientFiles = {};
     let previewTimer = null;
+    let isLoggedIn = false;  // 登录状态守卫
 
-    // txt 变量系统
-    let txtVarFiles = {};       // {变量名: [values]} — null 表示需懒加载
+    let txtVarFiles = {};
     let currentEditVar = null;
-
-    // 模板模态框的收件人/抄送
     let tplTo = [], tplCc = [];
 
     const FONT_SIZE_MAP = {'1':'10px','2':'11px','3':'12px','4':'14px','5':'16px','6':'18px','7':'20px'};
@@ -38,31 +35,74 @@ const EmailTool = (() => {
         return (b / 1048576).toFixed(1) + ' MB';
     }
 
+    // 隐藏邮箱@前4位：w***@qq.com
+    function _maskEmail(email) {
+        if (!email) return '';
+        const atIdx = email.indexOf('@');
+        if (atIdx <= 0) return email;
+        const local = email.substring(0, atIdx);
+        const domain = email.substring(atIdx);
+        if (local.length <= 1) return '*' + domain;
+        const show = local.length <= 2 ? local[0] : local.substring(0, local.length - 4);
+        const masked = local.substring(local.length - 4).replace(/./g, '*');
+        return show + masked + domain;
+    }
+
+    // 获取联系人显示名（优先名字，否则邮箱前缀）
+    function _getDisplayName(email) {
+        const c = _findContactByEmail(email);
+        return c ? c.name : email.split('@')[0];
+    }
+
     function _schedulePreviewUpdate() {
         if (!batchMode) return;
         clearTimeout(previewTimer);
         previewTimer = setTimeout(_renderRecipientPreview, 300);
     }
 
+    // ============ 模态框（独立实现，不依赖 fd-dropdown） ============
+    function _showModal(id) {
+        const mask = document.getElementById(id + 'Mask');
+        const box = document.getElementById(id + 'Box');
+        if (mask) mask.classList.add('show');
+        if (box) box.classList.add('show');
+    }
+    function _hideModal(id) {
+        const mask = document.getElementById(id + 'Mask');
+        const box = document.getElementById(id + 'Box');
+        if (mask) mask.classList.remove('show');
+        if (box) box.classList.remove('show');
+    }
+    function _hideAllModals() {
+        ['emContactModal', 'emTemplateModal', 'emPickerModal', 'emGroupPickerModal'].forEach(_hideModal);
+    }
+
     // ============ 初始化 ============
     function init() {
-        _loadContacts();
-        _loadTemplates();
-        _loadTxtVars();
         _checkLoginStatus();
         _loadLoginCreds();
-        // 定时轮询登录状态
+        _updateLoginGuard();
         setInterval(_pollLogin, 2000);
-        // 子面板导航
         document.querySelectorAll('.em-sub-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const panelName = item.dataset.empanel;
-                _showSubPanel(panelName);
+            item.addEventListener('click', () => _showSubPanel(item.dataset.empanel));
+        });
+        // 点击遮罩关闭模态框
+        document.querySelectorAll('.em-modal-mask').forEach(mask => {
+            mask.addEventListener('click', () => {
+                mask.classList.remove('show');
+                const box = mask.nextElementSibling;
+                if (box) box.classList.remove('show');
             });
         });
     }
 
     function _showSubPanel(name) {
+        // 未登录只能看登录面板
+        if (!isLoggedIn && name !== 'login') {
+            _toast('请先登录邮箱', 'error');
+            _showSubPanel('login');
+            return;
+        }
         document.querySelectorAll('.em-subpanel').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.em-sub-item').forEach(s => s.classList.remove('active'));
         const panel = document.getElementById(`emPanel${name.charAt(0).toUpperCase() + name.slice(1)}`);
@@ -73,8 +113,36 @@ const EmailTool = (() => {
         if (name === 'templates') _loadTemplates();
     }
 
+    // 登录守卫：更新UI可用状态
+    function _updateLoginGuard() {
+        const composePanel = document.getElementById('emPanelCompose');
+        const contactsNav = document.querySelector('.em-sub-item[data-empanel="contacts"]');
+        const templatesNav = document.querySelector('.em-sub-item[data-empanel="templates"]');
+        if (isLoggedIn) {
+            composePanel.classList.remove('em-locked');
+            if (contactsNav) contactsNav.classList.remove('em-locked');
+            if (templatesNav) templatesNav.classList.remove('em-locked');
+            _loadContacts();
+            _loadTemplates();
+            _loadTxtVars();
+        } else {
+            composePanel.classList.add('em-locked');
+            if (contactsNav) contactsNav.classList.add('em-locked');
+            if (templatesNav) templatesNav.classList.add('em-locked');
+            contacts = []; templates = [];
+            const cEl = document.getElementById('emContactCount');
+            const tEl = document.getElementById('emTemplateCount');
+            if (cEl) cEl.textContent = '0';
+            if (tEl) tEl.textContent = '0';
+            _renderContactsTable();
+            _renderTemplates();
+            _updateTplSelect();
+        }
+    }
+
     // ============ 联系人 ============
     async function _loadContacts() {
+        if (!isLoggedIn) return;
         try {
             const r = await fetch(`${API}/contacts`);
             const j = await r.json();
@@ -90,6 +158,10 @@ const EmailTool = (() => {
     function _renderContactsTable() {
         const tbody = document.getElementById('emContactsTbody');
         if (!tbody) return;
+        if (!isLoggedIn) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--t3);padding:40px;">请先登录邮箱</td></tr>';
+            return;
+        }
         const search = (document.getElementById('emContactSearch')?.value || '').toLowerCase();
         const filtered = contacts.filter(c => !search || c.name.toLowerCase().includes(search) || c.email.toLowerCase().includes(search));
         if (!filtered.length) {
@@ -98,7 +170,7 @@ const EmailTool = (() => {
         }
         tbody.innerHTML = filtered.map(c => `<tr>
             <td style="font-weight:500;">${_esc(c.name)}</td>
-            <td style="color:var(--t2);">${_esc(c.email)}</td>
+            <td style="color:var(--t2);font-family:var(--mf);letter-spacing:0.3px;">${_esc(_maskEmail(c.email))}</td>
             <td><span class="em-tag em-tag-blue">${_esc(c.group)}</span></td>
             <td class="em-td-actions">
                 <button class="btn btn-ghost btn-sm" onclick="EmailTool.addToCompose('${_esc(c.email)}')">添加到收件人</button>
@@ -108,20 +180,22 @@ const EmailTool = (() => {
     }
 
     function _addToCompose(email) {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         if (!recipients.includes(email)) {
             recipients.push(email);
             _renderToTags();
-            _toast(`已添加 ${email}`, 'success');
+            _toast(`已添加 ${_getDisplayName(email)}`, 'success');
         } else _toast('该收件人已存在', 'info');
     }
 
     function _openAddContact() {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         document.getElementById('emContactModalTitle').textContent = '添加联系人';
         document.getElementById('emEditContactId').value = '';
         document.getElementById('emContactName').value = '';
         document.getElementById('emContactEmail').value = '';
         document.getElementById('emContactGroup').value = '默认分组';
-        _showContactModal();
+        _showModal('emContactModal');
     }
 
     function _editContact(id) {
@@ -132,7 +206,7 @@ const EmailTool = (() => {
         document.getElementById('emContactName').value = c.name;
         document.getElementById('emContactEmail').value = c.email;
         document.getElementById('emContactGroup').value = c.group || '默认分组';
-        _showContactModal();
+        _showModal('emContactModal');
     }
 
     async function _saveContact() {
@@ -145,7 +219,7 @@ const EmailTool = (() => {
         const url = id ? `${API}/contacts/${id}` : `${API}/contacts`;
         const method = id ? 'PUT' : 'POST';
         await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, group }) });
-        _hideContactModal();
+        _hideModal('emContactModal');
         _loadContacts();
         _toast(id ? '联系人已更新' : '联系人已添加', 'success');
     }
@@ -157,28 +231,21 @@ const EmailTool = (() => {
         _toast('已删除', 'success');
     }
 
-    function _showContactModal() {
-        document.getElementById('emContactModalOv').style.display = 'block';
-        document.getElementById('emContactModal').style.display = 'block';
-    }
-    function _hideContactModal() {
-        document.getElementById('emContactModalOv').style.display = 'none';
-        document.getElementById('emContactModal').style.display = 'none';
-    }
-
     // ============ 联系人选择器 ============
     function _openContactPicker() {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         pickerChecked = [];
         const body = document.getElementById('emPickerBody');
         if (!contacts.length) {
             body.innerHTML = '<div style="text-align:center;color:var(--t3);padding:30px;">暂无联系人</div>';
         } else {
-            body.innerHTML = contacts.map(c => `<label style="display:flex;align-items:center;padding:10px 8px;cursor:pointer;gap:10px;border-radius:var(--r);transition:all .2s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">
-                <input type="checkbox" value="${_esc(c.email)}" onchange="EmailTool._togglePicker('${_esc(c.email)}',this.checked)" style="width:16px;height:16px;">
-                <span style="flex:1;font-size:14px;"><strong>${_esc(c.name)}</strong> <span style="color:var(--t3);">&lt;${_esc(c.email)}&gt;</span></span>
+            body.innerHTML = contacts.map(c => `<label class="em-picker-row">
+                <input type="checkbox" value="${_esc(c.email)}" onchange="EmailTool._togglePicker('${_esc(c.email)}',this.checked)">
+                <span class="em-pk-name">${_esc(c.name)}</span>
+                <span class="em-pk-email">${_esc(_maskEmail(c.email))}</span>
                 <span class="em-tag em-tag-blue">${_esc(c.group)}</span></label>`).join('');
         }
-        _showPickerModal();
+        _showModal('emPickerModal');
     }
 
     function _togglePicker(email, checked) {
@@ -190,22 +257,14 @@ const EmailTool = (() => {
         let added = 0;
         pickerChecked.forEach(e => { if (!recipients.includes(e)) { recipients.push(e); added++; } });
         _renderToTags();
-        _hidePickerModal();
+        _hideModal('emPickerModal');
         if (added > 0) _toast(`已添加 ${added} 位收件人`, 'success');
         else _toast('选中的联系人已都在收件人列表中', 'info');
     }
 
-    function _showPickerModal() {
-        document.getElementById('emPickerOv').style.display = 'block';
-        document.getElementById('emPickerModal').style.display = 'block';
-    }
-    function _hidePickerModal() {
-        document.getElementById('emPickerOv').style.display = 'none';
-        document.getElementById('emPickerModal').style.display = 'none';
-    }
-
     // ============ 分组选择器 ============
     async function _openGroupPicker() {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         groupPickerChecked = [];
         const body = document.getElementById('emGroupPickerBody');
         try {
@@ -213,31 +272,30 @@ const EmailTool = (() => {
             const j = await r.json();
             if (!j.success || !j.data || !j.data.length) {
                 body.innerHTML = '<div style="text-align:center;color:var(--t3);padding:30px;">暂无分组</div>';
-                _showGroupPickerModal();
+                _showModal('emGroupPickerModal');
                 return;
             }
             body.innerHTML = j.data.map(g => `<div>
                 <div class="em-gp-group-head">
-                    <input type="checkbox" class="em-gp-group-cb" data-group="${_esc(g.name)}" onchange="EmailTool._toggleGroupCheck('${_esc(g.name)}',this.checked)" style="width:18px;height:18px;cursor:pointer;">
+                    <input type="checkbox" class="em-gp-group-cb" data-group="${_esc(g.name)}" onchange="EmailTool._toggleGroupCheck('${_esc(g.name)}',this.checked)">
                     <span class="em-gp-name">${_esc(g.name)}</span>
                     <span class="em-gp-count">${g.count} 人</span>
                     <button class="btn btn-ghost btn-sm" onclick="this.parentElement.nextElementSibling.style.display=this.parentElement.nextElementSibling.style.display==='none'?'block':'none'" style="font-size:11px;padding:2px 8px;">展开</button>
                 </div>
                 <div style="display:none;">${g.contacts.map(c => `<div class="em-gp-member">
-                    <input type="checkbox" class="em-gp-member-cb" data-group="${_esc(g.name)}" data-email="${_esc(c.email)}" onchange="EmailTool._toggleGroupMemberCheck('${_esc(g.name)}','${_esc(c.email)}',this.checked)" style="width:16px;height:16px;cursor:pointer;">
+                    <input type="checkbox" class="em-gp-member-cb" data-group="${_esc(g.name)}" data-email="${_esc(c.email)}" onchange="EmailTool._toggleGroupMemberCheck('${_esc(g.name)}','${_esc(c.email)}',this.checked)">
                     <span class="em-gp-mname">${_esc(c.name)}</span>
-                    <span class="em-gp-memail">${_esc(c.email)}</span>
+                    <span class="em-gp-memail">${_esc(_maskEmail(c.email))}</span>
                 </div>`).join('')}</div>
             </div>`).join('');
         } catch (e) {
             body.innerHTML = '<div style="text-align:center;color:var(--err);padding:30px;">加载分组失败</div>';
         }
-        _showGroupPickerModal();
+        _showModal('emGroupPickerModal');
     }
 
     function _toggleGroupCheck(groupName, checked) {
-        const memberCbs = document.querySelectorAll(`.em-gp-member-cb[data-group="${groupName}"]`);
-        memberCbs.forEach(cb => {
+        document.querySelectorAll(`.em-gp-member-cb[data-group="${groupName}"]`).forEach(cb => {
             cb.checked = checked;
             const email = cb.dataset.email;
             if (checked) { if (!groupPickerChecked.find(g => g.email === email)) groupPickerChecked.push({ group: groupName, email }); }
@@ -255,19 +313,10 @@ const EmailTool = (() => {
         let added = 0;
         emails.forEach(e => { if (!recipients.includes(e)) { recipients.push(e); added++; } });
         _renderToTags();
-        _hideGroupPickerModal();
+        _hideModal('emGroupPickerModal');
         if (added > 0) _toast(`已添加 ${added} 位收件人`, 'success');
         else _toast('选中的联系人已都在收件人列表中', 'info');
         if (batchMode) _renderRecipientPreview();
-    }
-
-    function _showGroupPickerModal() {
-        document.getElementById('emGroupPickerOv').style.display = 'block';
-        document.getElementById('emGroupPickerModal').style.display = 'block';
-    }
-    function _hideGroupPickerModal() {
-        document.getElementById('emGroupPickerOv').style.display = 'none';
-        document.getElementById('emGroupPickerModal').style.display = 'none';
     }
 
     // ============ 收件人/抄送 ============
@@ -293,18 +342,24 @@ const EmailTool = (() => {
         _renderToTags();
     }
 
+    // 收件人标签按名字显示
     function _renderToTags() {
-        document.getElementById('emToTags').innerHTML = recipients.map(e => `<span class="em-tag em-tag-green">${_esc(e)}<span class="em-tag-x" onclick="EmailTool._removeTo('${_esc(e)}')">&times;</span></span>`).join('');
+        document.getElementById('emToTags').innerHTML = recipients.map(e => {
+            const name = _getDisplayName(e);
+            return `<span class="em-tag em-tag-green" title="${_esc(e)}">${_esc(name)}<span class="em-tag-x" onclick="EmailTool._removeTo('${_esc(e)}')">&times;</span></span>`;
+        }).join('');
         _updateComposeInfo();
         if (batchMode) _renderRecipientPreview();
     }
 
     function _handleCcKey(e) {
+        if (batchMode) { e.preventDefault(); return; }
         if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); _addCc(); }
         if (e.key === 'Backspace' && !e.target.value && ccList.length) { ccList.pop(); _renderCcTags(); }
     }
 
     function _addCc() {
+        if (batchMode) { _toast('个性化发送时不允许抄送', 'error'); return; }
         const input = document.getElementById('emCcInput');
         const v = input.value.trim().replace(/,$/, '');
         if (!v) return;
@@ -318,14 +373,17 @@ const EmailTool = (() => {
     function _removeCc(email) { ccList = ccList.filter(r => r !== email); _renderCcTags(); }
 
     function _renderCcTags() {
-        document.getElementById('emCcTags').innerHTML = ccList.map(e => `<span class="em-tag em-tag-blue">${_esc(e)}<span class="em-tag-x" onclick="EmailTool._removeCc('${_esc(e)}')">&times;</span></span>`).join('');
+        document.getElementById('emCcTags').innerHTML = ccList.map(e => {
+            const name = _getDisplayName(e);
+            return `<span class="em-tag em-tag-blue" title="${_esc(e)}">${_esc(name)}<span class="em-tag-x" onclick="EmailTool._removeCc('${_esc(e)}')">&times;</span></span>`;
+        }).join('');
     }
 
     function _updateComposeInfo() {
         const info = document.getElementById('emComposeInfo');
         const parts = [];
         if (recipients.length > 0) parts.push(`${recipients.length} 位收件人`);
-        if (ccList.length > 0) parts.push(`${ccList.length} 位抄送`);
+        if (!batchMode && ccList.length > 0) parts.push(`${ccList.length} 位抄送`);
         if (attachments.length > 0) parts.push(`${attachments.length} 个附件`);
         info.textContent = parts.join('，');
     }
@@ -340,11 +398,9 @@ const EmailTool = (() => {
     function _applyFontSize(val) {
         if (!val) return;
         if (EXTRA_SIZES[val]) {
-            const sel = window.getSelection();
-            if (!sel.rangeCount) return;
+            if (!window.getSelection().rangeCount) return;
             document.execCommand('fontSize', false, '7');
-            const fontEls = document.getElementById('emBody').querySelectorAll('font[size="7"]');
-            fontEls.forEach(el => {
+            document.getElementById('emBody').querySelectorAll('font[size="7"]').forEach(el => {
                 const span = document.createElement('span');
                 span.style.fontSize = EXTRA_SIZES[val];
                 span.innerHTML = el.innerHTML;
@@ -352,8 +408,7 @@ const EmailTool = (() => {
             });
         } else {
             document.execCommand('fontSize', false, val);
-            const fontEls = document.getElementById('emBody').querySelectorAll(`font[size="${val}"]`);
-            fontEls.forEach(el => {
+            document.getElementById('emBody').querySelectorAll(`font[size="${val}"]`).forEach(el => {
                 const span = document.createElement('span');
                 span.style.fontSize = FONT_SIZE_MAP[val];
                 span.innerHTML = el.innerHTML;
@@ -367,8 +422,7 @@ const EmailTool = (() => {
     function _applyLineHeight(val) {
         const sel = window.getSelection();
         if (!sel.rangeCount) return;
-        const range = sel.getRangeAt(0);
-        let el = range.commonAncestorContainer;
+        let el = sel.getRangeAt(0).commonAncestorContainer;
         if (el.nodeType === 3) el = el.parentNode;
         if (el === document.getElementById('emBody')) {
             document.execCommand('insertHTML', false, `<div style="line-height:${val};"><br></div>`);
@@ -389,13 +443,11 @@ const EmailTool = (() => {
 
     function _insertImage() {
         const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
+        input.type = 'file'; input.accept = 'image/*';
         input.onchange = async function () {
             const file = this.files[0];
             if (!file) return;
-            const fd = new FormData();
-            fd.append('file', file);
+            const fd = new FormData(); fd.append('file', file);
             try {
                 const r = await fetch(`${API}/upload-image`, { method: 'POST', body: fd });
                 const j = await r.json();
@@ -419,12 +471,24 @@ const EmailTool = (() => {
         document.getElementById('emPreviewSection').style.display = batchMode ? 'block' : 'none';
         document.getElementById('emSendBtn').style.display = batchMode ? 'none' : 'inline-flex';
         document.getElementById('emBatchSendBtn').style.display = batchMode ? 'inline-flex' : 'none';
+        // 个性化发送时禁止抄送
+        const ccGroup = document.getElementById('emCcGroup');
+        if (ccGroup) {
+            if (batchMode) {
+                ccGroup.style.display = 'none';
+                ccList = [];
+                _renderCcTags();
+            } else {
+                ccGroup.style.display = '';
+            }
+        }
         if (batchMode) {
             document.getElementById('emBody').setAttribute('data-placeholder', '输入邮件正文，支持 {{name}}、{{email}}、{{group}} 等变量');
             _renderRecipientPreview();
         } else {
             document.getElementById('emBody').setAttribute('data-placeholder', '请输入邮件正文内容...');
         }
+        _updateComposeInfo();
     }
 
     function _insertVariable(varName) {
@@ -436,6 +500,7 @@ const EmailTool = (() => {
 
     // ============ txt 变量系统 ============
     async function _loadTxtVars() {
+        if (!isLoggedIn) return;
         try {
             const r = await fetch(`${API}/txt-vars`);
             const j = await r.json();
@@ -444,14 +509,14 @@ const EmailTool = (() => {
     }
 
     async function _uploadTxtVar(e) {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         const file = e.target.files[0];
         if (!file) return;
         let varName = prompt('请输入变量名（在正文中用 {{变量名}} 引用）：', file.name.replace('.txt', ''));
         if (!varName) return;
         varName = varName.trim();
         if (!varName) { _toast('变量名不能为空', 'error'); return; }
-        const fd = new FormData();
-        fd.append('file', file);
+        const fd = new FormData(); fd.append('file', file);
         try {
             const r = await fetch(`${API}/txt-vars`, { method: 'POST', body: fd });
             const j = await r.json();
@@ -490,8 +555,7 @@ const EmailTool = (() => {
             const vals = txtVarFiles[name] || [];
             const count = vals.length || '?';
             return `<span class="em-var-btn" style="position:relative;padding-right:20px;cursor:pointer;" onclick="EmailTool._openVarEdit('${name.replace(/'/g, "\\'")}')" title="点击编辑">
-                {{${_esc(name)}}}
-                <span style="font-size:10px;opacity:0.7;margin-left:2px;">${count}行</span>
+                {{${_esc(name)}}}<span style="font-size:10px;opacity:0.7;margin-left:2px;">${count}行</span>
                 <span onclick="event.stopPropagation();EmailTool._deleteTxtVar('${name.replace(/'/g, "\\'")}')" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:14px;cursor:pointer;opacity:0.5;width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">&times;</span>
             </span>`;
         }).join('');
@@ -499,8 +563,7 @@ const EmailTool = (() => {
 
     async function _openVarEdit(name) {
         currentEditVar = name;
-        const panel = document.getElementById('emVarEditPanel');
-        panel.style.display = 'block';
+        document.getElementById('emVarEditPanel').style.display = 'block';
         document.getElementById('emVarEditTitle').textContent = `编辑变量：{{${name}}}`;
         document.getElementById('emVarEditName').value = name;
         if (txtVarFiles[name] === null) {
@@ -510,25 +573,17 @@ const EmailTool = (() => {
                 txtVarFiles[name] = j.success ? (j.data.values || []) : [];
             } catch (e) { txtVarFiles[name] = []; }
         }
-        const vals = txtVarFiles[name] || [];
-        document.getElementById('emVarEditValues').value = vals.join('\n');
+        document.getElementById('emVarEditValues').value = (txtVarFiles[name] || []).join('\n');
         _updateVarEditCount();
     }
 
-    function _closeVarEdit() {
-        document.getElementById('emVarEditPanel').style.display = 'none';
-        currentEditVar = null;
-    }
+    function _closeVarEdit() { document.getElementById('emVarEditPanel').style.display = 'none'; currentEditVar = null; }
 
     function _onVarNameChange() {
         const newName = document.getElementById('emVarEditName').value.trim();
         if (!newName || !currentEditVar) return;
         if (newName !== currentEditVar) {
-            if (txtVarFiles.hasOwnProperty(newName)) {
-                _toast(`变量名「${newName}」已被占用`, 'error');
-                document.getElementById('emVarEditName').value = currentEditVar;
-                return;
-            }
+            if (txtVarFiles.hasOwnProperty(newName)) { _toast(`变量名「${newName}」已被占用`, 'error'); document.getElementById('emVarEditName').value = currentEditVar; return; }
             txtVarFiles[newName] = txtVarFiles[currentEditVar];
             delete txtVarFiles[currentEditVar];
             _syncVarToBackend(newName);
@@ -553,16 +608,13 @@ const EmailTool = (() => {
 
     function _updateVarEditCount() {
         const text = document.getElementById('emVarEditValues').value;
-        const lines = text.split('\n').filter(l => l.trim());
-        document.getElementById('emVarEditCount').textContent = `${lines.length} 行`;
+        document.getElementById('emVarEditCount').textContent = `${text.split('\n').filter(l => l.trim()).length} 行`;
     }
 
     async function _syncVarToBackend(name) {
-        const values = txtVarFiles[name] || [];
         try {
             const fd = new FormData();
-            const blob = new Blob([values.join('\n')], { type: 'text/plain' });
-            fd.append('file', blob, `${name}.txt`);
+            fd.append('file', new Blob([(txtVarFiles[name] || []).join('\n')], { type: 'text/plain' }), `${name}.txt`);
             await fetch(`${API}/txt-vars`, { method: 'POST', body: fd });
         } catch (e) { console.error('同步变量失败', e); }
     }
@@ -686,6 +738,7 @@ const EmailTool = (() => {
 
     // ============ 模板 ============
     async function _loadTemplates() {
+        if (!isLoggedIn) return;
         try {
             const r = await fetch(`${API}/templates`);
             const j = await r.json();
@@ -706,18 +759,25 @@ const EmailTool = (() => {
 
     function _renderTemplates() {
         const container = document.getElementById('emTplList');
-        if (!templates.length) {
-            container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--t3);padding:40px;">暂无模板</div>';
+        if (!isLoggedIn || !templates.length) {
+            container.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--t3);padding:40px;">${!isLoggedIn ? '请先登录邮箱' : '暂无模板'}</div>`;
             return;
         }
         container.innerHTML = templates.map(t => {
             const toArr = t.to || [];
             const ccArr = t.cc || [];
             let tags = '';
-            if (toArr.length) tags += toArr.slice(0, 3).map(e => `<span class="em-tag em-tag-green">${_esc(e)}</span>`).join('') + (toArr.length > 3 ? `<span class="em-tag" style="background:var(--bg3);color:var(--t3);">+${toArr.length - 3}</span>` : '');
-            if (ccArr.length) tags += ccArr.slice(0, 2).map(e => `<span class="em-tag em-tag-blue">${_esc(e)}</span>`).join('');
+            if (toArr.length) tags += toArr.slice(0, 3).map(e => {
+                const name = _getDisplayName(e);
+                return `<span class="em-tag em-tag-green" title="${_esc(e)}">${_esc(name)}</span>`;
+            }).join('') + (toArr.length > 3 ? `<span class="em-tag" style="background:var(--bg3);color:var(--t3);">+${toArr.length - 3}</span>` : '');
+            if (ccArr.length) tags += ccArr.slice(0, 2).map(e => {
+                const name = _getDisplayName(e);
+                return `<span class="em-tag em-tag-blue" title="${_esc(e)}">${_esc(name)}</span>`;
+            }).join('');
+            const batchTag = t.batchMode ? '<span class="em-tag" style="background:var(--wnbg);color:var(--wn);font-size:10px;">个性化</span>' : '';
             return `<div class="em-tpl-card">
-                <div class="em-tpl-name">${_esc(t.name)}</div>
+                <div class="em-tpl-name">${_esc(t.name)} ${batchTag}</div>
                 ${tags ? `<div class="em-tpl-tags">${tags}</div>` : ''}
                 <div class="em-tpl-preview">${_esc(t.subject || '(无主题)')}</div>
                 <div class="em-tpl-preview">${_esc((t.body || '').substring(0, 80))}${(t.body || '').length > 80 ? '...' : ''}</div>
@@ -750,13 +810,19 @@ const EmailTool = (() => {
     }
 
     function _renderTplToTags() {
-        document.getElementById('emTplToTags').innerHTML = tplTo.map(e => `<span class="em-tag em-tag-green">${_esc(e)}<span class="em-tag-x" onclick="EmailTool._removeTplTo('${_esc(e)}')">&times;</span></span>`).join('');
+        document.getElementById('emTplToTags').innerHTML = tplTo.map(e => {
+            const name = _getDisplayName(e);
+            return `<span class="em-tag em-tag-green" title="${_esc(e)}">${_esc(name)}<span class="em-tag-x" onclick="EmailTool._removeTplTo('${_esc(e)}')">&times;</span></span>`;
+        }).join('');
     }
 
     function _removeTplTo(email) { tplTo = tplTo.filter(x => x !== email); _renderTplToTags(); }
 
     function _renderTplCcTags() {
-        document.getElementById('emTplCcTags').innerHTML = tplCc.map(e => `<span class="em-tag em-tag-blue">${_esc(e)}<span class="em-tag-x" onclick="EmailTool._removeTplCc('${_esc(e)}')">&times;</span></span>`).join('');
+        document.getElementById('emTplCcTags').innerHTML = tplCc.map(e => {
+            const name = _getDisplayName(e);
+            return `<span class="em-tag em-tag-blue" title="${_esc(e)}">${_esc(name)}<span class="em-tag-x" onclick="EmailTool._removeTplCc('${_esc(e)}')">&times;</span></span>`;
+        }).join('');
     }
 
     function _removeTplCc(email) { tplCc = tplCc.filter(x => x !== email); _renderTplCcTags(); }
@@ -766,19 +832,34 @@ const EmailTool = (() => {
         if (id) _useTemplate(id);
     }
 
+    // 使用模板：替换收件人、恢复个性化发送状态
     function _useTemplate(id) {
         const t = templates.find(x => x.id === id);
         if (!t) return;
         document.getElementById('emSubject').value = t.subject || '';
         document.getElementById('emBody').innerText = t.body || '';
         document.getElementById('emTemplateSelect').value = id;
-        if (t.to && t.to.length) { t.to.forEach(e => { if (!recipients.includes(e)) recipients.push(e); }); _renderToTags(); }
-        if (t.cc && t.cc.length) { t.cc.forEach(e => { if (!ccList.includes(e)) ccList.push(e); }); _renderCcTags(); }
+        // 替换收件人（而非追加）
+        recipients = [...(t.to || [])];
+        ccList = [...(t.cc || [])];
+        _renderToTags();
+        _renderCcTags();
+        // 恢复模板保存的个性化发送状态
+        if (t.batchMode) {
+            document.getElementById('emBatchMode').checked = true;
+            _toggleBatchMode();
+        } else {
+            if (batchMode) {
+                document.getElementById('emBatchMode').checked = false;
+                _toggleBatchMode();
+            }
+        }
         _showSubPanel('compose');
         _toast(`已应用模板: ${t.name}`, 'success');
     }
 
     function _saveCurrentAsTemplate() {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         const subject = document.getElementById('emSubject').value.trim();
         const body = _getBodyText().trim();
         if (!subject && !body) { _toast('当前内容为空，无法保存为模板', 'error'); return; }
@@ -787,20 +868,23 @@ const EmailTool = (() => {
         document.getElementById('emTplName').value = '';
         document.getElementById('emTplSubject').value = subject;
         document.getElementById('emTplBody').value = body;
+        document.getElementById('emTplBatchMode').checked = batchMode;
         tplTo = [...recipients]; tplCc = [...ccList];
         _renderTplToTags(); _renderTplCcTags();
-        _showTemplateModal();
+        _showModal('emTemplateModal');
     }
 
     function _openNewTemplate() {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         document.getElementById('emTemplateModalTitle').textContent = '新建模板';
         document.getElementById('emEditTplId').value = '';
         document.getElementById('emTplName').value = '';
         document.getElementById('emTplSubject').value = '';
         document.getElementById('emTplBody').value = '';
+        document.getElementById('emTplBatchMode').checked = false;
         tplTo = []; tplCc = [];
         _renderTplToTags(); _renderTplCcTags();
-        _showTemplateModal();
+        _showModal('emTemplateModal');
     }
 
     function _editTemplate(id) {
@@ -811,9 +895,10 @@ const EmailTool = (() => {
         document.getElementById('emTplName').value = t.name;
         document.getElementById('emTplSubject').value = t.subject || '';
         document.getElementById('emTplBody').value = t.body || '';
+        document.getElementById('emTplBatchMode').checked = !!t.batchMode;
         tplTo = [...(t.to || [])]; tplCc = [...(t.cc || [])];
         _renderTplToTags(); _renderTplCcTags();
-        _showTemplateModal();
+        _showModal('emTemplateModal');
     }
 
     async function _saveTemplateModal() {
@@ -821,11 +906,12 @@ const EmailTool = (() => {
         const name = document.getElementById('emTplName').value.trim();
         const subject = document.getElementById('emTplSubject').value.trim();
         const body = document.getElementById('emTplBody').value.trim();
+        const batchModeVal = document.getElementById('emTplBatchMode').checked;
         if (!name) { _toast('请输入模板名称', 'error'); return; }
         const url = id ? `${API}/templates/${id}` : `${API}/templates`;
         const method = id ? 'PUT' : 'POST';
-        await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, subject, body, to: tplTo, cc: tplCc }) });
-        _hideTemplateModal();
+        await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, subject, body, to: tplTo, cc: tplCc, batchMode: batchModeVal }) });
+        _hideModal('emTemplateModal');
         _loadTemplates();
         _toast(id ? '模板已更新' : '模板已保存', 'success');
     }
@@ -835,15 +921,6 @@ const EmailTool = (() => {
         await fetch(`${API}/templates/${id}`, { method: 'DELETE' });
         _loadTemplates();
         _toast('模板已删除', 'success');
-    }
-
-    function _showTemplateModal() {
-        document.getElementById('emTemplateModalOv').style.display = 'block';
-        document.getElementById('emTemplateModal').style.display = 'block';
-    }
-    function _hideTemplateModal() {
-        document.getElementById('emTemplateModalOv').style.display = 'none';
-        document.getElementById('emTemplateModal').style.display = 'none';
     }
 
     // ============ 附件 ============
@@ -871,6 +948,7 @@ const EmailTool = (() => {
 
     // ============ 发送邮件 ============
     async function _sendEmail() {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         if (!recipients.length) { _toast('请添加至少一位收件人', 'error'); return; }
         const subject = document.getElementById('emSubject').value.trim();
         if (!subject) { _toast('请填写邮件主题', 'error'); return; }
@@ -892,8 +970,8 @@ const EmailTool = (() => {
         document.getElementById('emSendingOverlay').classList.remove('show');
     }
 
-    // ============ 批量个性化发送 ============
     async function _sendBatchEmail() {
+        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         if (!recipients.length) { _toast('请添加至少一位收件人', 'error'); return; }
         const subjectTpl = document.getElementById('emSubject').value.trim();
         const bodyTpl = _getBodyText();
@@ -917,11 +995,10 @@ const EmailTool = (() => {
         document.querySelector('.em-sending-text').textContent = `正在批量发送邮件 (0/${items.length})...`;
         const fd = new FormData();
         fd.append('items', JSON.stringify(items));
-        fd.append('cc', JSON.stringify(ccList));
+        fd.append('cc', JSON.stringify([])); // 个性化发送无抄送
         attachments.forEach(a => { if (a.file) fd.append('files', a.file); });
         for (let i = 0; i < recipients.length; i++) {
-            const email = recipients[i];
-            const pFiles = perRecipientFiles[email] || [];
+            const pFiles = perRecipientFiles[recipients[i]] || [];
             pFiles.forEach(f => { fd.append(`files_${i}`, f); });
         }
         try {
@@ -966,14 +1043,10 @@ const EmailTool = (() => {
         const password = document.getElementById('emLoginPassword').value.trim();
         const phone = document.getElementById('emLoginPhone').value.trim();
         if (!account || !password) { _toast('请填写账号和密码', 'error'); return; }
-        const icon = document.getElementById('emLoginIcon');
-        const text = document.getElementById('emLoginText');
-        const sub = document.getElementById('emLoginSub');
-        const actions = document.getElementById('emLoginActions');
-        icon.innerHTML = '<div class="em-spinner"></div>';
-        text.textContent = '正在启动黑箱登录...';
-        sub.textContent = '请稍候';
-        actions.innerHTML = '<button class="btn btn-outline" disabled>登录中...</button>';
+        document.getElementById('emLoginIcon').innerHTML = '<div class="em-spinner"></div>';
+        document.getElementById('emLoginText').textContent = '正在启动黑箱登录...';
+        document.getElementById('emLoginSub').textContent = '请稍候';
+        document.getElementById('emLoginActions').innerHTML = '<button class="btn btn-outline" disabled>登录中...</button>';
         document.getElementById('emLoginCredsArea').style.display = 'none';
         document.getElementById('emLoginCodeArea').style.display = 'none';
         _updateSteps(2);
@@ -982,7 +1055,7 @@ const EmailTool = (() => {
         try {
             const r = await fetch(`${API}/login/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account, password, phone }) });
             const j = await r.json();
-            if (!j.success) text.textContent = j.message;
+            if (!j.success) document.getElementById('emLoginText').textContent = j.message;
         } catch (e) { _toast('启动失败: ' + e.message, 'error'); }
     }
 
@@ -1003,10 +1076,12 @@ const EmailTool = (() => {
         if (!confirm('确定退出登录？退出后需重新登录才能发邮件。')) return;
         try {
             await fetch(`${API}/logout`, { method: 'POST' });
+            isLoggedIn = false;
             document.getElementById('emStatusDot').className = 'em-dot em-dot-gray';
             document.getElementById('emStatusLabel').textContent = '未登录';
             document.getElementById('emLogoutArea').style.display = 'none';
             _showLoginCredsForm();
+            _updateLoginGuard();
             _toast('已退出登录', 'info');
         } catch (e) { _toast('退出失败', 'error'); }
     }
@@ -1026,9 +1101,11 @@ const EmailTool = (() => {
         try {
             const r = await fetch(`${API}/login/check`);
             const j = await r.json();
-            if (j.logged_in) {
+            isLoggedIn = !!j.logged_in;
+            if (isLoggedIn) {
                 document.getElementById('emStatusDot').className = 'em-dot em-dot-green';
                 document.getElementById('emStatusLabel').textContent = '已登录';
+                _updateLoginGuard();
             }
         } catch (e) { }
     }
@@ -1069,6 +1146,7 @@ const EmailTool = (() => {
                 _updateSteps(5);
                 dot.className = 'em-dot em-dot-yellow'; label.textContent = '验证中';
             } else if (s.status === 'success') {
+                isLoggedIn = true;
                 icon.innerHTML = '&#9989;';
                 text.textContent = '登录成功！可以正常使用邮件发送功能';
                 sub.textContent = '邮箱已通过黑箱模式自动登录完成';
@@ -1077,6 +1155,7 @@ const EmailTool = (() => {
                 logoutArea.style.display = 'block';
                 _updateSteps(5);
                 dot.className = 'em-dot em-dot-green'; label.textContent = '已登录';
+                _updateLoginGuard();
             } else if (s.status === 'failed') {
                 _showLoginCredsForm();
                 icon.innerHTML = '&#10060;';
@@ -1110,58 +1189,45 @@ const EmailTool = (() => {
 
     // ============ Toast ============
     function _toast(msg, type = 'info') {
-        // 复用 unified-tool 的 toast 系统
+        if (typeof ntf === 'function') { ntf(msg, type); return; }
         const el = document.getElementById('toast');
-        if (el && typeof showToast === 'function') {
-            showToast(msg, type);
-            return;
-        }
-        // 备用：简单 toast
-        const wrap = document.getElementById('toast');
-        if (!wrap) return;
-        wrap.textContent = msg;
-        wrap.className = 'toast show';
-        setTimeout(() => { wrap.className = 'toast'; }, 3000);
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'toast show';
+        setTimeout(() => { el.className = 'toast'; }, 3000);
     }
 
     // ============ 公共 API ============
     return {
         init,
-        // 联系人
         addToCompose: _addToCompose,
         openAddContact: _openAddContact,
         editContact: _editContact,
         saveContact: _saveContact,
         delContact: _delContact,
-        hideContactModal: _hideContactModal,
-        // 联系人选择器
+        hideContactModal: () => _hideModal('emContactModal'),
         openContactPicker: _openContactPicker,
         _togglePicker: _togglePicker,
         confirmPicker: _confirmPicker,
-        hidePickerModal: _hidePickerModal,
-        // 分组选择器
+        hidePickerModal: () => _hideModal('emPickerModal'),
         openGroupPicker: _openGroupPicker,
         _toggleGroupCheck: _toggleGroupCheck,
         _toggleGroupMemberCheck: _toggleGroupMemberCheck,
         confirmGroupPicker: _confirmGroupPicker,
-        hideGroupPickerModal: _hideGroupPickerModal,
-        // 收件人/抄送
+        hideGroupPickerModal: () => _hideModal('emGroupPickerModal'),
         handleToKey: _handleToKey,
         handleCcKey: _handleCcKey,
         _removeTo: _removeTo,
         _removeCc: _removeCc,
-        // 富文本
         execRich: _execRich,
         applyFontSize: _applyFontSize,
         applyLineHeight: _applyLineHeight,
         applyIndent: _applyIndent,
         insertLink: _insertLink,
         insertImage: _insertImage,
-        // 个性化
         toggleBatchMode: _toggleBatchMode,
         insertVariable: _insertVariable,
         schedulePreviewUpdate: _schedulePreviewUpdate,
-        // txt 变量
         uploadTxtVar: _uploadTxtVar,
         addNewTxtVar: _addNewTxtVar,
         _openVarEdit: _openVarEdit,
@@ -1169,15 +1235,13 @@ const EmailTool = (() => {
         onVarNameChange: _onVarNameChange,
         onVarValuesChange: _onVarValuesChange,
         _deleteTxtVar: _deleteTxtVar,
-        // 预览
         _togglePreviewEdit: _togglePreviewEdit,
         _updatePreviewEdit: _updatePreviewEdit,
         _addPerRecipientFile: _addPerRecipientFile,
-        // 模板
         applyTemplate: _applyTemplate,
         saveCurrentAsTemplate: _saveCurrentAsTemplate,
         openNewTemplate: _openNewTemplate,
-        hideTemplateModal: _hideTemplateModal,
+        hideTemplateModal: () => _hideModal('emTemplateModal'),
         _useTemplate: _useTemplate,
         _editTemplate: _editTemplate,
         _delTemplate: _delTemplate,
@@ -1186,15 +1250,12 @@ const EmailTool = (() => {
         handleTplCcKey: _handleTplCcKey,
         _removeTplTo: _removeTplTo,
         _removeTplCc: _removeTplCc,
-        // 附件
         handleFileSelect: _handleFileSelect,
         handleDrop: _handleDrop,
         _removeAttach: _removeAttach,
-        // 发送
         sendEmail: _sendEmail,
         sendBatchEmail: _sendBatchEmail,
         clearCompose: _clearCompose,
-        // 登录
         startLogin: _startLogin,
         submitCode: _submitCode,
         cancelLogin: _cancelLogin,
@@ -1203,16 +1264,11 @@ const EmailTool = (() => {
     };
 })();
 
-// 当切换到邮件步骤时初始化
 document.addEventListener('DOMContentLoaded', () => {
-    // 监听步骤切换
     const navEmail = document.getElementById('navEmail');
     if (navEmail) {
         navEmail.addEventListener('click', () => {
-            if (!navEmail._inited) {
-                EmailTool.init();
-                navEmail._inited = true;
-            }
+            if (!navEmail._inited) { EmailTool.init(); navEmail._inited = true; }
         });
     }
 });

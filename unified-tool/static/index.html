@@ -451,7 +451,7 @@
     <!-- 写信面板 -->
     <div class="em-subpanel active" id="emPanelCompose">
       <div class="em-compose-row">
-        <div class="em-tpl-sel"><span>选择模板：</span><select id="emTemplateSelect" onchange="EmailTool.applyTemplate()"><option value="">-- 不使用模板 --</option></select></div>
+        <div class="em-tpl-sel"><span>选择模板：</span><select id="emTemplateSelect" class="em-select-styled" onchange="EmailTool.applyTemplate()"><option value="">-- 不使用模板 --</option></select></div>
         <button class="btn btn-outline btn-sm" onclick="EmailTool.saveCurrentAsTemplate()">保存当前为模板</button>
       </div>
       <div class="card"><div class="card-body em-compose-body">
@@ -485,7 +485,7 @@
           <div class="em-tag-input-wrap" onclick="document.getElementById('emToInput').focus()"><div id="emToTags"></div><input type="text" id="emToInput" placeholder="输入邮箱地址，按 Enter 添加" onkeydown="EmailTool.handleToKey(event)"></div>
           <div style="margin-top:6px;"><button class="btn btn-ghost btn-sm" onclick="EmailTool.openContactPicker()">从联系人添加</button><button class="btn btn-ghost btn-sm" onclick="EmailTool.openGroupPicker()">按分组添加</button></div>
         </div>
-        <div class="em-form-group">
+        <div class="em-form-group" id="emCcGroup">
           <div class="em-form-label">抄送 <span style="color:var(--t3);font-weight:400;">(可选)</span></div>
           <div class="em-tag-input-wrap" onclick="document.getElementById('emCcInput').focus()"><div id="emCcTags"></div><input type="text" id="emCcInput" placeholder="输入抄送邮箱" onkeydown="EmailTool.handleCcKey(event)"></div>
         </div>
@@ -647,56 +647,57 @@
 <div class="em-sending-overlay" id="emSendingOverlay"><div class="em-spinner" style="width:40px;height:40px;border-width:4px;"></div><div class="em-sending-text">正在发送邮件，请稍候...</div></div>
 
 <!-- 联系人模态框 -->
-<div class="fd-overlay" id="emContactModalOv"></div>
-<div class="fd-dropdown em-modal-box" id="emContactModal" style="display:none;width:500px;left:50%;top:50%;transform:translate(-50%,-50%);max-height:85vh;overflow-y:auto;">
-  <div class="fd-head"><span class="fd-cn" id="emContactModalTitle">添加联系人</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" onclick="EmailTool.hideContactModal()">&times;</button></div></div>
-  <div class="em-modal-content" style="padding:16px 22px;">
+<div class="em-modal-mask" id="emContactModalMask"></div>
+<div class="em-modal-box" id="emContactModalBox">
+  <div class="em-mb-head"><span class="em-mb-title" id="emContactModalTitle">添加联系人</span><button class="em-mb-close" onclick="EmailTool.hideContactModal()">&times;</button></div>
+  <div class="em-mb-body">
     <input type="hidden" id="emEditContactId">
     <div class="em-form-group"><div class="em-form-label">姓名</div><input type="text" class="form-input" id="emContactName" placeholder="请输入姓名"></div>
     <div class="em-form-group"><div class="em-form-label">邮箱</div><input type="email" class="form-input" id="emContactEmail" placeholder="请输入邮箱地址"></div>
     <div class="em-form-group"><div class="em-form-label">分组</div><input type="text" class="form-input" id="emContactGroup" placeholder="例如：客户、同事、领导" value="默认分组"></div>
   </div>
-  <div style="padding:14px 22px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:10px;">
+  <div class="em-mb-foot">
     <button class="btn btn-outline btn-sm" onclick="EmailTool.hideContactModal()">取消</button>
     <button class="btn btn-primary btn-sm" onclick="EmailTool.saveContact()">保存</button>
   </div>
 </div>
 
 <!-- 模板模态框 -->
-<div class="fd-overlay" id="emTemplateModalOv"></div>
-<div class="fd-dropdown em-modal-box" id="emTemplateModal" style="display:none;width:580px;left:50%;top:50%;transform:translate(-50%,-50%);max-height:85vh;overflow-y:auto;">
-  <div class="fd-head"><span class="fd-cn" id="emTemplateModalTitle">新建模板</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" onclick="EmailTool.hideTemplateModal()">&times;</button></div></div>
-  <div class="em-modal-content" style="padding:16px 22px;">
+<div class="em-modal-mask" id="emTemplateModalMask"></div>
+<div class="em-modal-box" id="emTemplateModalBox" style="width:580px;">
+  <div class="em-mb-head"><span class="em-mb-title" id="emTemplateModalTitle">新建模板</span><button class="em-mb-close" onclick="EmailTool.hideTemplateModal()">&times;</button></div>
+  <div class="em-mb-body">
     <input type="hidden" id="emEditTplId">
     <div class="em-form-group"><div class="em-form-label">模板名称</div><input type="text" class="form-input" id="emTplName" placeholder="给模板起个名字"></div>
     <div class="em-form-group"><div class="em-form-label">收件人 <span style="color:var(--t3);font-weight:400;">(可选)</span></div><div class="em-tag-input-wrap" onclick="document.getElementById('emTplToInput').focus()"><div id="emTplToTags"></div><input type="text" id="emTplToInput" placeholder="输入邮箱，按Enter添加" onkeydown="EmailTool.handleTplToKey(event)"></div></div>
     <div class="em-form-group"><div class="em-form-label">抄送 <span style="color:var(--t3);font-weight:400;">(可选)</span></div><div class="em-tag-input-wrap" onclick="document.getElementById('emTplCcInput').focus()"><div id="emTplCcTags"></div><input type="text" id="emTplCcInput" placeholder="输入抄送邮箱" onkeydown="EmailTool.handleTplCcKey(event)"></div></div>
     <div class="em-form-group"><div class="em-form-label">邮件主题</div><input type="text" class="form-input" id="emTplSubject" placeholder="邮件主题模板"></div>
     <div class="em-form-group"><div class="em-form-label">正文内容</div><textarea class="form-input" id="emTplBody" style="min-height:160px;resize:vertical;" placeholder="邮件正文模板"></textarea></div>
+    <div class="em-form-group"><div class="em-batch-toggle" style="margin-bottom:0;"><input type="checkbox" id="emTplBatchMode"><label for="emTplBatchMode">个性化发送</label><span class="em-batch-hint">使用此模板时自动切换批量模式</span></div></div>
   </div>
-  <div style="padding:14px 22px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:10px;">
+  <div class="em-mb-foot">
     <button class="btn btn-outline btn-sm" onclick="EmailTool.hideTemplateModal()">取消</button>
     <button class="btn btn-primary btn-sm" onclick="EmailTool.saveTemplateModal()">保存模板</button>
   </div>
 </div>
 
 <!-- 联系人选择器 -->
-<div class="fd-overlay" id="emPickerOv"></div>
-<div class="fd-dropdown em-modal-box" id="emPickerModal" style="display:none;width:500px;left:50%;top:50%;transform:translate(-50%,-50%);max-height:85vh;overflow-y:auto;">
-  <div class="fd-head"><span class="fd-cn">从联系人选择收件人</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" onclick="EmailTool.hidePickerModal()">&times;</button></div></div>
-  <div class="em-modal-content" id="emPickerBody" style="padding:16px 22px;max-height:400px;overflow-y:auto;"></div>
-  <div style="padding:14px 22px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:10px;">
+<div class="em-modal-mask" id="emPickerModalMask"></div>
+<div class="em-modal-box" id="emPickerModalBox">
+  <div class="em-mb-head"><span class="em-mb-title">从联系人选择收件人</span><button class="em-mb-close" onclick="EmailTool.hidePickerModal()">&times;</button></div>
+  <div class="em-mb-body" id="emPickerBody" style="max-height:400px;overflow-y:auto;"></div>
+  <div class="em-mb-foot">
     <button class="btn btn-outline btn-sm" onclick="EmailTool.hidePickerModal()">取消</button>
     <button class="btn btn-primary btn-sm" onclick="EmailTool.confirmPicker()">添加选中</button>
   </div>
 </div>
 
 <!-- 分组选择器 -->
-<div class="fd-overlay" id="emGroupPickerOv"></div>
-<div class="fd-dropdown em-modal-box" id="emGroupPickerModal" style="display:none;width:500px;left:50%;top:50%;transform:translate(-50%,-50%);max-height:85vh;overflow-y:auto;">
-  <div class="fd-head"><span class="fd-cn">按分组添加收件人</span><div class="fd-acts"><button class="btn btn-ghost btn-xs" onclick="EmailTool.hideGroupPickerModal()">&times;</button></div></div>
-  <div class="em-modal-content" id="emGroupPickerBody" style="padding:8px 16px;max-height:450px;overflow-y:auto;"></div>
-  <div style="padding:14px 22px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:10px;">
+<div class="em-modal-mask" id="emGroupPickerModalMask"></div>
+<div class="em-modal-box" id="emGroupPickerModalBox">
+  <div class="em-mb-head"><span class="em-mb-title">按分组添加收件人</span><button class="em-mb-close" onclick="EmailTool.hideGroupPickerModal()">&times;</button></div>
+  <div class="em-mb-body" id="emGroupPickerBody" style="max-height:450px;overflow-y:auto;"></div>
+  <div class="em-mb-foot">
     <button class="btn btn-outline btn-sm" onclick="EmailTool.hideGroupPickerModal()">取消</button>
     <button class="btn btn-primary btn-sm" onclick="EmailTool.confirmGroupPicker()">添加选中分组的联系人</button>
   </div>

@@ -1912,6 +1912,7 @@ def email_add_template():
         'body': data.get('body', ''),
         'to': data.get('to', []),
         'cc': data.get('cc', []),
+        'batchMode': data.get('batchMode', False),
     }
     templates.append(template)
     _email_save_json(EMAIL_TEMPLATES_FILE, templates)
@@ -1938,6 +1939,8 @@ def email_update_template(tid):
                 t['to'] = data['to']
             if 'cc' in data:
                 t['cc'] = data['cc']
+            if 'batchMode' in data:
+                t['batchMode'] = data['batchMode']
             break
     _email_save_json(EMAIL_TEMPLATES_FILE, templates)
     return jsonify({'success': True})
