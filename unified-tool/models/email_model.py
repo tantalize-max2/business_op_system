@@ -388,16 +388,51 @@ def cancel_login():
     login_state = {'status': 'idle', 'message': '登录已取消', 'code': None, 'browser_open': False}
 
 
+def _find_chrome_path():
+    """自动检测 Chrome/Chromium 路径，兼容 Windows/Mac/Linux 服务器"""
+    import platform
+    system = platform.system()
+    candidates = []
+    if system == 'Windows':
+        candidates = [
+            os.path.expandvars(r'%ProgramFiles%\Google\Chrome\Application\chrome.exe'),
+            os.path.expandvars(r'%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe'),
+            os.path.expandvars(r'%LocalAppData%\Google\Chrome\Application\chrome.exe'),
+        ]
+    elif system == 'Darwin':
+        candidates = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        ]
+    else:  # Linux
+        candidates = [
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/snap/bin/chromium',
+        ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    # 未找到系统 Chrome，返回 None 让 Playwright 使用自带的 Chromium
+    return None
+
+
 def _blackbox_login_worker():
     global login_state
     browser = None
     try:
         from playwright.sync_api import sync_playwright
         login_state['message'] = '正在启动浏览器...'
-        chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+        chrome_path = _find_chrome_path()
+        launch_opts = {
+            'headless': True,
+            'args': ['--no-sandbox', '--disable-blink-features=AutomationControlled',
+                     '--disable-gpu', '--disable-dev-shm-usage'],
+        }
+        if chrome_path:
+            launch_opts['executable_path'] = chrome_path
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, executable_path=chrome_path,
-                args=['--no-sandbox', '--disable-blink-features=AutomationControlled'])
+            browser = p.chromium.launch(**launch_opts)
             context = browser.new_context(viewport={'width': 1280, 'height': 800},
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
             page = context.new_page()
@@ -506,7 +541,7 @@ def _blackbox_login_worker():
             except Exception: pass
     except ImportError:
         login_state['status'] = 'failed'
-        login_state['message'] = 'Playwright未正确安装'
+        login_state['message'] = 'Playwright未安装，请在服务器执行: pip install playwright && playwright install chromium'
     except Exception as e:
         login_state['status'] = 'failed'
         login_state['message'] = f'登录过程出错: {str(e)}'
