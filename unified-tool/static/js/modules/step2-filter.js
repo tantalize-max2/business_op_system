@@ -614,3 +614,33 @@ document.getElementById('btnPreprocess').addEventListener('click', async () => {
 document.getElementById('btnBackFromL2').addEventListener('click', () => {
   if (S.currentStep === 'filter2') switchStep('filter1');
 });
+
+// ========== 跳过行控件 ==========
+(function() {
+  const input = document.getElementById('skipRowsInput');
+  if (!input) return;
+  // 切换到过滤面板时，同步当前文件的 skipRows 到输入框
+  const origSwitch = typeof switchStep === 'function' ? switchStep : null;
+  // 值变化时重新解析
+  let debounceTimer = null;
+  input.addEventListener('input', () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const f = getActiveFile();
+      if (!f || !f.rawAoA) { ntf('当前文件不支持跳过行', 'error'); return; }
+      const val = parseInt(input.value) || 0;
+      reparseFileWithSkipRows(f.id, val);
+    }, 600);
+  });
+  // 切换文件时同步 skipRows 值
+  const origRenderFileTabs = typeof renderFileTabs === 'function' ? renderFileTabs : null;
+})();
+
+// 每次渲染文件标签/切换文件时，同步跳过行输入框
+const _origRenderFileTabs = renderFileTabs;
+renderFileTabs = function() {
+  _origRenderFileTabs();
+  const f = getActiveFile();
+  const input = document.getElementById('skipRowsInput');
+  if (input && f) input.value = f.skipRows || 0;
+};

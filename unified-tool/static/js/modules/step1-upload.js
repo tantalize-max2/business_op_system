@@ -3,6 +3,32 @@
 // ========== 文件管理 ==========
 let fileIdCounter = 0;
 
+/**
+ * 根据原始二维数组和跳过行数，生成 hdr 和 raw
+ * skipRows: 跳过前N行，第N+1行作为表头
+ */
+function _parseFromAoA(rawAoA, skipRows) {
+  skipRows = Math.max(0, skipRows || 0);
+  if (rawAoA.length <= skipRows) return { hdr: [], raw: [], l1: {} };
+  const hdr = rawAoA[skipRows].map((v, i) => v !== undefined && v !== null && String(v).trim() !== '' ? String(v).trim() : `列${i + 1}`);
+  // 处理表头重复：给重复列名加后缀
+  const seen = {};
+  const hdrUnique = hdr.map(h => {
+    if (!seen[h]) { seen[h] = 1; return h; }
+    seen[h]++;
+    return `${h}_${seen[h]}`;
+  });
+  const l1 = {};
+  hdrUnique.forEach(c => { l1[c] = newL1(); });
+  const raw = [];
+  for (let i = skipRows + 1; i < rawAoA.length; i++) {
+    const row = {};
+    hdrUnique.forEach((c, ci) => { row[c] = rawAoA[i][ci] !== undefined ? rawAoA[i][ci] : ''; });
+    raw.push(row);
+  }
+  return { hdr: hdrUnique, raw, l1 };
+}
+
 function handleFiles(files) {
   for (const file of files) {
     handleFile(file);
@@ -18,30 +44,30 @@ function handleFile(file) {
       const rawBuffer = e.target.result;
       const wb = XLSX.read(rawBuffer, {type: 'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(ws, {defval: ''});
-      if (!json.length) { ntf('文件为空', 'error'); return; }
-      const hdr = Object.keys(json[0]);
-      const l1 = {};
-      hdr.forEach(c => { l1[c] = newL1(); });
+      // 保存原始二维数组，用于后续调整 skipRows
+      const rawAoA = XLSX.utils.sheet_to_json(ws, {header: 1, defval: ''});
+      if (!rawAoA.length) { ntf('文件为空', 'error'); return; }
+      const { hdr, raw, l1 } = _parseFromAoA(rawAoA, 0);
+      if (!hdr.length) { ntf('文件为空', 'error'); return; }
       // 同名文件自动替换旧文件
       const oldIdx = S.files.findIndex(f => f.name === file.name);
       let newId;
+      const fileObj = {
+        id: 0, name: file.name, raw, hdr, l1, rawAoA, skipRows: 0,
+        grps: [], gid: 0, addedCols: [], sumCol: '', hiddenCols: new Set(), rawFileData: rawBuffer
+      };
       if (oldIdx >= 0) {
         newId = S.files[oldIdx].id;
-        S.files[oldIdx] = {
-          id: newId, name: file.name, raw: json, hdr, l1,
-          grps: [], gid: 0, addedCols: [], sumCol: '', hiddenCols: new Set(), rawFileData: rawBuffer
-        };
+        fileObj.id = newId;
+        S.files[oldIdx] = fileObj;
         // 清理与旧文件关联的拆分状态
         if (S.splitFileId === newId) { S.splitFileId = null; S.splitMatchedRows = null; S.splitResult = null; }
-        ntf(`已替换 ${file.name} (${json.length} 行)`);
+        ntf(`已替换 ${file.name} (${raw.length} 行)`);
       } else {
         newId = ++fileIdCounter;
-        S.files.push({
-          id: newId, name: file.name, raw: json, hdr, l1,
-          grps: [], gid: 0, addedCols: [], sumCol: '', hiddenCols: new Set(), rawFileData: rawBuffer
-        });
-        ntf(`已加载 ${file.name} (${json.length} 行)`);
+        fileObj.id = newId;
+        S.files.push(fileObj);
+        ntf(`已加载 ${file.name} (${raw.length} 行)`);
       }
       S.activeFileId = newId;
       renderFileList();
@@ -56,6 +82,36 @@ function handleFile(file) {
     } catch (err) { ntf('解析失败: ' + err.message, 'error'); }
   };
   reader.readAsArrayBuffer(file);
+}
+
+/**
+ * 重新解析文件：调整 skipRows 后重新生成 hdr 和 raw
+ */
+function reparseFileWithSkipRows(fileId, skipRows) {
+  const f = S.files.find(x => x.id === fileId);
+  if (!f || !f.rawAoA) return;
+  skipRows = Math.max(0, Math.min(skipRows, f.rawAoA.length - 1));
+  f.skipRows = skipRows;
+  const { hdr, raw, l1 } = _parseFromAoA(f.rawAoA, skipRows);
+  // 保留已有的分组信息（如果表头不变）
+  f.hdr = hdr;
+  f.raw = raw;
+  f.l1 = l1;
+  // 清除与列相关的旧状态
+  f.addedCols = [];
+  f.hiddenCols = new Set();
+  f.sumCol = '';
+  // 清理拆分状态
+  if (S.splitFileId === fileId) { S.splitFileId = null; S.splitMatchedRows = null; S.splitResult = null; }
+  renderFileList();
+  renderFileTabs();
+  renderTable();
+  updHdr();
+  popGCol();
+  renderGrpCards();
+  renderL2FileTabs();
+  updSbStats();
+  ntf(`已跳过前 ${skipRows} 行，表头: ${hdr.slice(0, 5).join(', ')}${hdr.length > 5 ? '...' : ''}`);
 }
 
 function removeFile(id) {
