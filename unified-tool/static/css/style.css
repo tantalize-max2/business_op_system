@@ -1045,6 +1045,23 @@ body {
   box-shadow:0 0 8px rgba(13,148,136,.4);
 }
 
+/* 小数位数+百分比控件 */
+.nz-decimal-ctrl {
+  display:flex; align-items:center; gap:3px;
+  font:11px var(--mf); color:var(--t2);
+}
+.nz-decimal-ctrl label { white-space:nowrap; }
+.nz-decimal-ctrl select {
+  width:38px; padding:2px 4px; border:1px solid var(--bd); border-radius:5px;
+  background:var(--bg2); color:var(--t1); font:11px var(--mf); outline:none;
+  cursor:pointer;
+}
+.nz-decimal-ctrl select:focus { border-color:var(--ac); }
+#nzPercentBtn { font-weight:700 !important; font-size:13px !important; }
+#nzPercentBtn.active {
+  background:var(--ac) !important; color:#fff !important;
+}
+
 /* 范围选取提示条 */
 .nz-range-hint {
   display:flex; align-items:center; justify-content:center; gap:10px;

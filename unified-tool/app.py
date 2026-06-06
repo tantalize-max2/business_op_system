@@ -1208,7 +1208,7 @@ def _nz_resolve_metric(entry, col, metric, sum_col, ac_col, ac_val, fd):
         s = entry.get('sum')
         if s is not None:
             try:
-                return {'ok': True, 'value': round(float(s), 2)}
+                return {'ok': True, 'value': float(s)}
             except:
                 pass
         return {'ok': False, 'value': '未匹配(求和)'}
@@ -1220,7 +1220,7 @@ def _nz_resolve_metric(entry, col, metric, sum_col, ac_col, ac_val, fd):
         c = entry.get('count', 0)
         if s is not None and c > 0:
             try:
-                return {'ok': True, 'value': round(float(s) / c, 2)}
+                return {'ok': True, 'value': float(s) / c}
             except:
                 pass
         return {'ok': True, 'value': 0}
@@ -1436,7 +1436,7 @@ def nz_fill_template():
                     safe = re.sub(r'[^0-9+\-*/().eE\s]', '', inner)
                     result = eval(safe)
                     if isinstance(result, (int, float)):
-                        return str(round(result, 2))
+                        return str(result)
                     return 'NaN'
                 except:
                     return 'NaN'
@@ -1513,9 +1513,9 @@ def nz_fill_template():
             if not vals:
                 return 'NaN'
             if fn == 'SUM':
-                return str(round(sum(vals), 2))
+                return str(sum(vals))
             elif fn == 'AVG':
-                return str(round(sum(vals) / len(vals), 2))
+                return str(sum(vals) / len(vals))
             return 'NaN'
         return func_pattern.sub(replace_func, expr_str)
 
@@ -1576,7 +1576,7 @@ def nz_fill_template():
                     try:
                         num_result = eval(safe_expr)
                         if isinstance(num_result, (int, float)) and str(num_result) != 'nan':
-                            cell.value = round(num_result, 2)
+                            cell.value = num_result
                             fill_count += 1
                         else:
                             cell.value = '计算错误'
@@ -1614,6 +1614,43 @@ def nz_fill_template():
                         fail_count += 1
                     else:
                         fill_count += 1
+
+    # 4. 应用数值格式（小数位数 + 百分比）
+    # 构建 (sheet,row,col) -> fmt 的快速查找表
+    fmt_lookup = {}
+    for fmt_item in cell_formats:
+        key = (fmt_item.get('sheet', 0), fmt_item.get('row', 0), fmt_item.get('col', 0))
+        fmt_lookup[key] = fmt_item.get('fmt', {})
+
+    for ws_idx, ws in enumerate(wb.worksheets):
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value is None:
+                    continue
+                key = (ws_idx, cell.row - 1, cell.column - 1)
+                fmt = fmt_lookup.get(key, {})
+                decimal = fmt.get('decimal', None)
+                isPercent = fmt.get('percent', False)
+                if decimal is None and not isPercent:
+                    continue
+                try:
+                    v = float(cell.value)
+                except (ValueError, TypeError):
+                    continue
+                if isPercent:
+                    v = v * 100
+                d = decimal if decimal is not None else 2
+                factor = 10 ** d
+                rounded = round(v * factor) / factor
+                if isPercent:
+                    cell.value = f"{rounded:.{d}f}%"
+                else:
+                    cell.value = round(v, d) if d > 0 else int(rounded)
+                # 百分比用百分比数字格式
+                if isPercent:
+                    cell.number_format = '0%' if d == 0 else f'0.{"0" * d}%'
+                elif d > 0:
+                    cell.number_format = f'0.{"0" * d}'
 
     try:
         wb.save(tmp_out.name)

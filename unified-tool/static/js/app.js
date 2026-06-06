@@ -4209,6 +4209,25 @@ function nzHasFormula(val) { return /\{\{.+?\}\}/.test(val) || nzIsExpression(va
 // 判断是否为纯公式表达式（以 = 开头或仅一个 {{...}}）
 function nzIsExpression(val) { return String(val).startsWith('='); }
 
+/**
+ * 格式化数值：按 decimal 精度四舍五入 + 百分比
+ * @param {number} value - 原始数值
+ * @param {object} fmt - 格式对象 { decimal: 2, percent: false }
+ * @returns {string} 格式化后的字符串
+ */
+function nzFormatValue(value, fmt) {
+  if (value == null || isNaN(value)) return String(value);
+  const decimal = fmt?.decimal != null ? fmt.decimal : 2;
+  const isPercent = fmt?.percent || false;
+  let v = Number(value);
+  if (isPercent) v = v * 100;
+  const factor = Math.pow(10, decimal);
+  const rounded = Math.round(v * factor) / factor;
+  let str = decimal > 0 ? rounded.toFixed(decimal) : String(Math.round(rounded));
+  if (isPercent) str += '%';
+  return str;
+}
+
 // ---- 单元格引用解析 ----
 // 匹配单元格引用: A1, B2, AA10 等（列字母+行号），但排除 {{...}} 内部内容
 const NZ_CELL_REF_RE = /\b([A-Z]{1,3})(\d{1,5})\b/g;
@@ -4359,10 +4378,10 @@ function nzEvalExpression(cellVal, sheetIdx, visitedRefs) {
     const fn = funcName.toUpperCase();
     if (fn === 'SUM') {
       const sum = values.reduce((a, b) => a + b, 0);
-      return String(Math.round(sum * 100) / 100);
+      return String(sum);
     } else if (fn === 'AVG') {
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      return String(Math.round(avg * 100) / 100);
+      return String(avg);
     }
     allOk = false;
     return 'NaN';
@@ -4379,7 +4398,7 @@ function nzEvalExpression(cellVal, sheetIdx, visitedRefs) {
   try {
     const numResult = Function('"use strict"; return (' + safeExpr + ')')();
     if (typeof numResult === 'number' && isFinite(numResult)) {
-      return { ok: true, value: Math.round(numResult * 100) / 100 };
+      return { ok: true, value: numResult };
     }
     return { ok: false, value: '计算错误' };
   } catch (e) {
@@ -5129,12 +5148,12 @@ function nzRenderTable() {
       const selCls = (NZ.selectedCell && NZ.selectedCell.row === r && NZ.selectedCell.col === c) ? ' selected' : '';
       const fmtAttr = fmtStyle ? ` style="${fmtStyle}"` : '';
 
-      // 预览模式下替换公式为计算值
+      // 预览模式下替换公式为计算值（应用小数位和百分比格式）
       let displayVal = cellVal;
       if (NZ.previewMode && isFormula) {
         const statsData = nzComputeStats();
         const resolved = nzResolveCellFormula(cellVal, statsData, NZ.activeSheet);
-        displayVal = resolved.ok ? String(resolved.value) : cellVal;
+        displayVal = resolved.ok ? nzFormatValue(resolved.value, fmt) : cellVal;
       }
 
       tbody += `<td class="${cls}${selCls}" data-r="${r}" data-c="${c}" title="${esc(cellVal)}"${fmtAttr}>${esc(displayVal)}</td>`;
@@ -5340,6 +5359,13 @@ function nzUpdateEditBar() {
     if (cell) val = cell.v != null ? String(cell.v) : '';
   }
   input.value = val;
+  
+  // 同步小数位和百分比状态
+  const fmt = NZ.cellFormats[editKey] || {};
+  const decSel = document.getElementById('nzDecimalSel');
+  const pctBtn = document.getElementById('nzPercentBtn');
+  if (decSel) decSel.value = fmt.decimal != null ? fmt.decimal : 2;
+  if (pctBtn) pctBtn.classList.toggle('active', !!fmt.percent);
 }
 
 // ---- 单元格编辑 ----
@@ -5785,6 +5811,22 @@ document.getElementById('nzAlignRightBtn').addEventListener('click', () => nzSet
 
 document.getElementById('nzFontName').addEventListener('change', e => nzSetFmt('fontName', e.target.value || ''));
 document.getElementById('nzFontSize').addEventListener('change', e => nzSetFmt('fontSize', e.target.value ? parseInt(e.target.value) : ''));
+
+// 小数位数
+document.getElementById('nzDecimalSel').addEventListener('change', e => {
+  nzSetFmt('decimal', parseInt(e.target.value));
+  // 更新预览
+  if (NZ.previewMode) nzRenderTable();
+});
+// 百分比
+document.getElementById('nzPercentBtn').addEventListener('click', () => {
+  const fmt = nzGetCurrentFmt();
+  const newVal = !fmt.percent;
+  nzSetFmt('percent', newVal);
+  document.getElementById('nzPercentBtn').classList.toggle('active', newVal);
+  // 更新预览
+  if (NZ.previewMode) nzRenderTable();
+});
 
 // 选中单元格时同步格式工具栏状态
 function nzSyncFormatBar() {
