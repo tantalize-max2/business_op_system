@@ -188,6 +188,14 @@ const EmailTool = (() => {
         } else _toast('该收件人已存在', 'info');
     }
 
+    // 更新分组下拉列表
+    function _updateGroupDatalist() {
+        const dl = document.getElementById('emGroupList');
+        if (!dl) return;
+        const groups = [...new Set(contacts.map(c => c.group).filter(Boolean))];
+        dl.innerHTML = groups.map(g => `<option value="${_esc(g)}">`).join('');
+    }
+
     function _openAddContact() {
         if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
         document.getElementById('emContactModalTitle').textContent = '添加联系人';
@@ -195,6 +203,7 @@ const EmailTool = (() => {
         document.getElementById('emContactName').value = '';
         document.getElementById('emContactEmail').value = '';
         document.getElementById('emContactGroup').value = '默认分组';
+        _updateGroupDatalist();
         _showModal('emContactModal');
     }
 
@@ -206,6 +215,7 @@ const EmailTool = (() => {
         document.getElementById('emContactName').value = c.name;
         document.getElementById('emContactEmail').value = c.email;
         document.getElementById('emContactGroup').value = c.group || '默认分组';
+        _updateGroupDatalist();
         _showModal('emContactModal');
     }
 

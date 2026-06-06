@@ -1362,13 +1362,49 @@ tr.l1sub td { background:var(--bg3); font-style:italic; }
 .em-gp-mname { font-weight:500; min-width:60px; color:var(--t1); }
 .em-gp-memail { color:var(--t2); flex:1; }
 
-/* ---- 表单输入框统一 ---- */
-#stepEmail .form-input, #stepEmail .form-select {
-  width:100%; padding:9px 14px; border:1px solid var(--bd); border-radius:var(--r);
-  font-size:14px; outline:none; transition:all .2s; font-family:inherit;
+/* ---- 表单输入框统一美化 ---- */
+#stepEmail .form-input,
+#stepEmail .form-select,
+#stepEmail textarea.form-input {
+  width:100%; box-sizing:border-box;
+  padding:9px 14px; border:1px solid var(--bd); border-radius:var(--r);
+  font-size:14px; outline:none; transition:all .25s; font-family:inherit;
   background:var(--bg2); color:var(--t1);
 }
-#stepEmail .form-input:focus, #stepEmail .form-select:focus {
-  border-color:var(--ac); box-shadow:0 0 0 3px var(--acg);
+#stepEmail .form-input:hover,
+#stepEmail .form-select:hover {
+  border-color:var(--bd2);
 }
-#stepEmail .form-input::placeholder { color:var(--t3); }
+#stepEmail .form-input:focus,
+#stepEmail .form-select:focus,
+#stepEmail textarea.form-input:focus {
+  border-color:var(--ac); box-shadow:0 0 0 3px var(--acg);
+  background:var(--bg2);
+}
+#stepEmail .form-input::placeholder,
+#stepEmail textarea.form-input::placeholder { color:var(--t3); }
+
+/* 模态框内 input/textarea 确保不溢出 */
+.em-modal-box .form-input,
+.em-modal-box .form-select,
+.em-modal-box textarea.form-input {
+  width:100%; box-sizing:border-box;
+}
+
+/* 模板正文 textarea 占满弹窗宽度 */
+#emTplBody {
+  width:100% !important; box-sizing:border-box !important;
+  min-height:160px; resize:vertical;
+}
+
+/* 模态框内表单组间距微调 */
+.em-modal-box .em-form-group { margin-bottom:14px; }
+.em-modal-box .em-form-group:last-child { margin-bottom:0; }
+
+/* 分组输入框 - 带下拉提示 */
+#emContactGroup {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}

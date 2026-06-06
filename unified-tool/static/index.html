@@ -654,7 +654,7 @@
     <input type="hidden" id="emEditContactId">
     <div class="em-form-group"><div class="em-form-label">姓名</div><input type="text" class="form-input" id="emContactName" placeholder="请输入姓名"></div>
     <div class="em-form-group"><div class="em-form-label">邮箱</div><input type="email" class="form-input" id="emContactEmail" placeholder="请输入邮箱地址"></div>
-    <div class="em-form-group"><div class="em-form-label">分组</div><input type="text" class="form-input" id="emContactGroup" placeholder="例如：客户、同事、领导" value="默认分组"></div>
+    <div class="em-form-group"><div class="em-form-label">分组</div><input type="text" class="form-input" id="emContactGroup" list="emGroupList" placeholder="选择或输入分组名" value="默认分组"><datalist id="emGroupList"></datalist></div>
   </div>
   <div class="em-mb-foot">
     <button class="btn btn-outline btn-sm" onclick="EmailTool.hideContactModal()">取消</button>
