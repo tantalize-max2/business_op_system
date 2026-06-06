@@ -511,6 +511,7 @@ document.getElementById('btnClrL1').addEventListener('click', () => {
   popGCol();
   renderGrpCards();
   renderL2FileTabs();
+  popDepGrp();
   updLxButtons();
   debouncedSave();
   ntf('已清空所有过滤条件和配置');
