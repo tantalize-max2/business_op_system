@@ -1351,7 +1351,7 @@ tr.l1sub td { background:var(--bg3); font-style:italic; }
 .em-select-styled:focus,
 #stepEmail select:focus { border-color:var(--ac); box-shadow:0 0 0 3px var(--acg); }
 #stepEmail .em-rich-toolbar select {
-  height:28px; font-size:12px; padding-right:28px; padding-left:8px;
+  height:auto; min-height:30px; font-size:12px; padding-right:28px; padding-left:8px; padding-top:4px; padding-bottom:4px; line-height:1.4;
 }
 
 /* ---- 联系人选择器行 ---- */
