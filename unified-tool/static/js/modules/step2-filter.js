@@ -1,23 +1,60 @@
 // ========== step2-filter.js — 步骤2：一级过滤 ==========
 
 // ========== 渲染: 文件标签 ==========
+let _dragFileId = null;
 function renderFileTabs() {
   const div = document.getElementById('fileTabs');
   if (!div) return;
   let html = '';
   S.files.forEach(f => {
     const on = f.id === S.activeFileId ? 'on' : '';
-    html += `<span class="ftab ${on}" data-fid="${f.id}">${esc(f.name)}<span class="rx" data-fid="${f.id}">&times;</span></span>`;
+    html += `<span class="ftab ${on}" data-fid="${f.id}" draggable="true">${esc(f.name)}<span class="rx" data-fid="${f.id}">&times;</span></span>`;
   });
   div.innerHTML = html;
-  div.querySelectorAll('.ftab').forEach(el => el.addEventListener('click', e => {
-    if (e.target.classList.contains('rx')) { removeFile(+e.target.dataset.fid); renderFileTabs(); return; }
-    S.activeFileId = +el.dataset.fid;
-    renderFileTabs();
-    renderTable();
-    updHdr();
-    syncPreprocessColSel();
-  }));
+  div.querySelectorAll('.ftab').forEach(el => {
+    // 点击切换
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('rx')) { removeFile(+e.target.dataset.fid); renderFileTabs(); return; }
+      S.activeFileId = +el.dataset.fid;
+      renderFileTabs();
+      renderTable();
+      updHdr();
+      popGCol();
+      syncPreprocessColSel();
+    });
+    // 拖拽排序
+    el.addEventListener('dragstart', e => {
+      _dragFileId = +el.dataset.fid;
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('ftab-dragging');
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('ftab-dragging');
+      _dragFileId = null;
+      div.querySelectorAll('.ftab').forEach(t => t.classList.remove('ftab-drag-over'));
+    });
+    el.addEventListener('dragover', e => {
+      if (_dragFileId == null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      el.classList.add('ftab-drag-over');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('ftab-drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('ftab-drag-over');
+      if (_dragFileId == null) return;
+      const targetFid = +el.dataset.fid;
+      if (_dragFileId === targetFid) return;
+      const fromIdx = S.files.findIndex(f => f.id === _dragFileId);
+      const toIdx = S.files.findIndex(f => f.id === targetFid);
+      if (fromIdx < 0 || toIdx < 0) return;
+      const [moved] = S.files.splice(fromIdx, 1);
+      S.files.splice(toIdx, 0, moved);
+      renderFileTabs();
+      ntf('文件顺序已调整');
+    });
+  });
 }
 
 // ========== 渲染: 数据表格（含虚拟滚动） ==========
@@ -31,7 +68,7 @@ function renderTable() {
   const f = getActiveFile();
   if (!f) return;
   const hdr = f.hdr, l1 = f.l1, data = getSortedData(getFilteredData()), hidden = f.hiddenCols;
-  let hh = '<tr><th style="width:34px"><div class="th-inner"><span class="th-name">#</span></div></th>';
+  let hh = '<tr><th class="th-idx"><div class="th-inner th-inner-idx">#</div></th>';
   hdr.forEach(col => {
     if (hidden.has(col)) return;
     const cf = l1[col];
@@ -449,6 +486,40 @@ function closeFD() { fdOv.classList.remove('vis'); fdDd.classList.remove('vis');
 
 // ========== 列管理 ==========
 const cmOv = document.getElementById('cmOv'), cmDd = document.getElementById('cmDd'), cmList = document.getElementById('cmList');
+
+// 清空过滤按钮
+document.getElementById('btnClrL1').addEventListener('click', () => {
+  const f = getActiveFile();
+  if (!f) return;
+  f.hdr.forEach(col => { f.l1[col] = newL1(); });
+  renderTable();
+  updHdr();
+  popGCol();
+  ntf('已清空所有过滤条件');
+});
+
+// 列管理按钮
+document.getElementById('btnColMgr').addEventListener('click', () => {
+  updColMgr();
+  cmOv.classList.add('vis');
+  cmDd.classList.add('vis');
+});
+
+// 关闭列管理
+document.getElementById('cmX').addEventListener('click', closeColMgr);
+cmOv.addEventListener('click', closeColMgr);
+function closeColMgr() { cmOv.classList.remove('vis'); cmDd.classList.remove('vis'); }
+
+// 列管理-全部显示
+document.getElementById('cmShowAll').addEventListener('click', () => {
+  const f = getActiveFile();
+  if (!f) return;
+  f.hiddenCols.clear();
+  updColMgr();
+  renderTable();
+  updHdr();
+  ntf('已显示全部列');
+});
 
 function updColMgr() {
   const f = getActiveFile();

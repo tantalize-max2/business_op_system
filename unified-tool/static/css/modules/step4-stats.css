@@ -23,6 +23,8 @@
 }
 .ftab:hover { border-color:var(--ac); color:var(--t1); }
 .ftab.on { background:var(--gradient-ac); border-color:transparent; color:#fff; box-shadow:0 2px 8px rgba(13,148,136,.3); }
+.ftab-dragging { opacity:.4; }
+.ftab-drag-over { border:2px dashed var(--ac)!important; background:var(--acg)!important; }
 .ftab .rx { cursor:pointer; opacity:.5; font-size:11px; margin-left:2px; }
 .ftab .rx:hover { opacity:1; }
 
@@ -70,7 +72,9 @@
 .data-table tbody tr { transition:background .08s; }
 .data-table tbody tr:nth-child(even) { background:rgba(13,148,136,.02); }
 [data-theme="light"] .data-table tbody tr:nth-child(even) { background:rgba(13,148,136,.03); }
-.ti { color:var(--t3)!important; font-size:10px!important; width:38px; text-align:center!important; }
+.ti { color:var(--t3)!important; font-size:10px!important; width:38px!important; min-width:38px!important; max-width:46px!important; text-align:center!important; }
+.th-idx { width:38px; min-width:38px!important; max-width:46px; }
+.th-inner-idx { padding:6px 4px!important; justify-content:center!important; font-size:11px; font-weight:600; color:var(--t3); text-transform:none; letter-spacing:0; }
 .th-grip { display:inline-flex; align-items:center; justify-content:center; width:14px; height:20px; font-size:11px; color:var(--t3); cursor:grab; flex-shrink:0; opacity:.25; transition:opacity .12s; user-select:none; }
 .th-grip:hover { opacity:1; color:var(--ac); }
 .data-table th.dragging { opacity:.4!important; background:var(--acg)!important; }
