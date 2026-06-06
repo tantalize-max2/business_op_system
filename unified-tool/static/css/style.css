@@ -566,6 +566,11 @@ body {
 .gc-chain-arrow { font-size:10px; color:var(--t3); font-family:var(--mf); padding:2px 0 0 4px; user-select:none; }
 /* 值标签"更多" */
 .gc-more { background:var(--bg3) !important; color:var(--t3) !important; border:1px dashed var(--bd) !important; }
+.gc-unmatched { opacity:0.5; border-style:dashed !important; }
+.gc-unmatched .gc-n { text-decoration:line-through; color:var(--t3); }
+.gc-unmatched-tag { font-size:9px; padding:1px 6px; border-radius:4px; background:var(--wnbg); color:var(--wn); font-family:var(--mf); white-space:nowrap; }
+.rv-unmatched-row { opacity:0.45; }
+.rv-unmatched-row td:first-child { text-decoration:line-through; }
 .gc-rel { font-size:9px; padding:2px 6px; border-radius:4px; font-weight:600; font-family:var(--mf); }
 .gc-rel.rel-and { background:var(--acg); color:var(--ac); }
 .gc-rel.rel-or { background:var(--wnbg); color:var(--wn); }
