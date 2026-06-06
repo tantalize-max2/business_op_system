@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 data/uploads/
 data/output/
+data/split_groups.json
 data/email/cookies.json
 data/email/csrftoken.txt
 data/email/login_creds.json

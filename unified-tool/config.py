@@ -9,6 +9,7 @@ OUTPUT_DIR = os.path.join(DATA_DIR, 'output')
 CONFIGS_DIR = os.path.join(DATA_DIR, 'configs')
 
 MAPPING_FILE = os.path.join(DATA_DIR, 'bureau_mapping.json')
+SPLIT_GROUPS_FILE = os.path.join(DATA_DIR, 'split_groups.json')
 SHEETS_FILE = os.path.join(DATA_DIR, 'kdocs_sheets.json')
 TEMPLATES_DIR = os.path.join(DATA_DIR, 'bureau_templates')
 NZ_TEMPLATES_DIR = os.path.join(DATA_DIR, 'nz_templates')
@@ -61,6 +62,13 @@ COMMERCIAL_BUREAUS = [
     "东苑商客分局", "天府国际商客分局", "大源商客分局", "新会展商客分局",
     "连锁商客分局", "环球商客分局", "天府新谷商客分局", "西信商客分局", "府城商客分局"
 ]
+
+# 拆分组配置：组名 → 分局列表
+# 用于拆分时按组生成汇总文件，组名直接作为文件名前缀
+DEFAULT_SPLIT_GROUPS = {
+    '行业': INDUSTRY_BUREAUS,
+    '商业': COMMERCIAL_BUREAUS,
+}
 
 MAIL_CONFIG = {
     'username': 'wangy592@chinatelecom.cn',

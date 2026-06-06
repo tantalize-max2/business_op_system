@@ -2,7 +2,7 @@
 import os
 import re
 import json
-from config import MAPPING_FILE, TEMPLATES_DIR, DEFAULT_MAPPING
+from config import MAPPING_FILE, TEMPLATES_DIR, DEFAULT_MAPPING, SPLIT_GROUPS_FILE, DEFAULT_SPLIT_GROUPS
 
 
 def template_path(name):
@@ -71,3 +71,20 @@ def delete_bureau_template(name):
         return False
     os.remove(fpath)
     return True
+
+
+def load_split_groups():
+    """加载拆分组配置，如不存在则返回默认值"""
+    if os.path.exists(SPLIT_GROUPS_FILE):
+        try:
+            with open(SPLIT_GROUPS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return DEFAULT_SPLIT_GROUPS.copy()
+
+
+def save_split_groups(groups):
+    """保存拆分组配置"""
+    with open(SPLIT_GROUPS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(groups, f, ensure_ascii=False, indent=2)

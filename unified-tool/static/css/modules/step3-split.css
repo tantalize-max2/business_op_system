@@ -44,3 +44,139 @@
   transition:all .15s; padding:4px; border-radius:6px;
 }
 .file-card-remove:hover { color:var(--err); background:var(--errbg); }
+
+/* ================================================================
+   SPLIT GROUPS (拆分组管理)
+   ================================================================ */
+.split-groups-section {
+  margin-bottom: 12px;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: var(--bg2);
+  padding: 10px 14px;
+}
+.sg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.sg-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t2);
+  margin: 0;
+}
+.sg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sg-card {
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--sg-color, var(--ac));
+  border-radius: 8px;
+  background: var(--bg3);
+  padding: 8px 12px;
+  transition: all .2s;
+  min-height: 40px;
+}
+.sg-card.sg-drop-over {
+  border-color: var(--sg-color, var(--ac));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color, var(--ac)) 25%, transparent);
+}
+.sg-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sg-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sg-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.sg-count {
+  font-size: 11px;
+  color: var(--t3);
+  margin-left: 2px;
+}
+.sg-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.sg-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.sg-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  border: 1px solid;
+  cursor: grab;
+  transition: all .15s;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sg-member:hover { opacity: .85; }
+.sg-member.sg-dragging {
+  opacity: .4;
+  transform: scale(.95);
+}
+.sg-member-x {
+  cursor: pointer;
+  margin-left: 2px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: .5;
+  transition: opacity .15s;
+}
+.sg-member-x:hover { opacity: 1; }
+.sg-member-add {
+  cursor: pointer;
+  border-style: dashed;
+}
+.sg-member-add:hover { opacity: .7; }
+.sg-member-unassigned {
+  background: var(--bg2);
+  color: var(--t3);
+  border-color: var(--bd);
+}
+.sg-unassigned {
+  border: 1px dashed var(--bd);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: transparent;
+}
+.sg-unassigned-head {
+  margin-bottom: 4px;
+}
+.sg-pick-other {
+  opacity: .5;
+}
+
+/* Bureau card group tag */
+.bureau-group-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  white-space: nowrap;
+}

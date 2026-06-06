@@ -1,5 +1,282 @@
 // ========== step3-split.js — 步骤3：分局拆分 ==========
 
+// ========== 拆分组管理 ==========
+// 分组颜色标签（与分局分组颜色复用）
+const SG_COLORS = ['#14b8a6', '#f0a030', '#a78bfa', '#22c8dc', '#f05050', '#ec4899', '#84cc16', '#6366f1'];
+
+function getSplitGroups() {
+  return S.splitGroups || getDefaultSplitGroups();
+}
+
+function getDefaultSplitGroups() {
+  // 从后端获取默认拆分组（DEFAULT_SPLIT_GROUPS）
+  // 前端也维护一份默认值作为 fallback
+  const bureaus = Object.keys(S.mappingData);
+  const industryBureaus = bureaus.filter(b =>
+    b.includes('政企分局') || b.includes('智改数转服务局')
+  );
+  const commercialBureaus = bureaus.filter(b =>
+    b.includes('商客分局') || b.includes('校园分局')
+  );
+  const groups = {};
+  if (industryBureaus.length) groups['行业'] = industryBureaus;
+  if (commercialBureaus.length) groups['商业'] = commercialBureaus;
+  return groups;
+}
+
+function initSplitGroups() {
+  // 初始化：如果从未设置过拆分组，从后端加载默认值
+  if (S.splitGroups === null) {
+    loadSplitGroupsFromServer();
+  } else {
+    renderSplitGroups();
+  }
+}
+
+async function loadSplitGroupsFromServer() {
+  try {
+    const res = await fetch('/api/split-groups');
+    if (res.ok) {
+      const data = await res.json();
+      S.splitGroups = data;
+    } else {
+      S.splitGroups = getDefaultSplitGroups();
+    }
+  } catch {
+    S.splitGroups = getDefaultSplitGroups();
+  }
+  renderSplitGroups();
+}
+
+async function saveSplitGroups() {
+  try {
+    await fetch('/api/split-groups', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(S.splitGroups)
+    });
+  } catch { /* ignore */ }
+  debouncedSave();
+}
+
+function renderSplitGroups() {
+  const list = document.getElementById('sgList');
+  if (!list) return;
+  const groups = getSplitGroups();
+  const bureaus = Object.keys(S.mappingData);
+  const groupNames = Object.keys(groups);
+
+  let html = '';
+  groupNames.forEach((name, i) => {
+    const members = groups[name];
+    const color = SG_COLORS[i % SG_COLORS.length];
+
+    html += `<div class="sg-card" data-group="${esc(name)}" style="--sg-color:${color}">
+      <div class="sg-card-head">
+        <span class="sg-dot" style="background:${color}"></span>
+        <span class="sg-name">${esc(name)}</span>
+        <span class="sg-count">${members.length} 分局</span>
+        <div class="sg-actions">
+          <button class="btn btn-ghost btn-xs sg-rename-btn" title="重命名">改名</button>
+          <button class="btn btn-ghost btn-xs sg-del-btn" title="删除组" style="color:var(--err)">删除</button>
+        </div>
+      </div>
+      <div class="sg-members">
+        ${members.map(b => `<span class="sg-member" data-bureau="${esc(b)}" draggable="true" style="border-color:${color}30;background:${color}10;color:${color}">${esc(b)}<span class="sg-member-x" onclick="removeBureauFromGroup('${esc(name)}','${esc(b)}')">&times;</span></span>`).join('')}
+        <span class="sg-member sg-member-add" onclick="addBureauToGroup('${esc(name)}')" style="border-color:${color}40;background:${color}08;color:${color}">+ 添加分局</span>
+      </div>
+    </div>`;
+  });
+
+  // 未分配分局提示
+  const assigned = new Set();
+  Object.values(groups).forEach(members => members.forEach(b => assigned.add(b)));
+  const unassigned = bureaus.filter(b => !assigned.has(b));
+
+  if (unassigned.length) {
+    html += `<div class="sg-unassigned">
+      <div class="sg-unassigned-head"><span style="color:var(--t3)">未分组分局 (${unassigned.length})</span></div>
+      <div class="sg-members">
+        ${unassigned.map(b => `<span class="sg-member sg-member-unassigned" data-bureau="${esc(b)}" draggable="true">${esc(b)}</span>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  list.innerHTML = html;
+  bindSplitGroupDrag();
+  bindSplitGroupActions();
+}
+
+function bindSplitGroupActions() {
+  const list = document.getElementById('sgList');
+  if (!list) return;
+
+  // 重命名
+  list.querySelectorAll('.sg-rename-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const card = btn.closest('.sg-card');
+      const oldName = card.dataset.group;
+      const newName = prompt('输入新组名：', oldName);
+      if (!newName || newName === oldName) return;
+      if (S.splitGroups && S.splitGroups[newName]) { ntf('组名已存在', 'error'); return; }
+      const members = S.splitGroups[oldName];
+      delete S.splitGroups[oldName];
+      S.splitGroups[newName] = members;
+      saveSplitGroups();
+      renderSplitGroups();
+      renderMapping();
+      ntf(`已重命名为「${newName}」`);
+    });
+  });
+
+  // 删除组
+  list.querySelectorAll('.sg-del-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const card = btn.closest('.sg-card');
+      const name = card.dataset.group;
+      if (!confirm(`确定删除拆分组「${name}」？分局不会被删除，仅移出分组。`)) return;
+      delete S.splitGroups[name];
+      saveSplitGroups();
+      renderSplitGroups();
+      renderMapping();
+      ntf(`已删除拆分组「${name}」`);
+    });
+  });
+}
+
+// 新建组
+document.getElementById('sgAddBtn').addEventListener('click', () => {
+  const name = prompt('输入新拆分组名称：');
+  if (!name) return;
+  if (!S.splitGroups) S.splitGroups = getDefaultSplitGroups();
+  if (S.splitGroups[name]) { ntf('该组名已存在', 'error'); return; }
+  S.splitGroups[name] = [];
+  saveSplitGroups();
+  renderSplitGroups();
+  renderMapping();
+  ntf(`已创建拆分组「${name}」`);
+});
+
+// 从组中移除分局
+function removeBureauFromGroup(groupName, bureauName) {
+  if (!S.splitGroups || !S.splitGroups[groupName]) return;
+  S.splitGroups[groupName] = S.splitGroups[groupName].filter(b => b !== bureauName);
+  saveSplitGroups();
+  renderSplitGroups();
+  renderMapping();
+}
+
+// 向组中添加分局（弹出选择器）
+function addBureauToGroup(groupName) {
+  if (!S.splitGroups) return;
+  const bureaus = Object.keys(S.mappingData);
+  const currentGroups = S.splitGroups;
+  const assigned = new Set();
+  Object.values(currentGroups).forEach(m => m.forEach(b => assigned.add(b)));
+  // 允许添加已分配的（切换组）和未分配的
+  const available = bureaus.filter(b => !currentGroups[groupName].includes(b));
+  if (!available.length) { ntf('没有可添加的分局', 'error'); return; }
+
+  // 创建选择弹窗
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center';
+  const dlg = document.createElement('div');
+  dlg.style.cssText = 'background:var(--bg2);border:1px solid var(--bd);border-radius:16px;width:400px;max-height:60vh;display:flex;flex-direction:column;box-shadow:var(--sh)';
+  let html = `<div style="padding:14px 18px 10px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between"><span style="font-weight:700;font-size:14px">添加分局到「${esc(groupName)}」</span><span style="cursor:pointer;color:var(--t3);font-size:18px" id="sgPickClose">&times;</span></div>`;
+  html += `<div style="padding:12px 18px;overflow-y:auto;flex:1">`;
+  available.forEach(b => {
+    const inGroup = Object.entries(currentGroups).find(([gn, ms]) => gn !== groupName && ms.includes(b));
+    const extraInfo = inGroup ? `<span style="font-size:10px;color:var(--t3)">${esc(inGroup[0])}</span>` : '';
+    html += `<label class="sg-pick-item" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;cursor:pointer;transition:background .15s" onmouseenter="this.style.background='var(--acg)'" onmouseleave="this.style.background=''"><input type="checkbox" value="${esc(b)}" style="accent-color:var(--ac)"><span style="flex:1;font-size:13px">${esc(b)}</span>${extraInfo}</label>`;
+  });
+  html += `</div>`;
+  html += `<div style="padding:10px 18px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:8px"><button class="btn btn-ghost btn-sm" id="sgPickCancel">取消</button><button class="btn btn-primary btn-sm" id="sgPickOk">添加</button></div>`;
+  dlg.innerHTML = html;
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  dlg.querySelector('#sgPickClose').addEventListener('click', close);
+  dlg.querySelector('#sgPickCancel').addEventListener('click', close);
+  dlg.querySelector('#sgPickOk').addEventListener('click', () => {
+    const checked = dlg.querySelectorAll('input[type="checkbox"]:checked');
+    if (!checked.length) { ntf('请选择分局', 'error'); return; }
+    checked.forEach(cb => {
+      S.splitGroups[groupName].push(cb.value);
+      // 从其他组移除
+      Object.keys(S.splitGroups).forEach(gn => {
+        if (gn !== groupName) S.splitGroups[gn] = S.splitGroups[gn].filter(b => b !== cb.value);
+      });
+    });
+    saveSplitGroups();
+    renderSplitGroups();
+    renderMapping();
+    close();
+    ntf(`已添加 ${checked.length} 个分局到「${groupName}」`);
+  });
+}
+
+// 拖拽分局到拆分组
+let _dragSgBureau = null;
+function bindSplitGroupDrag() {
+  const list = document.getElementById('sgList');
+  if (!list) return;
+
+  // 分局标签可拖拽
+  list.querySelectorAll('.sg-member[data-bureau]').forEach(tag => {
+    tag.addEventListener('dragstart', e => {
+      _dragSgBureau = tag.dataset.bureau;
+      e.dataTransfer.effectAllowed = 'move';
+      tag.classList.add('sg-dragging');
+    });
+    tag.addEventListener('dragend', () => {
+      tag.classList.remove('sg-dragging');
+      _dragSgBureau = null;
+      list.querySelectorAll('.sg-drop-over').forEach(c => c.classList.remove('sg-drop-over'));
+    });
+  });
+
+  // 拆分组卡片可接收拖拽
+  list.querySelectorAll('.sg-card').forEach(card => {
+    card.addEventListener('dragover', e => {
+      if (!_dragSgBureau) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      card.classList.add('sg-drop-over');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('sg-drop-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      card.classList.remove('sg-drop-over');
+      if (!_dragSgBureau) return;
+      const targetGroup = card.dataset.group;
+      if (!S.splitGroups || !S.splitGroups[targetGroup]) return;
+      if (S.splitGroups[targetGroup].includes(_dragSgBureau)) return;
+      // 从其他组移除
+      Object.keys(S.splitGroups).forEach(gn => {
+        S.splitGroups[gn] = S.splitGroups[gn].filter(b => b !== _dragSgBureau);
+      });
+      S.splitGroups[targetGroup].push(_dragSgBureau);
+      saveSplitGroups();
+      renderSplitGroups();
+      renderMapping();
+      ntf(`已将「${_dragSgBureau}」移入「${targetGroup}」`);
+    });
+  });
+}
+
+// 获取分局所属的拆分组名
+function getBureauGroupName(bureauName) {
+  const groups = getSplitGroups();
+  for (const [name, members] of Object.entries(groups)) {
+    if (members.includes(bureauName)) return name;
+  }
+  return null;
+}
+
 // ========== 分局拆分 ==========
 async function loadMapping() {
   const res = await fetch('/api/mapping');
@@ -10,15 +287,22 @@ async function loadMapping() {
 function renderMapping() {
   const list = document.getElementById('bureauList');
   const keys = Object.keys(S.mappingData);
+  const groups = getSplitGroups();
+  const groupNames = Object.keys(groups);
   let html = '';
   keys.forEach((bureau, i) => {
     const managers = S.mappingData[bureau];
+    // 查找所属拆分组
+    const groupName = getBureauGroupName(bureau);
+    const groupIdx = groupName ? groupNames.indexOf(groupName) : -1;
+    const groupColor = groupIdx >= 0 ? SG_COLORS[groupIdx % SG_COLORS.length] : null;
     html += `<div class="bureau-card" data-index="${i}" data-bureau="${esc(bureau)}" draggable="true">
       <div class="bureau-header">
         <div style="display:flex;align-items:center;gap:10px;">
           <span class="arrow">▶</span>
           <span class="bureau-name">${esc(bureau)}</span>
           <span class="bureau-count">${managers.length} 人</span>
+          ${groupName ? `<span class="bureau-group-tag" style="background:${groupColor}18;color:${groupColor};border:1px solid ${groupColor}40">${esc(groupName)}</span>` : ''}
         </div>
         <div class="mapping-actions" onclick="event.stopPropagation()">
           <button class="btn btn-ghost btn-xs" onclick="deleteBureau('${esc(bureau)}')">删除</button>
@@ -268,7 +552,8 @@ async function doSplit() {
         fileDataBase64: b64,
         filteredRowIndices: filteredIndices,
         mapping: S.mappingData,
-        splitColumn: splitCol
+        splitColumn: splitCol,
+        splitGroups: S.splitGroups || null
       })
     });
     const data = await res.json();

@@ -32,9 +32,9 @@ function toggleTheme() {
 
 // ========== 刷新持久化 ==========
 function saveState() {
-  // 只保存mappingData，不再保存文件状态（每次启动应为空白）
+  // 保存mappingData和splitGroups
   try {
-    localStorage.setItem('ba-state', JSON.stringify({ mappingData: S.mappingData }));
+    localStorage.setItem('ba-state', JSON.stringify({ mappingData: S.mappingData, splitGroups: S.splitGroups }));
   } catch (e) { /* ignore */ }
 }
 
@@ -67,6 +67,7 @@ const S = {
   splitFileId: null,      // 执行拆分时的文件ID，splitMatchedRows 只对该文件生效
   mappingData: {},
   splitMatchedRows: null,  // Set<row index> - 拆分后匹配的行索引集合（仅对 splitFileId 文件有效）
+  splitGroups: null,       // {组名: [分局列表]} - 拆分组配置，null时使用默认值
 };
 
 const CM = {
@@ -127,6 +128,7 @@ function switchStep(step) {
     loadMapping();
     populateSplitColSel();
     updSplitActiveFile();
+    initSplitGroups();
   }
   // 进入数据标准化时加载模板列表并刷新快速插入面板
   if (step === 'normalize') {

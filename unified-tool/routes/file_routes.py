@@ -4,7 +4,7 @@ import json
 import zipfile
 from flask import Blueprint, request, jsonify, send_from_directory, send_file, current_app
 from config import OUTPUT_DIR, DEFAULT_MAPPING
-from models.file_model import load_mapping, save_mapping, list_bureau_templates, save_bureau_template, get_bureau_template, delete_bureau_template
+from models.file_model import load_mapping, save_mapping, list_bureau_templates, save_bureau_template, get_bureau_template, delete_bureau_template, load_split_groups, save_split_groups
 
 file_bp = Blueprint('file', __name__)
 
@@ -79,6 +79,25 @@ def delete_bureau_template_api(name):
     if not delete_bureau_template(name):
         return jsonify({'error': '模板不存在'}), 404
     return jsonify({'message': '模板已删除'})
+
+
+@file_bp.route('/api/split-groups', methods=['GET'])
+def get_split_groups():
+    data = load_split_groups()
+    return current_app.response_class(
+        response=json.dumps(data, ensure_ascii=False),
+        status=200,
+        mimetype='application/json'
+    )
+
+
+@file_bp.route('/api/split-groups', methods=['POST'])
+def save_split_groups_api():
+    groups = request.json
+    if not groups or not isinstance(groups, dict):
+        return jsonify({'error': '无效的拆分组数据'}), 400
+    save_split_groups(groups)
+    return jsonify({'message': '拆分组配置已保存'})
 
 
 @file_bp.route('/api/download/<path:filename>')

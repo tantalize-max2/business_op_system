@@ -8,12 +8,12 @@ import zipfile
 from datetime import datetime
 import pandas as pd
 from openpyxl import load_workbook, Workbook
-from config import (OUTPUT_DIR, DEFAULT_MAPPING, INDUSTRY_BUREAUS, COMMERCIAL_BUREAUS)
+from config import (OUTPUT_DIR, DEFAULT_MAPPING, INDUSTRY_BUREAUS, COMMERCIAL_BUREAUS, DEFAULT_SPLIT_GROUPS)
 from services.excel_service import clean_name, copy_sheet_with_format
 from models.file_model import load_mapping
 
 
-def split_filtered_data(file_bytes, filtered_indices, mapping, split_column):
+def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, split_groups=None):
     tmp_in = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
     tmp_in.write(file_bytes)
     tmp_in.close()
@@ -98,23 +98,6 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column):
                 'filename': f"{safe_name}_{current_date}.xlsx"
             })
 
-    summary_file = os.path.join(output_folder, f"行业商机数据汇总_{current_date}.xlsx")
-    summary_wb = Workbook()
-    if 'Sheet' in summary_wb.sheetnames:
-        del summary_wb['Sheet']
-    for bureau_name, row_indices in bureau_rows.items():
-        sheet_name = bureau_name[:31]
-        target_sheet = summary_wb.create_sheet(title=sheet_name)
-        if row_indices:
-            all_rows = [header_row] + row_indices
-            copy_sheet_with_format(source_sheet, target_sheet, all_rows)
-    summary_wb.save(summary_file)
-    generated_files.append({
-        'bureau': '- 汇总文件 -',
-        'rows': matched_count,
-        'filename': f"行业商机数据汇总_{current_date}.xlsx"
-    })
-
     def make_category_summary(category_name, category_bureaus):
         cat_wb = Workbook()
         if 'Sheet' in cat_wb.sheetnames:
@@ -138,8 +121,28 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column):
                 'filename': f"{safe_cat}_{current_date}.xlsx"
             })
 
-    make_category_summary("行业数据汇总", INDUSTRY_BUREAUS)
-    make_category_summary("商业数据汇总", COMMERCIAL_BUREAUS)
+    summary_file = os.path.join(output_folder, f"汇总数据_{current_date}.xlsx")
+    summary_wb = Workbook()
+    if 'Sheet' in summary_wb.sheetnames:
+        del summary_wb['Sheet']
+    for bureau_name, row_indices in bureau_rows.items():
+        sheet_name = bureau_name[:31]
+        target_sheet = summary_wb.create_sheet(title=sheet_name)
+        if row_indices:
+            all_rows = [header_row] + row_indices
+            copy_sheet_with_format(source_sheet, target_sheet, all_rows)
+    summary_wb.save(summary_file)
+    generated_files.append({
+        'bureau': '- 汇总文件 -',
+        'rows': matched_count,
+        'filename': f"汇总数据_{current_date}.xlsx"
+    })
+
+    # 按拆分组生成汇总文件（而非固定的行业/商业）
+    if split_groups is None:
+        split_groups = DEFAULT_SPLIT_GROUPS
+    for group_name, group_bureaus in split_groups.items():
+        make_category_summary(f"{group_name}数据汇总", group_bureaus)
 
     if unmatched_rows:
         unmatched_wb = Workbook()
