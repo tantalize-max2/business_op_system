@@ -99,13 +99,14 @@
 .kd-form-row label {
   font-size:11px; color:var(--t3); font-weight:600; letter-spacing:.2px;
 }
-.kd-form-row input[type="text"],
-.kd-form-row input[type="password"],
-.kd-form-row input[type="number"] {
+.kd-form-row input:not([type="file"]):not([type="color"]):not([type="checkbox"]),
+.kd-form-row select {
   background:var(--bg); border:1px solid var(--bd); border-radius:8px;
   padding:8px 12px; color:var(--t1); font:12px var(--sf); outline:none; width:100%;
+  transition:border-color .15s, box-shadow .15s;
 }
-.kd-form-row input:focus { border-color:var(--ac); box-shadow:0 0 0 2px var(--acg); }
+.kd-form-row input:not([type="file"]):not([type="color"]):not([type="checkbox"]):focus,
+.kd-form-row select:focus { border-color:var(--ac); box-shadow:0 0 0 2px var(--acg); }
 .kd-form-check {
   flex-direction:row!important; align-items:center; gap:8px;
 }
@@ -218,11 +219,12 @@
 .kd-cat-add-row {
   display:flex; gap:6px; align-items:center;
 }
-.kd-cat-add-row input[type="text"] {
+.kd-cat-add-row input:not([type="color"]):not([type="checkbox"]) {
   flex:1; background:var(--bg); border:1px solid var(--bd); border-radius:8px;
   padding:7px 10px; color:var(--t1); font:12px var(--sf); outline:none;
+  transition:border-color .15s, box-shadow .15s;
 }
-.kd-cat-add-row input[type="text"]:focus { border-color:var(--ac); }
+.kd-cat-add-row input:not([type="color"]):not([type="checkbox"]):focus { border-color:var(--ac); box-shadow:0 0 0 2px var(--acg); }
 .kd-cat-mgr-list { display:flex; flex-direction:column; gap:6px; }
 
 /* 分组显示 */
@@ -249,11 +251,12 @@
 .kd-form-2col { display:flex; gap:10px; }
 .kd-form-col { flex:1; display:flex; flex-direction:column; gap:4px; }
 .kd-form-col label { font-size:11px; color:var(--t3); font-weight:600; }
-.kd-form-col input, .kd-form-col select {
+.kd-form-col input:not([type="file"]):not([type="color"]):not([type="checkbox"]), .kd-form-col select {
   background:var(--bg); border:1px solid var(--bd); border-radius:8px;
   padding:8px 10px; color:var(--t1); font:12px var(--sf); outline:none;
+  transition:border-color .15s, box-shadow .15s;
 }
-.kd-form-col input:focus, .kd-form-col select:focus { border-color:var(--ac); }
+.kd-form-col input:not([type="file"]):not([type="color"]):not([type="checkbox"]):focus, .kd-form-col select:focus { border-color:var(--ac); box-shadow:0 0 0 2px var(--acg); }
 
 /* 文件浏览器 */
 .kd-browse-bar {
