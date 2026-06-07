@@ -452,7 +452,9 @@ def _blackbox_login_worker():
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
             page = context.new_page()
             login_state['message'] = '正在打开邮箱登录页面...'
-            page.goto('https://mail.chinatelecom.cn/mail/index.html#/user/login', wait_until='networkidle', timeout=30000)
+            # 用 domcontentloaded 替代 networkidle：邮箱页面有持续心跳/WebSocket，
+            # networkidle 永远无法满足会导致超时；后续用显式 wait_for 等元素即可
+            page.goto('https://mail.chinatelecom.cn/mail/index.html#/user/login', wait_until='domcontentloaded', timeout=60000)
             page.wait_for_timeout(3000)
             login_state['message'] = '正在填入账号...'
             account_input = page.get_by_placeholder('邮箱账号/管理员账号')
