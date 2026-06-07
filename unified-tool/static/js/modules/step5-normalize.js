@@ -14,7 +14,11 @@ const NZ = {
   cellEdits: {},          // 'sheetIdx!row!col' -> newValue 编辑缓存
   cellFormats: {},        // 'sheetIdx!row!col' -> {bold,italic,align,fontSize,fontName} 格式缓存
   previewMode: false,     // 是否为预览模式
+  showRawFormula: false,  // 预览模式下是否显示原始公式（三态预览的中间态）
 };
+
+// 引用选取模式：输入 = 后点击单元格自动插入引用
+let nzCellRefPickMode = false;
 
 // ---- 公式解析 ----
 // 单公式精确匹配（向后兼容）
@@ -57,8 +61,9 @@ const NZ_FUNC_RE = /\b(SUM|AVG)\s*\(([^)]+)\)/gi;
  * 将范围引用（如 A1:B5）展开为所有单元格的值
  * @returns {{ values: number[], ok: boolean }}
  */
-function nzResolveRange(rangeStr, sheetIdx, visitedRefs) {
+function nzResolveRange(rangeStr, sheetIdx, visitedRefs, statsData) {
   if (!visitedRefs) visitedRefs = new Set();
+  const _sd = statsData || nzComputeStats();
   const values = [];
   // 按逗号分割多个范围/引用
   const parts = rangeStr.split(',');
@@ -80,8 +85,8 @@ function nzResolveRange(rangeStr, sheetIdx, visitedRefs) {
           visitedRefs.add(refKey);
           let val = nzGetCellDisplayValue(sheetIdx, r, c);
           const valStr = String(val);
-          if (nzIsExpression(valStr)) {
-            const inner = nzEvalExpression(valStr, sheetIdx, visitedRefs);
+          if (nzHasFormula(valStr)) {
+            const inner = nzResolveCellFormula(valStr, _sd, sheetIdx);
             val = inner.ok ? inner.value : NaN;
           }
           const num = parseFloat(val);
@@ -99,8 +104,8 @@ function nzResolveRange(rangeStr, sheetIdx, visitedRefs) {
           visitedRefs.add(refKey);
           let val = nzGetCellDisplayValue(sheetIdx, row, col);
           const valStr = String(val);
-          if (nzIsExpression(valStr)) {
-            const inner = nzEvalExpression(valStr, sheetIdx, visitedRefs);
+          if (nzHasFormula(valStr)) {
+            const inner = nzResolveCellFormula(valStr, _sd, sheetIdx);
             val = inner.ok ? inner.value : NaN;
           }
           const num = parseFloat(val);
@@ -136,8 +141,9 @@ function nzGetCellDisplayValue(sheetIdx, row, col) {
  * @param {Set} visitedRefs - 已访问引用（防止循环引用）
  * @returns {{resolved: string, ok: boolean}}
  */
-function nzResolveCellRefs(expr, sheetIdx, visitedRefs) {
+function nzResolveCellRefs(expr, sheetIdx, visitedRefs, statsData) {
   if (!visitedRefs) visitedRefs = new Set();
+  const _sd = statsData || nzComputeStats();
   let allOk = true;
   const resolved = expr.replace(NZ_CELL_REF_RE, (match, colStr, rowStr) => {
     // 注意：调用前 {{...}} 已被上层 nzEvalExpression 替换为数值，此处仅处理纯单元格引用
@@ -149,10 +155,10 @@ function nzResolveCellRefs(expr, sheetIdx, visitedRefs) {
     if (visitedRefs.has(refKey)) { allOk = false; return 'NaN'; }
     visitedRefs.add(refKey);
     let val = nzGetCellDisplayValue(sheetIdx, row, col);
-    // 如果该单元格本身也是表达式（=开头），递归解析
+    // 如果被引用单元格包含任何公式（=表达式 或 {{...}}纯公式 或混合文本），递归解析
     const valStr = String(val);
-    if (nzIsExpression(valStr)) {
-      const innerResult = nzEvalExpression(valStr, sheetIdx, visitedRefs);
+    if (nzHasFormula(valStr)) {
+      const innerResult = nzResolveCellFormula(valStr, _sd, sheetIdx);
       if (innerResult.ok) {
         val = innerResult.value;
       } else {
@@ -190,7 +196,7 @@ function nzEvalExpression(cellVal, sheetIdx, visitedRefs) {
 
   // 2. 替换 SUM(...)/AVG(...) 函数为数值
   expr = expr.replace(NZ_FUNC_RE, (match, funcName, argsStr) => {
-    const { values, ok } = nzResolveRange(argsStr, si, visitedRefs);
+    const { values, ok } = nzResolveRange(argsStr, si, visitedRefs, statsData);
     if (!ok) { allOk = false; return 'NaN'; }
     const fn = funcName.toUpperCase();
     if (fn === 'SUM') {
@@ -206,7 +212,7 @@ function nzEvalExpression(cellVal, sheetIdx, visitedRefs) {
   if (!allOk) return { ok: false, value: cellVal };
 
   // 3. 再替换单元格引用为数值
-  const refResult = nzResolveCellRefs(expr, si, visitedRefs);
+  const refResult = nzResolveCellRefs(expr, si, visitedRefs, statsData);
   if (!refResult.ok) return { ok: false, value: cellVal };
 
   // 4. 安全计算算术表达式（支持括号优先级）
@@ -878,6 +884,14 @@ function nzParseWorkbook(buffer) {
     NZ.selectedCell = null;
     NZ.activeSheet = 0;
     NZ.previewMode = false;
+    NZ.showRawFormula = false;
+    // 重置预览按钮
+    const pvBtn = document.getElementById('nzPreviewBtn');
+    if (pvBtn) {
+      pvBtn.textContent = '预览';
+      pvBtn.classList.remove('btn-primary');
+      pvBtn.classList.add('btn-ghost');
+    }
     nzShowWorkspace();
     nzRenderSheetTabs();
     nzRenderTable();
@@ -966,8 +980,9 @@ function nzRenderTable() {
       const fmtAttr = fmtStyle ? ` style="${fmtStyle}"` : '';
 
       // 预览模式下替换公式为计算值（应用小数位和百分比格式）
+      // showRawFormula=true 时显示原始公式文本，方便设置字体字号
       let displayVal = cellVal;
-      if (NZ.previewMode && isFormula) {
+      if (NZ.previewMode && isFormula && !NZ.showRawFormula) {
         const statsData = nzComputeStats();
         const resolved = nzResolveCellFormula(cellVal, statsData, NZ.activeSheet);
         displayVal = resolved.ok ? nzFormatValue(resolved.value, fmt) : cellVal;
@@ -1144,7 +1159,41 @@ function nzClearRangeHighlight() {
   });
 }
 
+/** 进入单元格引用选取模式（输入=后激活） */
+function nzEnterCellRefPick() {
+  if (nzCellRefPickMode) return;
+  nzCellRefPickMode = true;
+  const hint = document.getElementById('nzRangeHint');
+  if (hint) {
+    hint.querySelector('span').textContent = '点击表格单元格插入引用，可配合 + - * / 运算符组合';
+    hint.style.display = '';
+  }
+}
+
+/** 退出单元格引用选取模式 */
+function nzExitCellRefPick() {
+  if (!nzCellRefPickMode) return;
+  nzCellRefPickMode = false;
+  if (!nzRangePickMode) {
+    const hint = document.getElementById('nzRangeHint');
+    if (hint) hint.style.display = 'none';
+  }
+}
+
 function nzSelectCell(r, c) {
+  // 引用选取模式：点击单元格插入引用而非切换选中
+  if (nzCellRefPickMode) {
+    const ref = XLSX.utils.encode_cell({ r, c });
+    const input = document.getElementById('nzCellInput');
+    const pos = input.selectionStart != null ? input.selectionStart : input.value.length;
+    const endPos = input.selectionEnd != null ? input.selectionEnd : pos;
+    input.value = input.value.substring(0, pos) + ref + input.value.substring(endPos);
+    input.focus();
+    const newPos = pos + ref.length;
+    input.setSelectionRange(newPos, newPos);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return;
+  }
   NZ.selectedCell = { row: r, col: c };
   // 高亮
   document.querySelectorAll('#nzTbody td.selected').forEach(td => td.classList.remove('selected'));
@@ -1189,21 +1238,29 @@ function nzUpdateEditBar() {
 document.getElementById('nzCellInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') {
     e.preventDefault();
+    nzExitCellRefPick();
     nzApplyCellEdit();
+  } else if (e.key === 'Escape') {
+    // Escape：取消编辑，退出选取模式，恢复原始值
+    nzExitCellRefPick();
+    nzExitRangePick();
+    nzUpdateEditBar();
+    e.target.blur();
   }
 });
 document.getElementById('nzCellInput').addEventListener('blur', () => {
-  // 选取模式时不提交编辑（拖拽时会重新聚焦）
-  if (nzRangePickMode) return;
+  // 选取模式（拖拽或引用）时不提交编辑
+  if (nzRangePickMode || nzCellRefPickMode) return;
   nzApplyCellEdit();
 });
-// 监听输入变化，自动进入/退出范围选取模式
+// 监听输入变化，自动进入/退出选取模式
 document.getElementById('nzCellInput').addEventListener('input', () => {
   const val = document.getElementById('nzCellInput').value.trim();
   // 检测是否处于函数参数输入状态：=SUM( 或 =AVG( 且末尾是 ( 或 ,
   const funcMatch = val.match(/=\s*(SUM|AVG)\s*\(/i);
-  if (funcMatch && /[,(]\s*$/.test(val)) {
-    // 自动进入选取模式
+  const inFuncArgs = funcMatch && /[,(]\s*$/.test(val);
+  if (inFuncArgs) {
+    // SUM/AVG 参数输入 → 拖拽选取模式
     const fn = funcMatch[1].toUpperCase();
     if (nzRangePickMode !== fn) {
       nzRangePickMode = fn;
@@ -1213,15 +1270,22 @@ document.getElementById('nzCellInput').addEventListener('input', () => {
       // 更新UI
       document.getElementById('nzFuncSumBtn')?.classList.toggle('active', fn === 'SUM');
       document.getElementById('nzFuncAvgBtn')?.classList.toggle('active', fn === 'AVG');
-      const hint = document.getElementById('nzRangeHint');
-      if (hint) {
-        hint.querySelector('span').textContent = `正在选取 ${fn} 范围，拖动鼠标选择单元格，松开完成`;
-        hint.style.display = '';
-      }
     }
-  } else if (nzRangePickMode && !/[,(]\s*$/.test(val)) {
-    // 不再处于参数输入状态，退出选取模式（但保留按钮状态让用户可重新点击）
-    nzExitRangePick();
+    nzExitCellRefPick();
+    const hint = document.getElementById('nzRangeHint');
+    if (hint) {
+      hint.querySelector('span').textContent = `正在选取 ${fn} 范围，拖动鼠标选择单元格，松开完成`;
+      hint.style.display = '';
+    }
+  } else {
+    // 不在函数参数状态
+    if (nzRangePickMode) nzExitRangePick();
+    // 引用选取模式：= 开头时激活，点击单元格可插入引用
+    if (val.startsWith('=')) {
+      nzEnterCellRefPick();
+    } else {
+      nzExitCellRefPick();
+    }
   }
 });
 
@@ -1255,8 +1319,8 @@ function nzApplyCellEdit() {
     td.className = (isFormula ? ' nz-formula' : '') + ' selected';
     td.title = newVal;
     if (fmtStyle) td.style.cssText = fmtStyle;
-    // 预览模式下显示计算值
-    if (NZ.previewMode && isFormula) {
+    // 预览模式下显示计算值（原始公式模式显示原文）
+    if (NZ.previewMode && isFormula && !NZ.showRawFormula) {
       const statsData = nzComputeStats();
       const resolved = nzResolveCellFormula(newVal, statsData, NZ.activeSheet);
       td.textContent = resolved.ok ? String(resolved.value) : newVal;
@@ -1541,14 +1605,31 @@ function nzScanFormulas() {
   ntf(`扫描完成：${matchCount} 匹配，${failCount} 未匹配`, failCount ? 'warn' : 'success');
 }
 
-// ---- 预览模式 ----
+// ---- 预览模式（三态循环：编辑 → 预览计算值 → 预览原始公式） ----
 document.getElementById('nzPreviewBtn').addEventListener('click', () => {
   if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
-  NZ.previewMode = !NZ.previewMode;
   const btn = document.getElementById('nzPreviewBtn');
-  btn.textContent = NZ.previewMode ? '编辑' : '预览';
-  btn.classList.toggle('btn-primary', NZ.previewMode);
-  btn.classList.toggle('btn-ghost', !NZ.previewMode);
+  if (!NZ.previewMode) {
+    // 编辑 → 预览(计算值)
+    NZ.previewMode = true;
+    NZ.showRawFormula = false;
+    btn.textContent = '原始';
+    btn.classList.add('btn-primary');
+    btn.classList.remove('btn-ghost');
+    ntf('预览模式：显示公式计算结果');
+  } else if (!NZ.showRawFormula) {
+    // 预览(计算值) → 预览(原始公式)
+    NZ.showRawFormula = true;
+    btn.textContent = '编辑';
+    ntf('原始公式模式：显示公式原文，可设置字体字号');
+  } else {
+    // 预览(原始公式) → 编辑
+    NZ.previewMode = false;
+    NZ.showRawFormula = false;
+    btn.textContent = '预览';
+    btn.classList.remove('btn-primary');
+    btn.classList.add('btn-ghost');
+  }
   nzRenderTable();
 });
 
@@ -1659,20 +1740,97 @@ function nzSyncFormatBar() {
   fontSize.value = fmt.fontSize || '';
 }
 
-// ---- 保存模板 ----
+// ---- 主题化命名输入模态框（替代原生prompt/confirm） ----
+const nzModal = {
+  _onOk: null, _onCancel: null,
+  show({ title = '输入', label = '', value = '', placeholder = '', hint = '', okText = '确定', mode = 'input' }) {
+    document.getElementById('nzModalTitle').textContent = title;
+    document.getElementById('nzModalLabel').textContent = label;
+    const input = document.getElementById('nzModalInput');
+    const labelEl = document.getElementById('nzModalLabel');
+    input.placeholder = placeholder;
+    input.value = value;
+    // confirm模式隐藏输入框和label
+    input.style.display = mode === 'confirm' ? 'none' : '';
+    labelEl.style.display = mode === 'confirm' ? 'none' : '';
+    const hintEl = document.getElementById('nzModalHint');
+    hintEl.textContent = hint;
+    hintEl.classList.toggle('warn', mode === 'confirm');
+    document.getElementById('nzModalOk').textContent = okText;
+    document.getElementById('nzModalMask').classList.add('show');
+    document.getElementById('nzModalBox').classList.add('show');
+    setTimeout(() => {
+      if (mode === 'confirm') document.getElementById('nzModalOk').focus();
+      else { input.focus(); input.select(); }
+    }, 50);
+    return new Promise(resolve => {
+      this._onOk = resolve;
+    });
+  },
+  // 确认对话框（替代confirm）
+  confirm({ title = '确认', content = '', okText = '确定' }) {
+    return this.show({ title, hint: content, okText, mode: 'confirm' });
+  },
+  hide() {
+    document.getElementById('nzModalMask').classList.remove('show');
+    document.getElementById('nzModalBox').classList.remove('show');
+    this._onOk = null;
+  },
+  setHint(text, isWarn = false) {
+    const hintEl = document.getElementById('nzModalHint');
+    hintEl.textContent = text;
+    hintEl.classList.toggle('warn', isWarn);
+  }
+};
+
+document.getElementById('nzModalClose').addEventListener('click', () => {
+  if (nzModal._onOk) nzModal._onOk(null);
+  nzModal.hide();
+});
+document.getElementById('nzModalCancel').addEventListener('click', () => {
+  if (nzModal._onOk) nzModal._onOk(null);
+  nzModal.hide();
+});
+document.getElementById('nzModalMask').addEventListener('click', () => {
+  if (nzModal._onOk) nzModal._onOk(null);
+  nzModal.hide();
+});
+document.getElementById('nzModalOk').addEventListener('click', () => {
+  const input = document.getElementById('nzModalInput');
+  const isConfirmMode = input.style.display === 'none';
+  if (isConfirmMode) {
+    if (nzModal._onOk) nzModal._onOk(true);
+    nzModal.hide();
+    return;
+  }
+  const val = input.value.trim();
+  if (!val) { nzModal.setHint('名称不能为空', true); input.focus(); return; }
+  if (nzModal._onOk) nzModal._onOk(val);
+  nzModal.hide();
+});
+document.getElementById('nzModalInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); document.getElementById('nzModalOk').click(); }
+  else if (e.key === 'Escape') { e.preventDefault(); document.getElementById('nzModalCancel').click(); }
+});
+
+// ---- 保存模板（每次保存即为新模板，直接保存） ----
 document.getElementById('nzSaveBtn').addEventListener('click', async () => {
   if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
-
-  // 将编辑应用到workbook
   nzApplyEditsToWorkbook();
 
-  // 弹出对话框，允许修改名字
-  const newName = prompt('请输入模板名称:', NZ.currentTemplate || '');
-  if (!newName || !newName.trim()) return;
-  const name = newName.trim();
-  const oldName = NZ.currentTemplate;
-  NZ.currentTemplate = name;
+  // 弹出主题化命名输入框，默认填当前模板名
+  const defaultName = NZ.currentTemplate || '';
+  const name = await nzModal.show({
+    title: '保存模板',
+    label: '模板名称',
+    value: defaultName,
+    placeholder: '请输入模板名称',
+    hint: '保存将创建新的模板记录',
+    okText: '保存'
+  });
+  if (!name) return; // 用户取消
 
+  NZ.currentTemplate = name;
   // 导出为base64
   const wbOut = XLSX.write(NZ.wb, { type: 'array', bookType: 'xlsx' });
   const b64 = arrayBufferToBase64(wbOut);
@@ -1685,10 +1843,6 @@ document.getElementById('nzSaveBtn').addEventListener('click', async () => {
     });
     const data = await res.json();
     if (data.error) { ntf(data.error, 'error'); return; }
-    // 如果改名了，删除旧模板
-    if (oldName && oldName !== name) {
-      try { await fetch(`/api/nz-templates/${encodeURIComponent(oldName)}`, { method: 'DELETE' }); } catch(e) {}
-    }
     ntf('模板已保存');
     await loadNzTemplates();
   } catch (e) {
@@ -1718,7 +1872,12 @@ document.getElementById('nzTemplateSel').addEventListener('change', async () => 
 document.getElementById('nzDeleteBtn').addEventListener('click', async () => {
   const name = NZ.currentTemplate;
   if (!name) { ntf('请先选择模板', 'warn'); return; }
-  if (!confirm(`确定删除模板"${name}"?`)) return;
+  const ok = await nzModal.confirm({
+    title: '删除模板',
+    content: `确定删除模板「${name}」吗？此操作不可撤销。`,
+    okText: '删除'
+  });
+  if (!ok) return;
   try {
     await fetch(`/api/nz-templates/${encodeURIComponent(name)}`, { method: 'DELETE' });
     ntf('模板已删除');

@@ -236,9 +236,63 @@ def _get_cell_value(ws_obj, col_str, row_str):
         return None
 
 
+def _col_letter_to_idx(col_str):
+    """列字母转1-based索引（A=1, Z=26, AA=27）"""
+    idx = 0
+    for ch in col_str:
+        idx = idx * 26 + (ord(ch) - ord('A') + 1)
+    return idx
+
+
+def _resolve_cell_to_float(val, ws_obj, stats_data, visited=None):
+    """将单元格值解析为float，支持纯数字/={{...}}表达式/混合公式文本。返回None表示无法解析。"""
+    if val is None:
+        return None
+    val_str = str(val).strip()
+    if not val_str:
+        return None
+    # = 开头的表达式（含单元格引用+{{}}+SUM/AVG）
+    if val_str.startswith('='):
+        expr = val_str[1:]
+        expr, ok = _resolve_formulas_in_expr(expr, stats_data)
+        if not ok:
+            return None
+        if visited is None:
+            visited = set()
+        expr = _resolve_funcs(expr, ws_obj, stats_data, visited)
+        if 'NaN' in expr:
+            return None
+        expr = _resolve_cell_refs_in_expr(expr, ws_obj, stats_data, visited)
+        if 'NaN' in expr:
+            return None
+        safe = re.sub(r'[^0-9+\-*/().eE\s]', '', expr)
+        try:
+            result = eval(safe)
+            if isinstance(result, (int, float)):
+                return float(result)
+        except:
+            pass
+        return None
+    # 包含 {{...}} 公式（纯公式或混合文本）
+    if _formula_pattern.search(val_str):
+        resolved, ok = _resolve_formulas_in_text(val_str, stats_data)
+        if not ok:
+            return None
+        try:
+            return float(resolved)
+        except (ValueError, TypeError):
+            return None
+    # 纯数字
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _resolve_cell_refs_in_expr(expr_str, ws_obj, stats_data, visited=None):
     if visited is None:
         visited = set()
+
     def replace_ref(m):
         col_s, row_s = m.group(1), m.group(2)
         ref_key = f"{col_s}{row_s}"
@@ -248,30 +302,19 @@ def _resolve_cell_refs_in_expr(expr_str, ws_obj, stats_data, visited=None):
         val = _get_cell_value(ws_obj, col_s, row_s)
         if val is None:
             return 'NaN'
-        val_str = str(val).strip()
-        if val_str.startswith('='):
-            inner = val_str[1:]
-            inner = _formula_pattern.sub(lambda fm: str(nz_resolve_formula_str(fm.group(0), stats_data).get('value', 'NaN')), inner)
-            inner = _resolve_cell_refs_in_expr(inner, ws_obj, stats_data, visited)
-            try:
-                safe = re.sub(r'[^0-9+\-*/().eE\s]', '', inner)
-                result = eval(safe)
-                if isinstance(result, (int, float)):
-                    return str(result)
-                return 'NaN'
-            except:
-                return 'NaN'
-        try:
-            num = float(val)
-            if '.' not in str(val) and isinstance(val, int):
-                return str(val)
-            return str(num)
-        except (ValueError, TypeError):
+        num = _resolve_cell_to_float(val, ws_obj, stats_data, visited)
+        if num is None:
             return 'NaN'
+        try:
+            int_val = int(num)
+            return str(int_val) if num == int_val else str(num)
+        except (ValueError, OverflowError):
+            return str(num)
+
     return _cell_ref_pattern.sub(replace_ref, expr_str)
 
 
-def _resolve_range_values(range_str, ws_obj, visited=None):
+def _resolve_range_values(range_str, ws_obj, stats_data=None, visited=None):
     if visited is None:
         visited = set()
     values = []
@@ -281,13 +324,9 @@ def _resolve_range_values(range_str, ws_obj, visited=None):
     for part in parts:
         rm = range_re.match(part)
         if rm:
-            c1 = 0
-            for ch in rm.group(1):
-                c1 = c1 * 26 + (ord(ch) - ord('A') + 1)
+            c1 = _col_letter_to_idx(rm.group(1))
             r1 = int(rm.group(2))
-            c2 = 0
-            for ch in rm.group(3):
-                c2 = c2 * 26 + (ord(ch) - ord('A') + 1)
+            c2 = _col_letter_to_idx(rm.group(3))
             r2 = int(rm.group(4))
             min_r, max_r = min(r1, r2), max(r1, r2)
             min_c, max_c = min(c1, c2), max(c1, c2)
@@ -298,12 +337,9 @@ def _resolve_range_values(range_str, ws_obj, visited=None):
                         continue
                     visited.add(ref_key)
                     cv = ws_obj.cell(row=rr, column=cc).value
-                    if cv is not None:
-                        try:
-                            v = float(cv)
-                            values.append(v)
-                        except (ValueError, TypeError):
-                            pass
+                    num = _resolve_cell_to_float(cv, ws_obj, stats_data, visited)
+                    if num is not None:
+                        values.append(num)
         else:
             cm = cell_re.match(part)
             if cm:
@@ -312,21 +348,20 @@ def _resolve_range_values(range_str, ws_obj, visited=None):
                 if ref_key not in visited:
                     visited.add(ref_key)
                     val = _get_cell_value(ws_obj, col_s, row_s)
-                    if val is not None:
-                        try:
-                            values.append(float(val))
-                        except (ValueError, TypeError):
-                            pass
+                    num = _resolve_cell_to_float(val, ws_obj, stats_data, visited)
+                    if num is not None:
+                        values.append(num)
     return values
 
 
-def _resolve_funcs(expr_str, ws_obj, visited=None):
+def _resolve_funcs(expr_str, ws_obj, stats_data=None, visited=None):
     if visited is None:
         visited = set()
+
     def replace_func(m):
         fn = m.group(1).upper()
         args = m.group(2)
-        vals = _resolve_range_values(args, ws_obj, visited)
+        vals = _resolve_range_values(args, ws_obj, stats_data, visited)
         if not vals:
             return 'NaN'
         if fn == 'SUM':
@@ -334,6 +369,7 @@ def _resolve_funcs(expr_str, ws_obj, visited=None):
         elif fn == 'AVG':
             return str(sum(vals) / len(vals))
         return 'NaN'
+
     return _func_pattern.sub(replace_func, expr_str)
 
 
@@ -440,7 +476,7 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
                     self_col = get_column_letter(cell.column)
                     self_row = str(cell.row)
                     visited.add(f"{self_col}{self_row}")
-                    expr = _resolve_funcs(expr, ws, visited)
+                    expr = _resolve_funcs(expr, ws, stats_data, visited)
                     if 'NaN' in expr:
                         cell.value = '函数解析失败'
                         fail_count += 1

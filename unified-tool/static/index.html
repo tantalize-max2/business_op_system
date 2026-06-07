@@ -391,6 +391,24 @@
       </div>
     </div>
 
+    <!-- 主题化命名输入模态框（替代原生prompt） -->
+    <div class="nz-modal-mask" id="nzModalMask"></div>
+    <div class="nz-modal-box" id="nzModalBox">
+      <div class="nz-mb-head">
+        <span class="nz-mb-title" id="nzModalTitle">保存模板</span>
+        <button class="nz-mb-close" id="nzModalClose" title="关闭">&times;</button>
+      </div>
+      <div class="nz-mb-body">
+        <label class="nz-mb-label" id="nzModalLabel">模板名称</label>
+        <input type="text" class="nz-mb-input" id="nzModalInput" placeholder="请输入名称">
+        <div class="nz-mb-hint" id="nzModalHint"></div>
+      </div>
+      <div class="nz-mb-foot">
+        <button class="btn btn-ghost btn-sm" id="nzModalCancel">取消</button>
+        <button class="btn btn-primary btn-sm" id="nzModalOk">确定</button>
+      </div>
+    </div>
+
     <!-- 空提示 -->
     <div class="nz-empty" id="nzEmpty">
        <div class="nz-empty-icon">
