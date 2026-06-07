@@ -10,15 +10,19 @@ const NZ = {
   wb: null,               // SheetJS workbook 对象
   rawBuffer: null,        // 原始 ArrayBuffer (用于回写后端)
   activeSheet: 0,         // 当前活动 sheet 索引
-  selectedCell: null,     // {row, col} 当前选中的单元格
+  selectedCell: null,     // {row, col} 当前选中的单元格（锚点）
+  selectedRange: null,    // {r1,c1,r2,c2} 拖选范围（2+格时有效）
   cellEdits: {},          // 'sheetIdx!row!col' -> newValue 编辑缓存
   cellFormats: {},        // 'sheetIdx!row!col' -> {bold,italic,align,fontSize,fontName} 格式缓存
-  previewMode: false,     // 是否为预览模式
-  showRawFormula: false,  // 预览模式下是否显示原始公式（三态预览的中间态）
+  previewMode: false,     // 是否为预览模式（显示计算值）
 };
 
 // 引用选取模式：输入 = 后点击单元格自动插入引用
 let nzCellRefPickMode = false;
+// 正常模式拖选状态
+let nzNormalDragStart = null;   // {r, c} 鼠标按下的起点格
+let nzNormalDragMoved = false;  // 是否已拖动到不同格（区分点击与拖选）
+let nzSuppressNextClick = false;// 拖选结束后抑制一次 click 事件
 
 // ---- 公式解析 ----
 // 单公式精确匹配（向后兼容）
@@ -882,9 +886,10 @@ function nzParseWorkbook(buffer) {
     NZ.cellEdits = {};
     NZ.cellFormats = {};
     NZ.selectedCell = null;
+    NZ.selectedRange = null;
     NZ.activeSheet = 0;
     NZ.previewMode = false;
-    NZ.showRawFormula = false;
+    nzHideRangeActionBar();
     // 重置预览按钮
     const pvBtn = document.getElementById('nzPreviewBtn');
     if (pvBtn) {
@@ -980,9 +985,8 @@ function nzRenderTable() {
       const fmtAttr = fmtStyle ? ` style="${fmtStyle}"` : '';
 
       // 预览模式下替换公式为计算值（应用小数位和百分比格式）
-      // showRawFormula=true 时显示原始公式文本，方便设置字体字号
       let displayVal = cellVal;
-      if (NZ.previewMode && isFormula && !NZ.showRawFormula) {
+      if (NZ.previewMode && isFormula) {
         const statsData = nzComputeStats();
         const resolved = nzResolveCellFormula(cellVal, statsData, NZ.activeSheet);
         displayVal = resolved.ok ? nzFormatValue(resolved.value, fmt) : cellVal;
@@ -1071,15 +1075,15 @@ function nzBindDragSelect() {
   const tbody = document.getElementById('nzTbody');
   if (!tbody) return;
 
-  let dragging = false;
+  let dragging = false; // nzRangePickMode 专用
 
-  // mousedown: 开始拖选（选取模式下）或选择单格（普通模式）
+  // ---- mousedown ----
   tbody.onmousedown = (e) => {
     const td = e.target.closest('td[data-r]');
     if (!td) return;
-    
+
     if (nzRangePickMode) {
-      // 选取模式：开始拖拽选范围
+      // 公式函数选取模式：开始拖拽选范围
       e.preventDefault();
       dragging = true;
       const startR = +td.dataset.r, startC = +td.dataset.c;
@@ -1088,54 +1092,95 @@ function nzBindDragSelect() {
       nzDragState.startC = startC;
       nzDragState.active = true;
       nzHighlightRange(startR, startC, startR, startC);
+      return;
     }
-    // 普通模式不处理 mousedown，让 click 事件正常触发
+
+    if (nzCellRefPickMode) return; // 引用选取模式由 click 处理
+
+    // 正常模式：记录拖拽起点
+    // 锚点格 = 之前单击选中的格（如果有），否则用当前格
+    e.preventDefault(); // 防止文本选中
+    nzNormalDragStart = { r: +td.dataset.r, c: +td.dataset.c };
+    nzNormalDragMoved = false;
   };
 
+  // ---- mousemove ----
   tbody.onmousemove = (e) => {
-    if (!dragging || !nzDragState?.active) return;
+    // nzRangePickMode 拖拽
+    if (dragging && nzDragState?.active) {
+      const td = e.target.closest('td[data-r]');
+      if (!td) return;
+      nzHighlightRange(nzDragState.startR, nzDragState.startC, +td.dataset.r, +td.dataset.c);
+      const startRef = XLSX.utils.encode_cell({ r: nzDragState.startR, c: nzDragState.startC });
+      const endRef = XLSX.utils.encode_cell({ r: +td.dataset.r, c: +td.dataset.c });
+      const rangeStr = (nzDragState.startR === +td.dataset.r && nzDragState.startC === +td.dataset.c)
+        ? startRef : `${startRef}:${endRef}`;
+      document.getElementById('nzCellInput').value = nzDragState.baseInput + rangeStr;
+      return;
+    }
+
+    // 正常模式拖拽
+    if (!nzNormalDragStart) return;
     const td = e.target.closest('td[data-r]');
     if (!td) return;
-    nzHighlightRange(nzDragState.startR, nzDragState.startC, +td.dataset.r, +td.dataset.c);
-    
-    // 实时更新输入框显示范围
-    const startRef = XLSX.utils.encode_cell({ r: nzDragState.startR, c: nzDragState.startC });
-    const endRef = XLSX.utils.encode_cell({ r: +td.dataset.r, c: +td.dataset.c });
-    const rangeStr = (nzDragState.startR === +td.dataset.r && nzDragState.startC === +td.dataset.c)
-      ? startRef : `${startRef}:${endRef}`;
-    const input = document.getElementById('nzCellInput');
-    input.value = nzDragState.baseInput + rangeStr;
+    const curR = +td.dataset.r, curC = +td.dataset.c;
+    if (curR !== nzNormalDragStart.r || curC !== nzNormalDragStart.c) {
+      nzNormalDragMoved = true;
+      // 锚点 = 之前选中的格（selectedCell），范围 = 锚点到当前拖拽位置
+      const anchorR = NZ.selectedCell ? NZ.selectedCell.row : nzNormalDragStart.r;
+      const anchorC = NZ.selectedCell ? NZ.selectedCell.col : nzNormalDragStart.c;
+      NZ.selectedRange = {
+        r1: Math.min(anchorR, curR), c1: Math.min(anchorC, curC),
+        r2: Math.max(anchorR, curR), c2: Math.max(anchorC, curC)
+      };
+      nzHighlightNormalRange();
+      nzUpdateRangeActionBar();
+    }
+  };
+
+  // ---- mouseup ----
+  const finishNormalDrag = () => {
+    if (nzNormalDragStart && nzNormalDragMoved && NZ.selectedRange) {
+      nzSuppressNextClick = true;
+      requestAnimationFrame(() => { nzSuppressNextClick = false; });
+      nzShowRangeActionBar();
+      nzUpdateEditBar();
+    }
+    nzNormalDragStart = null;
+    nzNormalDragMoved = false;
   };
 
   tbody.onmouseup = (e) => {
-    if (!dragging || !nzDragState?.active) { dragging = false; return; }
-    dragging = false;
-    
-    const td = e.target.closest('td[data-r]');
-    if (td) {
-      const endR = +td.dataset.r, endC = +td.dataset.c;
-      const startRef = XLSX.utils.encode_cell({ r: nzDragState.startR, c: nzDragState.startC });
-      const endRef = XLSX.utils.encode_cell({ r: endR, c: endC });
-      const rangeStr = (nzDragState.startR === endR && nzDragState.startC === endC)
-        ? startRef : `${startRef}:${endRef}`;
-      
-      // 完成公式：baseInput + rangeStr + )
-      const input = document.getElementById('nzCellInput');
-      input.value = nzDragState.baseInput + rangeStr + ')';
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+    // nzRangePickMode 拖拽完成
+    if (dragging && nzDragState?.active) {
+      dragging = false;
+      const td = e.target.closest('td[data-r]');
+      if (td) {
+        const endR = +td.dataset.r, endC = +td.dataset.c;
+        const startRef = XLSX.utils.encode_cell({ r: nzDragState.startR, c: nzDragState.startC });
+        const endRef = XLSX.utils.encode_cell({ r: endR, c: endC });
+        const rangeStr = (nzDragState.startR === endR && nzDragState.startC === endC)
+          ? startRef : `${startRef}:${endRef}`;
+        const input = document.getElementById('nzCellInput');
+        input.value = nzDragState.baseInput + rangeStr + ')';
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      nzExitRangePick();
+      return;
     }
-    nzExitRangePick();
+    // 正常模式拖拽完成
+    finishNormalDrag();
   };
-  
-  // 支持鼠标移出表格后松开也能结束拖拽
+
+  // 鼠标移出表格后松开
   document.addEventListener('mouseup', () => {
     if (dragging && nzDragState?.active) {
       dragging = false;
-      // 如果没有在 td 上松开，保留当前输入但不关闭括号
       nzExitRangePick();
     }
+    finishNormalDrag();
   });
 }
 
@@ -1152,11 +1197,97 @@ function nzHighlightRange(r1, c1, r2, c2) {
   });
 }
 
-/** 清除范围高亮 */
+/** 清除范围高亮（nzRangePickMode 用） */
 function nzClearRangeHighlight() {
   document.querySelectorAll('#nzTbody td.nz-range-select').forEach(td => {
     td.classList.remove('nz-range-select');
   });
+}
+
+/** 高亮正常模式拖选范围 */
+function nzHighlightNormalRange() {
+  nzClearNormalRangeHighlight();
+  if (!NZ.selectedRange) return;
+  const { r1, c1, r2, c2 } = NZ.selectedRange;
+  document.querySelectorAll('#nzTbody td[data-r]').forEach(td => {
+    const r = +td.dataset.r, c = +td.dataset.c;
+    if (r >= r1 && r <= r2 && c >= c1 && c <= c2) {
+      td.classList.add('nz-range-selected');
+    }
+  });
+  // 锚点格额外标记
+  if (NZ.selectedCell) {
+    const anchor = document.querySelector(`#nzTbody td[data-r="${NZ.selectedCell.row}"][data-c="${NZ.selectedCell.col}"]`);
+    if (anchor) anchor.classList.add('selected');
+  }
+}
+
+/** 清除正常模式范围高亮 */
+function nzClearNormalRangeHighlight() {
+  document.querySelectorAll('#nzTbody td.nz-range-selected').forEach(td => {
+    td.classList.remove('nz-range-selected');
+  });
+}
+
+/** 计算范围内的统计数据（支持公式单元格） */
+function nzCalcRangeStats(range) {
+  if (!range || !NZ.wb) return null;
+  const { r1, c1, r2, c2 } = range;
+  const statsData = nzComputeStats();
+  let count = 0, sum = 0, numCount = 0;
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      count++;
+      let val = nzGetCellDisplayValue(NZ.activeSheet, r, c);
+      const valStr = String(val);
+      if (nzHasFormula(valStr)) {
+        const resolved = nzResolveCellFormula(valStr, statsData, NZ.activeSheet);
+        if (resolved.ok) val = resolved.value;
+      }
+      const num = parseFloat(val);
+      if (!isNaN(num)) { sum += num; numCount++; }
+    }
+  }
+  return { count, numCount, sum, avg: numCount > 0 ? sum / numCount : 0 };
+}
+
+/** 生成范围地址字符串（如 A1:B5 或 A1） */
+function nzRangeAddr(range) {
+  if (!range) return '';
+  const s = XLSX.utils.encode_cell({ r: range.r1, c: range.c1 });
+  if (range.r1 === range.r2 && range.c1 === range.c2) return s;
+  return s + ':' + XLSX.utils.encode_cell({ r: range.r2, c: range.c2 });
+}
+
+/** 显示范围操作栏 */
+function nzShowRangeActionBar() {
+  const bar = document.getElementById('nzRangeActionBar');
+  if (bar) bar.style.display = '';
+}
+
+/** 隐藏范围操作栏 */
+function nzHideRangeActionBar() {
+  const bar = document.getElementById('nzRangeActionBar');
+  if (bar) bar.style.display = 'none';
+}
+
+/** 更新范围操作栏内容 */
+function nzUpdateRangeActionBar() {
+  if (!NZ.selectedRange) { nzHideRangeActionBar(); return; }
+  const stats = nzCalcRangeStats(NZ.selectedRange);
+  const info = document.getElementById('nzRabInfo');
+  const statsEl = document.getElementById('nzRabStats');
+  if (!info || !statsEl) return;
+
+  const addr = nzRangeAddr(NZ.selectedRange);
+  info.textContent = `${addr} (${stats.count}格)`;
+
+  statsEl.innerHTML = ''
+    + `<span>求和: <strong>${stats.sum % 1 === 0 ? stats.sum : stats.sum.toFixed(2)}</strong></span>`
+    + `<span>均值: <strong>${stats.avg.toFixed(2)}</strong></span>`
+    + `<span>计数: <strong>${stats.numCount}</strong></span>`;
+
+  nzShowRangeActionBar();
 }
 
 /** 进入单元格引用选取模式（输入=后激活） */
@@ -1181,7 +1312,9 @@ function nzExitCellRefPick() {
 }
 
 function nzSelectCell(r, c) {
-  // 引用选取模式：点击单元格插入引用而非切换选中
+  // 拖选结束时抑制点选
+  if (nzSuppressNextClick) return;
+  // 引用选取模式：点击单元格插入引用
   if (nzCellRefPickMode) {
     const ref = XLSX.utils.encode_cell({ r, c });
     const input = document.getElementById('nzCellInput');
@@ -1194,6 +1327,11 @@ function nzSelectCell(r, c) {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     return;
   }
+  // 普通单选：清除范围选择
+  NZ.selectedRange = null;
+  nzHideRangeActionBar();
+  nzClearNormalRangeHighlight();
+
   NZ.selectedCell = { row: r, col: c };
   // 高亮
   document.querySelectorAll('#nzTbody td.selected').forEach(td => td.classList.remove('selected'));
@@ -1213,7 +1351,8 @@ function nzUpdateEditBar() {
   }
   bar.style.display = '';
   const { row, col } = NZ.selectedCell;
-  refEl.textContent = XLSX.utils.encode_cell({ r: row, c: col });
+  // 有范围选择时显示范围地址，否则显示单格地址
+  refEl.textContent = NZ.selectedRange ? nzRangeAddr(NZ.selectedRange) : XLSX.utils.encode_cell({ r: row, c: col });
   const editKey = `${NZ.activeSheet}!${row}!${col}`;
   const ws = NZ.wb.Sheets[NZ.wb.SheetNames[NZ.activeSheet]];
   let val = '';
@@ -1319,8 +1458,8 @@ function nzApplyCellEdit() {
     td.className = (isFormula ? ' nz-formula' : '') + ' selected';
     td.title = newVal;
     if (fmtStyle) td.style.cssText = fmtStyle;
-    // 预览模式下显示计算值（原始公式模式显示原文）
-    if (NZ.previewMode && isFormula && !NZ.showRawFormula) {
+    // 预览模式下显示计算值
+    if (NZ.previewMode && isFormula) {
       const statsData = nzComputeStats();
       const resolved = nzResolveCellFormula(newVal, statsData, NZ.activeSheet);
       td.textContent = resolved.ok ? String(resolved.value) : newVal;
@@ -1522,7 +1661,8 @@ function nzQiBuildParsed() {
   const fi = parseInt(document.getElementById('nzQiFile').value);
   if (!fi) return null;
   const l1Val = document.getElementById('nzQiL1').value;
-  const entryVal = document.getElementById('nzQiEntry')?.value || '';
+  const entrySel = document.getElementById('nzQiEntry');
+  const entryVal = entrySel?.value || '';
   const colVal = document.getElementById('nzQiCol').value;
   const metric = document.getElementById('nzQiMetric').value;
   if (!entryVal) return null;
@@ -1533,7 +1673,14 @@ function nzQiBuildParsed() {
   } else {
     l1 = l1Val || '';
   }
-  return { fileIdx: fi, l1, l2: entryVal, col: colVal || '', metric };
+
+  // 修正[合计]条目：L1合计的 name 是"L1名称 合计"，但公式 l2 应为"合计"
+  let l2 = entryVal;
+  if (l1 && entryVal.endsWith(' 合计')) {
+    l2 = '合计';
+  }
+
+  return { fileIdx: fi, l1, l2, col: colVal || '', metric };
 }
 
 document.getElementById('nzQiInsertBtn').addEventListener('click', () => {
@@ -1605,31 +1752,14 @@ function nzScanFormulas() {
   ntf(`扫描完成：${matchCount} 匹配，${failCount} 未匹配`, failCount ? 'warn' : 'success');
 }
 
-// ---- 预览模式（三态循环：编辑 → 预览计算值 → 预览原始公式） ----
+// ---- 预览模式（两态切换：预览计算值 ↔ 显示原始公式） ----
 document.getElementById('nzPreviewBtn').addEventListener('click', () => {
   if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
+  NZ.previewMode = !NZ.previewMode;
   const btn = document.getElementById('nzPreviewBtn');
-  if (!NZ.previewMode) {
-    // 编辑 → 预览(计算值)
-    NZ.previewMode = true;
-    NZ.showRawFormula = false;
-    btn.textContent = '原始';
-    btn.classList.add('btn-primary');
-    btn.classList.remove('btn-ghost');
-    ntf('预览模式：显示公式计算结果');
-  } else if (!NZ.showRawFormula) {
-    // 预览(计算值) → 预览(原始公式)
-    NZ.showRawFormula = true;
-    btn.textContent = '编辑';
-    ntf('原始公式模式：显示公式原文，可设置字体字号');
-  } else {
-    // 预览(原始公式) → 编辑
-    NZ.previewMode = false;
-    NZ.showRawFormula = false;
-    btn.textContent = '预览';
-    btn.classList.remove('btn-primary');
-    btn.classList.add('btn-ghost');
-  }
+  btn.textContent = NZ.previewMode ? '公式' : '预览';
+  btn.classList.toggle('btn-primary', NZ.previewMode);
+  btn.classList.toggle('btn-ghost', !NZ.previewMode);
   nzRenderTable();
 });
 
@@ -1739,6 +1869,73 @@ function nzSyncFormatBar() {
   fontName.value = fmt.fontName || '';
   fontSize.value = fmt.fontSize || '';
 }
+
+// ---- 范围选取操作栏按钮 ----
+/** 清除范围选择并回到单选状态 */
+function nzClearRangeSelection() {
+  NZ.selectedRange = null;
+  nzClearNormalRangeHighlight();
+  nzHideRangeActionBar();
+  if (NZ.selectedCell) nzUpdateEditBar();
+}
+
+document.getElementById('nzRabSumBtn').addEventListener('click', () => {
+  if (!NZ.selectedRange || !NZ.selectedCell) return;
+  const addr = nzRangeAddr(NZ.selectedRange);
+  const formula = `=SUM(${addr})`;
+  // 写入锚点格（先选中的目标格）
+  const { row, col } = NZ.selectedCell;
+  const editKey = `${NZ.activeSheet}!${row}!${col}`;
+  NZ.cellEdits[editKey] = formula;
+  const input = document.getElementById('nzCellInput');
+  input.value = formula;
+  nzClearRangeSelection();
+  nzRenderTable();
+  ntf('已插入求和公式');
+});
+
+document.getElementById('nzRabAvgBtn').addEventListener('click', () => {
+  if (!NZ.selectedRange || !NZ.selectedCell) return;
+  const addr = nzRangeAddr(NZ.selectedRange);
+  const formula = `=AVG(${addr})`;
+  // 写入锚点格
+  const { row, col } = NZ.selectedCell;
+  const editKey = `${NZ.activeSheet}!${row}!${col}`;
+  NZ.cellEdits[editKey] = formula;
+  const input = document.getElementById('nzCellInput');
+  input.value = formula;
+  nzClearRangeSelection();
+  nzRenderTable();
+  ntf('已插入均值公式');
+});
+
+document.getElementById('nzRabPctBtn').addEventListener('click', () => {
+  if (!NZ.selectedRange) return;
+  // 对范围内所有格应用百分比格式
+  for (let r = NZ.selectedRange.r1; r <= NZ.selectedRange.r2; r++) {
+    for (let c = NZ.selectedRange.c1; c <= NZ.selectedRange.c2; c++) {
+      const editKey = `${NZ.activeSheet}!${r}!${c}`;
+      if (!NZ.cellFormats[editKey]) NZ.cellFormats[editKey] = {};
+      NZ.cellFormats[editKey].percent = true;
+    }
+  }
+  nzClearRangeSelection();
+  nzRenderTable();
+  // 同步锚点格的 % 按钮状态
+  if (NZ.selectedCell) {
+    const fmt = nzGetCurrentFmt();
+    document.getElementById('nzPercentBtn')?.classList.toggle('active', !!fmt.percent);
+  }
+  ntf('已应用百分比格式');
+});
+
+// Escape 键清除范围选择
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && NZ.selectedRange) {
+    nzClearRangeSelection();
+    nzRenderTable();
+  }
+});
 
 // ---- 主题化命名输入模态框（替代原生prompt/confirm） ----
 const nzModal = {
@@ -1854,15 +2051,18 @@ document.getElementById('nzSaveBtn').addEventListener('click', async () => {
 document.getElementById('nzTemplateSel').addEventListener('change', async () => {
   const name = document.getElementById('nzTemplateSel').value;
   if (!name) return;
+  console.log('[NZ] 模板切换:', name);
   NZ.currentTemplate = name;
   try {
     const res = await fetch(`/api/nz-templates/${encodeURIComponent(name)}`);
+    if (!res.ok) { ntf(`加载模板失败 (HTTP ${res.status})`, 'error'); return; }
     const data = await res.json();
     if (data.error) { ntf(data.error, 'error'); return; }
-    // 解码base64
+    if (!data.fileData) { ntf('模板数据为空', 'error'); return; }
     const raw = base64ToArrayBuffer(data.fileData);
     NZ.rawBuffer = raw;
     nzParseWorkbook(raw);
+    ntf(`已加载模板「${name}」`);
   } catch (e) {
     ntf('加载模板失败: ' + e.message, 'error');
   }

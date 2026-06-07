@@ -313,6 +313,16 @@
             <tbody id="nzTbody"></tbody>
           </table>
         </div>
+        <!-- 范围选取操作栏（拖选2+格时显示） -->
+        <div class="nz-range-action-bar" id="nzRangeActionBar" style="display:none">
+          <span class="nz-rab-info" id="nzRabInfo"></span>
+          <div class="nz-rab-stats" id="nzRabStats"></div>
+          <div class="nz-rab-btns">
+            <button class="btn btn-ghost btn-xs" id="nzRabSumBtn" title="插入=SUM(范围)到锚点格">插入Σ</button>
+            <button class="btn btn-ghost btn-xs" id="nzRabAvgBtn" title="插入=AVG(范围)到锚点格">插入AVG</button>
+            <button class="btn btn-ghost btn-xs" id="nzRabPctBtn" title="对选中范围应用百分比格式">%格式</button>
+          </div>
+        </div>
         <!-- 单元格编辑栏 -->
         <div class="nz-edit-bar" id="nzEditBar" style="display:none">
           <span class="nz-cell-ref" id="nzCellRef">-</span>
