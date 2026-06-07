@@ -65,15 +65,19 @@ def upload_attachment(session, csrftoken, file_path, filename):
     with open(file_path, 'rb') as f:
         file_data = f.read()
     boundary = '----WebKitFormBoundary' + ''.join(random.choices('0123456789abcdef', k=16))
-    body_parts = []
-    body_parts.append(f'--{boundary}'.encode('utf-8'))
-    cd = f'Content-Disposition: form-data; name="file"; filename="{filename}"'
-    body_parts.append(cd.encode('utf-8'))
-    body_parts.append(b'Content-Type: application/octet-stream')
-    body_parts.append(b'')
-    body_parts.append(file_data)
-    body_parts.append(f'--{boundary}--'.encode('utf-8'))
-    body_bytes = b'\r\n'.join(body_parts)
+
+    # 构建 multipart body
+    # upload 接口对中文文件名兼容性好（原始中文即可，服务端正确识别 UTF-8）
+    # 最终附件显示名由 sendMail 的 attachmentNameList（base64编码）决定
+    parts = []
+    parts.append(f'--{boundary}'.encode('utf-8'))
+    parts.append(f'Content-Disposition: form-data; name="file"; filename="{filename}"'.encode('utf-8'))
+    parts.append(b'Content-Type: application/octet-stream')
+    parts.append(b'')
+    parts.append(file_data)
+    parts.append(f'--{boundary}--'.encode('utf-8'))
+    body_bytes = b'\r\n'.join(parts)
+
     upload_headers['Content-Type'] = f'multipart/form-data; boundary={boundary}'
     resp = session.post(url, data=body_bytes, headers=upload_headers, timeout=60)
     if resp.status_code == 200:
@@ -91,6 +95,15 @@ def build_html_body(body):
     if '<p>' not in html_body and '<br>' not in html_body and '<div' not in html_body:
         html_body = '<p>' + html_body + '</p>'
     return html_body
+
+
+def encode_attachment_name(filename):
+    """CoreMail 的 sendMail 接口要求 attachmentNameList 传纯 base64 编码的文件名
+    （不加 =?UTF-8?B? 前缀和 ?= 后缀），CoreMail 服务端会自动加 RFC2047 包装。
+    若传原始中文，CoreMail 会做错误的 GB2312+base64 包装导致附件名乱码。
+    """
+    import base64
+    return base64.b64encode(filename.encode('utf-8')).decode('utf-8')
 
 
 def send_mail_api(session, from_addr, to_emails, cc_emails, subject,

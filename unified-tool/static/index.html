@@ -857,7 +857,7 @@
 <div class="em-modal-box" id="emNewVarModalBox" style="width:380px;">
   <div class="em-mb-head"><span class="em-mb-title" id="emNewVarTitle">新建变量</span><button class="em-mb-close" id="emNewVarClose">&times;</button></div>
   <div class="em-mb-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px">
-    <div class="em-form-group" style="margin-bottom:0"><div class="em-form-label">变量名</div><input type="text" class="form-input" id="emNewVarInput" placeholder="输入变量名（在正文中用 {{变量名}} 引用）"></div>
+    <div class="em-form-group" style="margin-bottom:0"><div class="em-form-label">变量名</div><div class="em-tag-input-wrap" onclick="document.getElementById('emNewVarInput').focus()"><input type="text" id="emNewVarInput" placeholder="输入变量名（在正文中用 {{变量名}} 引用）"></div></div>
     <div class="em-nv-hint" id="emNewVarHint"></div>
   </div>
   <div class="em-mb-foot">

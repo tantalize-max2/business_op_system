@@ -10,7 +10,7 @@ from config import (MAIL_CONFIG, EMAIL_DATA_DIR, EMAIL_CONTACTS_FILE, EMAIL_TEMP
                     EMAIL_COOKIES_FILE, EMAIL_UPLOAD_DIR, EMAIL_LOGIN_CREDS_FILE, TXT_VARS_DIR)
 from services.email_service import (load_json, save_json, create_mail_session,
                                      load_csrftoken, get_security_code, upload_attachment,
-                                     build_html_body, send_mail_api)
+                                     build_html_body, send_mail_api, encode_attachment_name)
 
 login_state = {
     'status': 'idle',
@@ -231,7 +231,7 @@ def send_email(to_emails, cc_emails, subject, body, uploaded_files):
                     file_key = upload_attachment(session, csrftoken, tmp_path, f.filename)
                     if file_key:
                         attachment_list.append(file_key)
-                        attachment_name_list.append(f.filename)
+                        attachment_name_list.append(encode_attachment_name(f.filename))
                     else:
                         upload_errors.append(f"附件 '{f.filename}' 上传失败")
                 except Exception as e:
@@ -308,7 +308,7 @@ def batch_send_email(items, cc_emails, common_files, per_files_map):
                     file_key = upload_attachment(session, csrftoken, tmp_path, orig_name)
                     if file_key:
                         common_keys.append(file_key)
-                        common_names.append(orig_name)
+                        common_names.append(encode_attachment_name(orig_name))
                 except Exception:
                     pass
 
@@ -322,7 +322,7 @@ def batch_send_email(items, cc_emails, common_files, per_files_map):
                         file_key = upload_attachment(session, csrftoken, per_tmp, f.filename)
                         if file_key:
                             per_keys.append(file_key)
-                            per_names.append(f.filename)
+                            per_names.append(encode_attachment_name(f.filename))
                     except Exception:
                         pass
                     finally:
