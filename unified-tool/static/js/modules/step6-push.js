@@ -352,7 +352,7 @@ function showKdocsEditDialog(sid) {
   document.getElementById('kdEdCat').innerHTML = catOpts;
   if (s.category) document.getElementById('kdEdCat').value = s.category;
 
-  // 本地文件拖拽区域
+  // 本地文件选择区域
   KD._selectedFilePath = s.excel_path || '';
   const fileZone = document.getElementById('kdEdFileZone');
   const fileText = document.getElementById('kdEdFileText');
@@ -361,7 +361,7 @@ function showKdocsEditDialog(sid) {
     fileText.textContent = KD._selectedFilePath;
   } else {
     fileZone.classList.remove('has-file');
-    fileText.textContent = '拖拽Excel文件到此处，或点击浏览';
+    fileText.textContent = '点击浏览选择本地Excel文件';
   }
 
   kdShowModal('kdEditMask', 'kdEditBox');
@@ -375,52 +375,30 @@ document.getElementById('kdEditClose').addEventListener('click', kdEditClose);
 document.getElementById('kdEditCancelBtn').addEventListener('click', kdEditClose);
 document.getElementById('kdEditMask').addEventListener('click', kdEditClose);
 
-// 拖拽区域 - 点击浏览按钮（使用文件浏览器而非原生file picker）
-document.getElementById('kdEdFileZone').addEventListener('click', (e) => {
-  // 只在非input区域点击时触发浏览器
-  if (e.target.id !== 'kdEdFileInput') {
-    e.preventDefault();
-    showFileBrowser((path) => {
-      KD._selectedFilePath = path;
-      const fileZone = document.getElementById('kdEdFileZone');
-      const fileText = document.getElementById('kdEdFileText');
-      fileZone.classList.add('has-file');
-      fileText.textContent = path;
-    });
-  }
+// 拖拽区域 - 点击打开服务端文件浏览器（返回完整路径）
+document.getElementById('kdEdFileZone').addEventListener('click', () => {
+  showFileBrowser((path) => {
+    KD._selectedFilePath = path;
+    const fileZone = document.getElementById('kdEdFileZone');
+    const fileText = document.getElementById('kdEdFileText');
+    fileZone.classList.add('has-file');
+    fileText.textContent = path;
+  });
 });
 
-// 拖拽区域 - 拖放事件
+// 拖拽区域 - 拖放提示（浏览器安全限制无法获取完整路径，引导使用文件浏览器）
 const kdFileZone = document.getElementById('kdEdFileZone');
-kdFileZone.addEventListener('dragover', (e) => { e.preventDefault(); kdFileZone.classList.add('dragover'); });
-kdFileZone.addEventListener('dragleave', () => { kdFileZone.classList.remove('dragover'); });
+kdFileZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  kdFileZone.classList.add('dragover');
+});
+kdFileZone.addEventListener('dragleave', () => {
+  kdFileZone.classList.remove('dragover');
+});
 kdFileZone.addEventListener('drop', (e) => {
   e.preventDefault();
   kdFileZone.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) {
-    const ext = file.name.toLowerCase();
-    if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls') && !ext.endsWith('.csv')) {
-      ntf('请选择Excel文件（.xlsx/.xls/.csv）', 'error');
-      return;
-    }
-    // 浏览器拖拽只能获取文件名，需要通过后端确认路径
-    KD._selectedFilePath = file.name;
-    const fileText = document.getElementById('kdEdFileText');
-    kdFileZone.classList.add('has-file');
-    fileText.textContent = file.name + ' (拖拽文件，路径可能需要手动调整)';
-  }
-});
-
-// 原生file input (作为备选)
-document.getElementById('kdEdFileInput').addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    KD._selectedFilePath = file.name;
-    const fileText = document.getElementById('kdEdFileText');
-    kdFileZone.classList.add('has-file');
-    fileText.textContent = file.name;
-  }
+  ntf('浏览器安全限制无法获取完整路径，请点击区域使用文件浏览器选择', 'warn');
 });
 
 // 保存按钮
