@@ -7,3 +7,5 @@ data/email/cookies.json
 data/email/csrftoken.txt
 data/email/login_creds.json
 data/email/uploads/
+.env
+.temp/

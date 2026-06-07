@@ -6,6 +6,7 @@
 
 from flask import Flask
 from flask_cors import CORS
+import os
 from config import ensure_dirs
 from routes.file_routes import file_bp
 from routes.filter_routes import filter_bp
@@ -27,4 +28,5 @@ app.register_blueprint(push_bp)
 app.register_blueprint(email_bp)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5557, debug=True)
+    debug = os.environ.get('FLASK_DEBUG', '1') == '1'
+    app.run(host='0.0.0.0', port=5557, debug=debug)

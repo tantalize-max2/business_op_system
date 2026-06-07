@@ -71,11 +71,11 @@ DEFAULT_SPLIT_GROUPS = {
 }
 
 MAIL_CONFIG = {
-    'username': 'wangy592@chinatelecom.cn',
-    'password': 'wY0426!..',
-    'auth_code': 'nblaelviyhpdegbh',
-    'account': 'wangy592',
-    'phone': '18081927229',
+    'username': os.environ.get('MAIL_USERNAME', 'wangy592@chinatelecom.cn'),
+    'password': os.environ.get('MAIL_PASSWORD', ''),
+    'auth_code': os.environ.get('MAIL_AUTH_CODE', 'nblaelviyhpdegbh'),
+    'account': os.environ.get('MAIL_ACCOUNT', 'wangy592'),
+    'phone': os.environ.get('MAIL_PHONE', ''),
 }
 
 

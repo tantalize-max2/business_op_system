@@ -44,23 +44,47 @@ def _save_kdocs_cats(cats):
 
 
 def browse_local_fs(path):
-    if path == '__drives__':
-        drives = []
-        for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
-            d = f'{letter}:\\'
-            if os.path.exists(d):
-                drives.append({'name': f'{letter}:', 'path': d, 'is_drive': True})
-        return {
-            'current': '__drives__',
-            'current_display': '此电脑',
-            'parent': '',
-            'dirs': drives,
-            'files': [],
-            'is_drives': True
-        }
+    import platform
+    is_windows = platform.system() == 'Windows'
 
+    if path == '__drives__':
+        if is_windows:
+            # Windows: 枚举盘符
+            drives = []
+            for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+                d = f'{letter}:\\'
+                if os.path.exists(d):
+                    drives.append({'name': f'{letter}:', 'path': d, 'is_drive': True})
+            return {
+                'current': '__drives__',
+                'current_display': '此电脑',
+                'parent': '',
+                'dirs': drives,
+                'files': [],
+                'is_drives': True
+            }
+        else:
+            # Linux/Docker: 以数据目录为根（用户上传的文件在 data/uploads 下）
+            dirs = []
+            try:
+                for item in os.listdir(DATA_DIR):
+                    full = os.path.join(DATA_DIR, item)
+                    if os.path.isdir(full):
+                        dirs.append({'name': item, 'path': full})
+            except PermissionError:
+                pass
+            return {
+                'current': DATA_DIR,
+                'current_display': '数据目录',
+                'parent': '',
+                'dirs': sorted(dirs, key=lambda x: x['name'].lower()),
+                'files': [],
+                'is_drives': True
+            }
+
+    # 默认路径：Windows 用用户主目录，Linux 用数据目录
     if not path:
-        path = os.path.expanduser('~')
+        path = os.path.expanduser('~') if is_windows else DATA_DIR
     if not os.path.exists(path):
         return {'error': f'路径不存在: {path}'}
 
@@ -76,13 +100,21 @@ def browse_local_fs(path):
     except PermissionError:
         return {'error': '无权限访问该路径'}
 
+    # 计算父目录
     parent = ''
-    if path and len(path) <= 3 and path.endswith(':\\'):
-        parent = '__drives__'
-    elif path:
-        parent = os.path.dirname(path)
-        if parent == path:
+    if is_windows:
+        if path and len(path) <= 3 and path.endswith(':\\'):
             parent = '__drives__'
+        elif path:
+            parent = os.path.dirname(path)
+            if parent == path:
+                parent = '__drives__'
+    else:
+        # Linux: 到达数据目录根后不再往上
+        if os.path.abspath(path) == os.path.abspath(DATA_DIR):
+            parent = '__drives__'
+        elif path:
+            parent = os.path.dirname(path)
 
     return {
         'current': path,

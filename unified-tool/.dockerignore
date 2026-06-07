@@ -1,0 +1,40 @@
+# 版本控制
+.git
+.gitignore
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 临时文件和调试脚本
+.temp/
+*.temp
+
+# 测试数据
+test_data.xlsx
+
+# Windows 批处理
+*.bat
+
+# 敏感数据（通过 volume 挂载，不打入镜像）
+data/email/cookies.json
+data/email/csrftoken.txt
+data/email/login_creds.json
+data/uploads/
+data/output/
+data/email/uploads/
+
+# Docker 自身文件
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 文档
+*.md
+deploy.md
+
+# IDE 配置
+.vscode/
+.idea/
