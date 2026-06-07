@@ -77,11 +77,83 @@ const EmailTool = (() => {
         ['emContactModal', 'emTemplateModal', 'emPickerModal', 'emGroupPickerModal'].forEach(_hideModal);
     }
 
+    // ============ Promise化模态框（替代prompt/confirm） ============
+    const _emInputModal = {
+        _resolve: null,
+        show({ title = '输入', placeholder = '', value = '', okText = '确定' }) {
+            document.getElementById('emNewVarTitle').textContent = title;
+            const input = document.getElementById('emNewVarInput');
+            input.placeholder = placeholder;
+            input.value = value;
+            document.getElementById('emNewVarHint').textContent = '';
+            document.getElementById('emNewVarOk').textContent = okText;
+            document.getElementById('emNewVarModalMask').classList.add('show');
+            document.getElementById('emNewVarModalBox').classList.add('show');
+            setTimeout(() => { input.focus(); input.select(); }, 50);
+            return new Promise(resolve => { this._resolve = resolve; });
+        },
+        hide() {
+            document.getElementById('emNewVarModalMask').classList.remove('show');
+            document.getElementById('emNewVarModalBox').classList.remove('show');
+            this._resolve = null;
+        },
+        setHint(text, isWarn = false) {
+            const el = document.getElementById('emNewVarHint');
+            el.textContent = text;
+            el.classList.toggle('warn', isWarn);
+        }
+    };
+    // 输入模态框事件
+    function _emInputModalInit() {
+        const cancel = () => { if (_emInputModal._resolve) _emInputModal._resolve(null); _emInputModal.hide(); };
+        document.getElementById('emNewVarClose').addEventListener('click', cancel);
+        document.getElementById('emNewVarCancel').addEventListener('click', cancel);
+        document.getElementById('emNewVarModalMask').addEventListener('click', cancel);
+        document.getElementById('emNewVarOk').addEventListener('click', () => {
+            const val = document.getElementById('emNewVarInput').value.trim();
+            if (!val) { _emInputModal.setHint('变量名不能为空', true); document.getElementById('emNewVarInput').focus(); return; }
+            if (_emInputModal._resolve) _emInputModal._resolve(val);
+            _emInputModal.hide();
+        });
+        document.getElementById('emNewVarInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('emNewVarOk').click(); }
+            else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+        });
+    }
+
+    const _emConfirmModal = {
+        _resolve: null,
+        show({ title = '确认', content = '', okText = '确定' }) {
+            document.getElementById('emConfirmTitle').textContent = title;
+            document.getElementById('emConfirmContent').textContent = content;
+            document.getElementById('emConfirmOk').textContent = okText;
+            document.getElementById('emConfirmModalMask').classList.add('show');
+            document.getElementById('emConfirmModalBox').classList.add('show');
+            setTimeout(() => document.getElementById('emConfirmOk').focus(), 50);
+            return new Promise(resolve => { this._resolve = resolve; });
+        },
+        hide() {
+            document.getElementById('emConfirmModalMask').classList.remove('show');
+            document.getElementById('emConfirmModalBox').classList.remove('show');
+            this._resolve = null;
+        }
+    };
+    // 确认模态框事件
+    function _emConfirmModalInit() {
+        const cancel = () => { if (_emConfirmModal._resolve) _emConfirmModal._resolve(false); _emConfirmModal.hide(); };
+        document.getElementById('emConfirmClose').addEventListener('click', cancel);
+        document.getElementById('emConfirmCancel').addEventListener('click', cancel);
+        document.getElementById('emConfirmModalMask').addEventListener('click', cancel);
+        document.getElementById('emConfirmOk').addEventListener('click', () => { if (_emConfirmModal._resolve) _emConfirmModal._resolve(true); _emConfirmModal.hide(); });
+    }
+
     // ============ 初始化 ============
     function init() {
         _checkLoginStatus();
         _loadLoginCreds();
         _updateLoginGuard();
+        _emInputModalInit();
+        _emConfirmModalInit();
         setInterval(_pollLogin, 2000);
         document.querySelectorAll('.em-sub-item').forEach(item => {
             item.addEventListener('click', () => _showSubPanel(item.dataset.empanel));
@@ -235,7 +307,8 @@ const EmailTool = (() => {
     }
 
     async function _delContact(id) {
-        if (!confirm('确定删除该联系人？')) return;
+        const ok = await _emConfirmModal.show({ title: '删除确认', content: '确定删除该联系人？此操作不可恢复。', okText: '删除' });
+        if (!ok) return;
         await fetch(`${API}/contacts/${id}`, { method: 'DELETE' });
         _loadContacts();
         _toast('已删除', 'success');
@@ -498,7 +571,7 @@ const EmailTool = (() => {
             }
         }
         if (batchMode) {
-            document.getElementById('emBody').setAttribute('data-placeholder', '输入邮件正文，支持 {{name}}、{{email}}、{{group}} 等变量');
+            document.getElementById('emBody').setAttribute('data-placeholder', '输入邮件正文，支持 {{name}}、{{email}} 等变量');
             _renderRecipientPreview();
         } else {
             document.getElementById('emBody').setAttribute('data-placeholder', '请输入邮件正文内容...');
@@ -523,34 +596,9 @@ const EmailTool = (() => {
         } catch (e) { }
     }
 
-    async function _uploadTxtVar(e) {
-        if (!isLoggedIn) { _toast('请先登录邮箱', 'error'); return; }
-        const file = e.target.files[0];
-        if (!file) return;
-        let varName = prompt('请输入变量名（在正文中用 {{变量名}} 引用）：', file.name.replace('.txt', ''));
+    async function _addNewTxtVar() {
+        const varName = await _emInputModal.show({ title: '新建变量', placeholder: '输入变量名（在正文中用 {{变量名}} 引用）', okText: '创建' });
         if (!varName) return;
-        varName = varName.trim();
-        if (!varName) { _toast('变量名不能为空', 'error'); return; }
-        const fd = new FormData(); fd.append('file', file);
-        try {
-            const r = await fetch(`${API}/txt-vars`, { method: 'POST', body: fd });
-            const j = await r.json();
-            if (j.success) {
-                const rv = await fetch(`${API}/txt-vars/${j.data.name}`);
-                const jv = await rv.json();
-                txtVarFiles[varName] = jv.success ? (jv.data.values || []) : [];
-                _renderTxtVarList();
-                _toast(`变量「${varName}」已导入（${j.data.count} 行）`, 'success');
-            } else _toast(j.message, 'error');
-        } catch (e) { _toast('上传失败', 'error'); }
-        e.target.value = '';
-    }
-
-    function _addNewTxtVar() {
-        let varName = prompt('请输入新变量名（在正文中用 {{变量名}} 引用）：');
-        if (!varName) return;
-        varName = varName.trim();
-        if (!varName) { _toast('变量名不能为空', 'error'); return; }
         if (txtVarFiles.hasOwnProperty(varName)) {
             _toast(`变量「${varName}」已存在`, 'info');
             _openVarEdit(varName);
@@ -635,7 +683,8 @@ const EmailTool = (() => {
     }
 
     async function _deleteTxtVar(name) {
-        if (!confirm(`确定删除变量「${name}」？`)) return;
+        const ok = await _emConfirmModal.show({ title: '删除确认', content: `确定删除变量「${name}」？此操作不可恢复。`, okText: '删除' });
+        if (!ok) return;
         delete txtVarFiles[name];
         try { await fetch(`${API}/txt-vars/${name}`, { method: 'DELETE' }); } catch (e) { }
         if (currentEditVar === name) _closeVarEdit();
@@ -651,8 +700,7 @@ const EmailTool = (() => {
         let result = text;
         result = result.replace(/\{\{name\}\}/g, contact ? contact.name : '');
         result = result.replace(/\{\{email\}\}/g, contact ? contact.email : '');
-        result = result.replace(/\{\{group\}\}/g, contact ? (contact.group || '') : '');
-        const allVars = Object.keys(txtVarFiles).filter(n => !['name', 'email', 'group'].includes(n));
+        const allVars = Object.keys(txtVarFiles).filter(n => !['name', 'email'].includes(n));
         for (const varName of allVars) {
             const pattern = new RegExp(`\\{\\{${varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}\\}`, 'g');
             let values = txtVarFiles[varName];
@@ -932,7 +980,8 @@ const EmailTool = (() => {
     }
 
     async function _delTemplate(id) {
-        if (!confirm('确定删除该模板？')) return;
+        const ok = await _emConfirmModal.show({ title: '删除确认', content: '确定删除该模板？此操作不可恢复。', okText: '删除' });
+        if (!ok) return;
         await fetch(`${API}/templates/${id}`, { method: 'DELETE' });
         _loadTemplates();
         _toast('模板已删除', 'success');
@@ -1088,7 +1137,8 @@ const EmailTool = (() => {
     }
 
     async function _doLogout() {
-        if (!confirm('确定退出登录？退出后需重新登录才能发邮件。')) return;
+        const ok = await _emConfirmModal.show({ title: '退出登录', content: '确定退出登录？退出后需重新登录才能发邮件。', okText: '退出' });
+        if (!ok) return;
         try {
             await fetch(`${API}/logout`, { method: 'POST' });
             isLoggedIn = false;
@@ -1243,7 +1293,6 @@ const EmailTool = (() => {
         toggleBatchMode: _toggleBatchMode,
         insertVariable: _insertVariable,
         schedulePreviewUpdate: _schedulePreviewUpdate,
-        uploadTxtVar: _uploadTxtVar,
         addNewTxtVar: _addNewTxtVar,
         _openVarEdit: _openVarEdit,
         closeVarEdit: _closeVarEdit,

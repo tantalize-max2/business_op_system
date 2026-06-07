@@ -611,11 +611,8 @@
           <span class="em-vh-label">插入变量:</span>
           <span class="em-var-btn" onclick="EmailTool.insertVariable('name')">{{name}}</span>
           <span class="em-var-btn" onclick="EmailTool.insertVariable('email')">{{email}}</span>
-          <span class="em-var-btn" onclick="EmailTool.insertVariable('group')">{{group}}</span>
           <span class="em-var-btn em-var-btn-new" onclick="EmailTool.addNewTxtVar()">+ 新建变量</span>
-          <span class="em-var-btn em-var-btn-import" onclick="document.getElementById('emTxtVarUpload').click()">导入txt</span>
           <div id="emTxtVarList" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
-          <input type="file" id="emTxtVarUpload" accept=".txt" style="display:none" onchange="EmailTool.uploadTxtVar(event)">
         </div>
         <!-- 变量编辑面板 -->
         <div id="emVarEditPanel" style="display:none;margin-bottom:12px;border:1px solid var(--bd);border-radius:var(--r);overflow:hidden;">
@@ -852,6 +849,33 @@
   <div class="em-mb-foot">
     <button class="btn btn-outline btn-sm" onclick="EmailTool.hideGroupPickerModal()">取消</button>
     <button class="btn btn-primary btn-sm" onclick="EmailTool.confirmGroupPicker()">添加选中分组的联系人</button>
+  </div>
+</div>
+
+<!-- 新建变量模态框 -->
+<div class="em-modal-mask" id="emNewVarModalMask"></div>
+<div class="em-modal-box" id="emNewVarModalBox" style="width:380px;">
+  <div class="em-mb-head"><span class="em-mb-title" id="emNewVarTitle">新建变量</span><button class="em-mb-close" id="emNewVarClose">&times;</button></div>
+  <div class="em-mb-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:10px">
+    <div class="em-form-group" style="margin-bottom:0"><div class="em-form-label">变量名</div><input type="text" class="form-input" id="emNewVarInput" placeholder="输入变量名（在正文中用 {{变量名}} 引用）"></div>
+    <div class="em-nv-hint" id="emNewVarHint"></div>
+  </div>
+  <div class="em-mb-foot">
+    <button class="btn btn-ghost btn-sm" id="emNewVarCancel">取消</button>
+    <button class="btn btn-primary btn-sm" id="emNewVarOk">创建</button>
+  </div>
+</div>
+
+<!-- 确认模态框（替代confirm） -->
+<div class="em-modal-mask" id="emConfirmModalMask"></div>
+<div class="em-modal-box" id="emConfirmModalBox" style="width:380px;">
+  <div class="em-mb-head"><span class="em-mb-title" id="emConfirmTitle">确认</span><button class="em-mb-close" id="emConfirmClose">&times;</button></div>
+  <div class="em-mb-body" style="padding:16px 20px;">
+    <div class="em-confirm-content" id="emConfirmContent"></div>
+  </div>
+  <div class="em-mb-foot">
+    <button class="btn btn-ghost btn-sm" id="emConfirmCancel">取消</button>
+    <button class="btn btn-danger btn-sm" id="emConfirmOk">确定</button>
   </div>
 </div>
 

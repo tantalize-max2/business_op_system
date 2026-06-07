@@ -52,8 +52,6 @@
 .em-var-btn:hover { background:var(--ac); color:#fff; border-color:var(--ac); }
 .em-var-btn-new { background:var(--okbg); color:var(--ok); border-color:var(--okbg); }
 .em-var-btn-new:hover { background:var(--ok); color:#fff; }
-.em-var-btn-import { background:var(--wnbg); color:var(--wn); border-color:var(--wnbg); }
-.em-var-btn-import:hover { background:var(--wn); color:#fff; }
 
 /* ---- 标签输入 ---- */
 .em-tag-input-wrap { border:1px solid var(--bd); border-radius:var(--r); padding:6px 10px; min-height:40px; display:flex; flex-wrap:wrap; align-items:center; gap:5px; cursor:text; transition:all .2s; background:var(--bg2); }
@@ -253,3 +251,10 @@
 /* 模态框内表单组间距微调 */
 .em-modal-box .em-form-group { margin-bottom:14px; }
 .em-modal-box .em-form-group:last-child { margin-bottom:0; }
+
+/* ---- 新建变量输入模态框提示 ---- */
+.em-nv-hint { font-size:11px; color:var(--t3); line-height:1.5; min-height:14px; }
+.em-nv-hint.warn { color:var(--err); }
+
+/* ---- 确认模态框内容 ---- */
+.em-confirm-content { font-size:13px; color:var(--t2); line-height:1.6; }
