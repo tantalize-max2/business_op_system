@@ -3,7 +3,7 @@
 # 基于 Playwright 官方镜像（预装 Chromium + 浏览器依赖）
 # ============================================
 
-FROM mcr.microsoft.com/playwright/python:v1.49.0-noble
+FROM mcr.microsoft.com/playwright/python:v1.60.0-noble
 
 # 设置工作目录
 WORKDIR /app

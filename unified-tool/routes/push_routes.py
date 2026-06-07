@@ -2,7 +2,7 @@
 import os
 import json
 from flask import Blueprint, request, jsonify, send_file, current_app
-from config import OUTPUT_DIR
+from config import OUTPUT_DIR, UPLOAD_DIR
 from models.push_model import (browse_local_fs, list_kdocs_cats_with_count, add_kdocs_cat,
                                 delete_kdocs_cat, list_kdocs_sheets, add_kdocs_sheet,
                                 update_kdocs_sheet, delete_kdocs_sheet, push_to_kdocs,
@@ -10,6 +10,26 @@ from models.push_model import (browse_local_fs, list_kdocs_cats_with_count, add_
                                 scan_folder)
 
 push_bp = Blueprint('push', __name__)
+
+
+@push_bp.route('/api/kdocs-upload', methods=['POST'])
+def upload_excel_api():
+    """上传 Excel 文件到服务器 data/uploads 目录（供推送模块使用）"""
+    if 'file' not in request.files:
+        return jsonify({'error': '未选择文件'}), 400
+    f = request.files['file']
+    if not f or not f.filename:
+        return jsonify({'error': '未选择文件'}), 400
+    fname = f.filename.strip()
+    ext = fname.rsplit('.', 1)[-1].lower() if '.' in fname else ''
+    if ext not in ('xlsx', 'xls'):
+        return jsonify({'error': '仅支持 xlsx/xls 格式'}), 400
+    # 安全文件名：去掉路径分隔符，避免目录穿越
+    safe_name = os.path.basename(fname)
+    save_path = os.path.join(UPLOAD_DIR, safe_name)
+    f.save(save_path)
+    return jsonify({'message': '上传成功', 'path': save_path, 'name': safe_name,
+                    'size': os.path.getsize(save_path)})
 
 
 @push_bp.route('/api/kdocs-browse', methods=['POST'])

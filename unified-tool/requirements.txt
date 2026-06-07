@@ -3,4 +3,4 @@ flask-cors>=4.0
 pandas>=2.0,<3.0
 openpyxl>=3.1,<4.0
 requests>=2.31
-playwright>=1.40
+playwright==1.60.0

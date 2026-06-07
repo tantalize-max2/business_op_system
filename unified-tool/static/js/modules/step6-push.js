@@ -376,7 +376,9 @@ document.getElementById('kdEditCancelBtn').addEventListener('click', kdEditClose
 document.getElementById('kdEditMask').addEventListener('click', kdEditClose);
 
 // 拖拽区域 - 点击打开服务端文件浏览器（返回完整路径）
-document.getElementById('kdEdFileZone').addEventListener('click', () => {
+document.getElementById('kdEdFileZone').addEventListener('click', (e) => {
+  // 点击上传按钮时不触发文件浏览（按钮自己有独立事件）
+  if (e.target.closest('#kdEdUploadBtn')) return;
   showFileBrowser((path) => {
     KD._selectedFilePath = path;
     const fileZone = document.getElementById('kdEdFileZone');
@@ -384,6 +386,42 @@ document.getElementById('kdEdFileZone').addEventListener('click', () => {
     fileZone.classList.add('has-file');
     fileText.textContent = path;
   });
+});
+
+// 上传本地文件按钮 - 通过FormData上传到服务器 data/uploads 目录
+document.getElementById('kdEdUploadBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  document.getElementById('kdEdFileInput').click();
+});
+
+document.getElementById('kdEdFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  const fileZone = document.getElementById('kdEdFileZone');
+  const fileText = document.getElementById('kdEdFileText');
+  fileText.textContent = '上传中...';
+  try {
+    const res = await fetch('/api/kdocs-upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      ntf(data.error, 'error');
+      fileText.textContent = '点击浏览选择本地Excel文件';
+      fileZone.classList.remove('has-file');
+    } else {
+      KD._selectedFilePath = data.path;
+      fileZone.classList.add('has-file');
+      fileText.textContent = data.path;
+      ntf('上传成功: ' + data.name, 'success');
+    }
+  } catch (err) {
+    ntf('上传失败: ' + err.message, 'error');
+    fileText.textContent = '点击浏览选择本地Excel文件';
+    fileZone.classList.remove('has-file');
+  }
+  // 重置 input，允许再次选择同一文件
+  e.target.value = '';
 });
 
 // 拖拽区域 - 拖放提示（浏览器安全限制无法获取完整路径，引导使用文件浏览器）

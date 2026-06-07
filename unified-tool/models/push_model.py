@@ -10,7 +10,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 import pandas as pd
 from flask import send_file, send_from_directory
-from config import DATA_DIR, SHEETS_FILE, KDOCS_CATS_FILE, OUTPUT_DIR
+from config import DATA_DIR, SHEETS_FILE, KDOCS_CATS_FILE, OUTPUT_DIR, UPLOAD_DIR
 
 
 def _load_kdocs_sheets():
@@ -64,27 +64,12 @@ def browse_local_fs(path):
                 'is_drives': True
             }
         else:
-            # Linux/Docker: 以数据目录为根（用户上传的文件在 data/uploads 下）
-            dirs = []
-            try:
-                for item in os.listdir(DATA_DIR):
-                    full = os.path.join(DATA_DIR, item)
-                    if os.path.isdir(full):
-                        dirs.append({'name': item, 'path': full})
-            except PermissionError:
-                pass
-            return {
-                'current': DATA_DIR,
-                'current_display': '数据目录',
-                'parent': '',
-                'dirs': sorted(dirs, key=lambda x: x['name'].lower()),
-                'files': [],
-                'is_drives': True
-            }
+            # Linux/Docker: 直接进入 uploads 目录
+            return browse_local_fs(UPLOAD_DIR)
 
-    # 默认路径：Windows 用用户主目录，Linux 用数据目录
+    # 默认路径：Windows 用用户主目录，Linux 用 uploads 目录
     if not path:
-        path = os.path.expanduser('~') if is_windows else DATA_DIR
+        path = os.path.expanduser('~') if is_windows else UPLOAD_DIR
     if not os.path.exists(path):
         return {'error': f'路径不存在: {path}'}
 
@@ -110,9 +95,9 @@ def browse_local_fs(path):
             if parent == path:
                 parent = '__drives__'
     else:
-        # Linux: 到达数据目录根后不再往上
-        if os.path.abspath(path) == os.path.abspath(DATA_DIR):
-            parent = '__drives__'
+        # Linux: 到达 uploads 目录根后不再往上（避免暴露服务器其他文件）
+        if os.path.abspath(path) == os.path.abspath(UPLOAD_DIR):
+            parent = ''
         elif path:
             parent = os.path.dirname(path)
 
