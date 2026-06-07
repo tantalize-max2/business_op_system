@@ -285,3 +285,73 @@
   font-size:10px; padding:2px 8px; border-radius:4px; margin-left:8px;
   background:rgba(251,191,36,.15); color:var(--wn); font-weight:600;
 }
+
+/* ================================================================
+   STEP 6: 主题化模态框
+   ================================================================ */
+.kd-modal-mask {
+  position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:400;
+  display:none; align-items:center; justify-content:center;
+  backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+}
+.kd-modal-mask.show { display:flex !important; }
+
+.kd-modal-box {
+  position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+  z-index:401; width:420px; max-width:92vw;
+  background:var(--bg2); border:1px solid var(--bd); border-radius:var(--rl);
+  box-shadow:var(--sh); display:none; flex-direction:column; overflow:hidden;
+  animation:kd-modal-in .25s ease;
+}
+.kd-modal-box.show { display:flex !important; }
+.kd-modal-box-lg { width:600px; max-width:94vw; }
+
+@keyframes kd-modal-in {
+  from { transform:scale(.95) translate(-50%,-45%); opacity:0; }
+  to { transform:scale(1) translate(-50%,-50%); opacity:1; }
+}
+
+.kd-mb-head {
+  display:flex; align-items:center; padding:14px 20px;
+  border-bottom:1px solid var(--bd); background:var(--bg3);
+}
+.kd-mb-title { font-size:14px; font-weight:600; color:var(--t1); flex:1; }
+.kd-mb-close {
+  width:26px; height:26px; display:flex; align-items:center; justify-content:center;
+  background:none; border:none; font-size:22px; color:var(--t3); cursor:pointer;
+  border-radius:6px; transition:all .15s; line-height:1; flex-shrink:0;
+}
+.kd-mb-close:hover { background:var(--errbg); color:var(--err); }
+
+.kd-mb-body { padding:18px 20px; }
+.kd-mb-hint { font-size:13px; color:var(--t2); line-height:1.6; min-height:14px; }
+.kd-mb-hint.warn { color:var(--err); }
+
+.kd-mb-foot {
+  padding:12px 20px; border-top:1px solid var(--bd);
+  display:flex; justify-content:flex-end; gap:10px; background:var(--bg3);
+  align-items:center;
+}
+
+/* 拖拽上传区域（用于本地Excel选择） */
+.kd-file-drop-zone {
+  border:2px dashed var(--bd2); border-radius:14px;
+  padding:28px 20px; text-align:center; cursor:pointer;
+  transition:all .3s; background:var(--bg); position:relative; overflow:hidden;
+}
+.kd-file-drop-zone::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(circle at 30% 40%, var(--acg) 0%, transparent 60%);
+  opacity:0; transition:opacity .3s;
+}
+.kd-file-drop-zone:hover::before { opacity:1; }
+.kd-file-drop-zone:hover { border-color:var(--ac); transform:translateY(-1px); box-shadow:var(--sh); }
+.kd-file-drop-zone.dragover { border-color:var(--ac); background:var(--acg); }
+.kd-file-drop-zone.dragover::before { opacity:1; }
+.kd-file-drop-zone .icon { color:var(--t3); font-size:28px; margin-bottom:8px; position:relative; z-index:1; transition:all .3s; }
+.kd-file-drop-zone:hover .icon { color:var(--ac); transform:translateY(-3px); }
+.kd-file-drop-text { font-size:12px; color:var(--t3); position:relative; z-index:1; transition:all .3s; }
+.kd-file-drop-zone:hover .kd-file-drop-text { color:var(--t2); }
+.kd-file-drop-zone.has-file { border-style:solid; border-color:var(--ok); background:var(--okbg); }
+.kd-file-drop-zone.has-file .icon { color:var(--ok); }
+.kd-file-drop-zone.has-file .kd-file-drop-text { color:var(--ok); font-weight:500; }

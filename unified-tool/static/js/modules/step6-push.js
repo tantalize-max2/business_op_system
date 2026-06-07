@@ -1,16 +1,53 @@
 // ========== step6-push.js — 步骤6：在线推送 ==========
-// ========== STEP 5: 在线推送 ==========
 const KD = {
   sheets: [],
   cats: [],
   editingId: null,
   activeCat: '',  // 空串=全部
+  _selectedFilePath: '',  // 编辑对话框中选中的本地文件路径
 };
 
 // 遮掩Token：只显示开头2个+结尾2个字符
 function maskSecret(val) {
   if (!val || val.length <= 4) return val || '';
   return val.substring(0, 2) + '****' + val.substring(val.length - 2);
+}
+
+// ===== 主题化确认模态框 =====
+const kdModal = {
+  _onOk: null,
+  show({ title = '确认', content = '', okText = '确定' }) {
+    document.getElementById('kdModalTitle').textContent = title;
+    const hintEl = document.getElementById('kdModalHint');
+    hintEl.textContent = content;
+    hintEl.classList.add('warn');
+    document.getElementById('kdModalOk').textContent = okText;
+    document.getElementById('kdModalMask').classList.add('show');
+    document.getElementById('kdModalBox').classList.add('show');
+    setTimeout(() => document.getElementById('kdModalOk').focus(), 50);
+    return new Promise(resolve => { this._onOk = resolve; });
+  },
+  hide() {
+    document.getElementById('kdModalMask').classList.remove('show');
+    document.getElementById('kdModalBox').classList.remove('show');
+    this._onOk = null;
+  }
+};
+
+// 确认模态框事件绑定
+document.getElementById('kdModalClose').addEventListener('click', () => { if (kdModal._onOk) kdModal._onOk(false); kdModal.hide(); });
+document.getElementById('kdModalCancel').addEventListener('click', () => { if (kdModal._onOk) kdModal._onOk(false); kdModal.hide(); });
+document.getElementById('kdModalMask').addEventListener('click', () => { if (kdModal._onOk) kdModal._onOk(false); kdModal.hide(); });
+document.getElementById('kdModalOk').addEventListener('click', () => { if (kdModal._onOk) kdModal._onOk(true); kdModal.hide(); });
+
+// ===== 模态框快捷方法：显示/隐藏 =====
+function kdShowModal(maskId, boxId) {
+  document.getElementById(maskId).classList.add('show');
+  document.getElementById(boxId).classList.add('show');
+}
+function kdHideModal(maskId, boxId) {
+  document.getElementById(maskId).classList.remove('show');
+  document.getElementById(boxId).classList.remove('show');
 }
 
 // ===== 数据加载 =====
@@ -54,62 +91,46 @@ function renderKdocsCatBar() {
 
 // ===== 分类管理对话框 =====
 document.getElementById('kdCatBtn').addEventListener('click', () => {
-  const overlay = document.createElement('div');
-  overlay.className = 'fd-overlay vis';
-  const dd = document.createElement('div');
-  dd.className = 'fd-dropdown vis';
-  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:360px;';
+  renderCatMgrList();
+  kdShowModal('kdCatMask', 'kdCatBox');
+});
 
-  function renderCatList() {
-    let listHtml = '';
-    KD.cats.forEach(c => {
-      listHtml += `<div class="kd-cat-mgr-item">
-        <span class="kd-cat-dot" style="background:${c.color || '#0d9488'}"></span>
-        <span class="kd-cat-mgr-name">${esc(c.name)}</span>
-        <span class="kd-cat-mgr-count">${c.count || 0}个</span>
-        ${c.id !== 'default' ? `<button class="btn btn-danger btn-xs kd-cat-del" data-cid="${c.id}">删除</button>` : ''}
-      </div>`;
-    });
-    return listHtml;
-  }
+document.getElementById('kdCatModalClose').addEventListener('click', () => kdHideModal('kdCatMask', 'kdCatBox'));
+document.getElementById('kdCatCloseBtn').addEventListener('click', () => kdHideModal('kdCatMask', 'kdCatBox'));
+document.getElementById('kdCatMask').addEventListener('click', () => kdHideModal('kdCatMask', 'kdCatBox'));
 
-  let html = '<div class="fd-head"><span class="fd-cn">管理分类</span></div>';
-  html += '<div style="padding:14px;display:flex;flex-direction:column;gap:10px">';
-  html += '<div class="kd-cat-mgr-list" id="kdCatMgrList">' + renderCatList() + '</div>';
-  html += '<div class="kd-cat-add-row"><input id="kdCatAddName" placeholder="新分类名称"><input id="kdCatAddColor" type="color" value="#0d9488" style="width:36px;height:30px;padding:2px;border:1px solid var(--bd);border-radius:6px;cursor:pointer"><button class="btn btn-primary btn-xs" id="kdCatAddBtn">添加</button></div>';
-  html += '</div>';
-  html += '<div class="fd-foot"><span></span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="kdCatClose">关闭</button></div></div>';
-  dd.innerHTML = html;
-  document.body.appendChild(overlay);
-  document.body.appendChild(dd);
-
-  const close = () => { overlay.remove(); dd.remove(); };
-  overlay.addEventListener('click', close);
-  dd.querySelector('#kdCatClose').addEventListener('click', close);
-  dd.querySelector('#kdCatAddBtn').addEventListener('click', async () => {
-    const name = dd.querySelector('#kdCatAddName').value.trim();
-    const color = dd.querySelector('#kdCatAddColor').value;
-    if (!name) { ntf('请输入分类名', 'error'); return; }
-    const res = await fetch('/api/kdocs-categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name, color }) });
-    const data = await res.json();
-    if (data.error) { ntf(data.error, 'error'); return; }
-    dd.querySelector('#kdCatAddName').value = '';
-    await loadKdocsCats();
-    dd.querySelector('#kdCatMgrList').innerHTML = renderCatList();
-    bindCatDel(dd);
-    ntf('分类已添加');
+function renderCatMgrList() {
+  const listEl = document.getElementById('kdCatMgrList');
+  let listHtml = '';
+  KD.cats.forEach(c => {
+    listHtml += `<div class="kd-cat-mgr-item">
+      <span class="kd-cat-dot" style="background:${c.color || '#0d9488'}"></span>
+      <span class="kd-cat-mgr-name">${esc(c.name)}</span>
+      <span class="kd-cat-mgr-count">${c.count || 0}个</span>
+      ${c.id !== 'default' ? `<button class="btn btn-danger btn-xs kd-cat-del" data-cid="${c.id}">删除</button>` : ''}
+    </div>`;
   });
-  function bindCatDel(container) {
-    container.querySelectorAll('.kd-cat-del').forEach(b => b.addEventListener('click', async () => {
-      await fetch(`/api/kdocs-categories/${b.dataset.cid}`, { method: 'DELETE' });
-      await loadKdocsCats();
-      await loadKdocsSheets();
-      container.innerHTML = renderCatList();
-      bindCatDel(container);
-      ntf('分类已删除');
-    }));
-  }
-  bindCatDel(dd);
+  listEl.innerHTML = listHtml;
+  listEl.querySelectorAll('.kd-cat-del').forEach(b => b.addEventListener('click', async () => {
+    await fetch(`/api/kdocs-categories/${b.dataset.cid}`, { method: 'DELETE' });
+    await loadKdocsCats();
+    await loadKdocsSheets();
+    renderCatMgrList();
+    ntf('分类已删除');
+  }));
+}
+
+document.getElementById('kdCatAddBtn').addEventListener('click', async () => {
+  const name = document.getElementById('kdCatAddName').value.trim();
+  const color = document.getElementById('kdCatAddColor').value;
+  if (!name) { ntf('请输入分类名', 'error'); return; }
+  const res = await fetch('/api/kdocs-categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name, color }) });
+  const data = await res.json();
+  if (data.error) { ntf(data.error, 'error'); return; }
+  document.getElementById('kdCatAddName').value = '';
+  await loadKdocsCats();
+  renderCatMgrList();
+  ntf('分类已添加');
 });
 
 // ===== 渲染在线表格列表（按分类分组） =====
@@ -171,7 +192,8 @@ function renderKdocsList() {
   }));
   div.querySelectorAll('.kd-edit-btn').forEach(b => b.addEventListener('click', () => showKdocsEditDialog(b.dataset.sid)));
   div.querySelectorAll('.kd-del-btn').forEach(b => b.addEventListener('click', async () => {
-    if (!confirm('确定删除该在线表格配置？')) return;
+    const ok = await kdModal.show({ title: '删除确认', content: '确定删除该在线表格配置？此操作不可恢复。', okText: '删除' });
+    if (!ok) return;
     await fetch(`/api/kdocs-sheets/${b.dataset.sid}`, { method: 'DELETE' });
     ntf('已删除');
     loadKdocsSheets();
@@ -214,214 +236,225 @@ function renderKdocsCard(s) {
   </div>`;
 }
 
-// ===== 文件浏览器对话框 =====
-function showFileBrowser(targetInput, selectMode) {
-  // selectMode: 'file' 或 'folder'
-  const overlay = document.createElement('div');
-  overlay.className = 'fd-overlay vis';
-  const dd = document.createElement('div');
-  dd.className = 'fd-dropdown vis';
-  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:560px;max-height:75vh;display:flex;flex-direction:column;';
+// ===== 文件浏览器对话框（使用HTML预置模态框） =====
+let _kbTargetCallback = null; // 选择文件后的回调
+let _kbSelectedPath = '';
+let _kbCurrentIsDrives = false;
+let _kbCurrentParent = '';
 
-  dd.innerHTML = `<div class="fd-head"><span class="fd-cn" id="kbTitle">浏览本地文件</span></div>
-    <div class="kd-browse-bar">
-      <button class="btn btn-ghost btn-xs" id="kbUp">↑ 上级</button>
-      <input id="kbPath" placeholder="路径..." style="flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;color:var(--t1);font:11px var(--mf);outline:none">
-      <button class="btn btn-ghost btn-xs" id="kbGo">前往</button>
-    </div>
-    <div class="kd-browse-list" id="kbList" style="flex:1;overflow-y:auto;min-height:200px;max-height:400px"></div>
-    <div class="fd-foot"><span id="kbInfo"></span><div class="fd-btns">
-      <button class="btn btn-ghost btn-xs" id="kbCancel">取消</button>
-      <button class="btn btn-primary btn-xs" id="kbOk">选择</button>
-    </div></div>`;
-  document.body.appendChild(overlay);
-  document.body.appendChild(dd);
-
-  let selectedPath = '';
-  let currentIsDrives = false; // 当前是否在驱动器列表视图
-  let currentParent = ''; // 后端返回的上级路径
-
-  async function browse(path) {
-    dd.querySelector('#kbPath').value = (path === '__drives__') ? '' : path;
-    selectedPath = (path === '__drives__') ? '' : path;
-    currentIsDrives = (path === '__drives__');
-    try {
-      const res = await fetch('/api/kdocs-browse', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ path }) });
-      const data = await res.json();
-      if (data.error) { dd.querySelector('#kbList').innerHTML = `<div class="kd-batch-hint kd-batch-err">${data.error}</div>`; return; }
-
-      // 保存后端返回的上级路径
-      currentParent = data.parent || '';
-
-      // 更新标题
-      const titleEl = dd.querySelector('#kbTitle');
-      if (data.is_drives) {
-        titleEl.textContent = '此电脑';
-        currentIsDrives = true;
-      } else {
-        titleEl.textContent = '浏览本地文件';
-        currentIsDrives = false;
-      }
-
-      let html = '';
-      // 上级目录按钮
-      if (data.parent) {
-        const parentLabel = data.parent === '__drives__' ? '.. (此电脑)' : '.. (上级目录)';
-        html += `<div class="kb-item kb-dir" data-path="${esc(data.parent)}"><span class="kb-icon"><svg class="icon" aria-hidden="true"><use xlink:href="#icon-folder"/></svg></span><span class="kb-name">${parentLabel}</span></div>`;
-      }
-      // 目录/驱动器列表
-      data.dirs.forEach(d => {
-        const icon = d.is_drive ? '<svg class="icon" aria-hidden="true"><use xlink:href="#icon-save"/></svg>' : '<svg class="icon" aria-hidden="true"><use xlink:href="#icon-folder"/></svg>';
-        const cls = d.is_drive ? 'kb-item kb-dir kb-drive' : 'kb-item kb-dir';
-        const label = d.is_drive ? `${d.name} 驱动器` : d.name;
-        html += `<div class="${cls}" data-path="${esc(d.path)}"><span class="kb-icon">${icon}</span><span class="kb-name">${esc(label)}</span></div>`;
-      });
-      // 文件列表（仅非驱动器视图显示）
-      if (!data.is_drives) {
-        data.files.forEach(f => { html += `<div class="kb-item kb-file" data-path="${esc(f.path)}"><span class="kb-icon"><svg class="icon" aria-hidden="true"><use xlink:href="#icon-file"/></svg></span><span class="kb-name">${esc(f.name)}</span><span class="kb-size">${(f.size / 1024).toFixed(0)}KB</span></div>`; });
-      }
-      if (!data.dirs.length && !data.files.length) html = '<div class="kd-batch-hint">此目录为空</div>';
-      dd.querySelector('#kbList').innerHTML = html;
-
-      // 信息栏
-      if (data.is_drives) {
-        dd.querySelector('#kbInfo').textContent = `${data.dirs.length} 个驱动器`;
-      } else {
-        dd.querySelector('#kbInfo').textContent = `${data.dirs.length} 个文件夹, ${data.files.length} 个Excel`;
-      }
-
-      // 绑定双击/点击
-      dd.querySelectorAll('.kb-dir').forEach(item => {
-        item.addEventListener('dblclick', () => browse(item.dataset.path));
-        item.addEventListener('click', () => { selectedPath = item.dataset.path; dd.querySelectorAll('.kb-item').forEach(i => i.classList.remove('sel')); item.classList.add('sel'); });
-      });
-      dd.querySelectorAll('.kb-file').forEach(item => {
-        item.addEventListener('click', () => { selectedPath = item.dataset.path; dd.querySelectorAll('.kb-item').forEach(i => i.classList.remove('sel')); item.classList.add('sel'); });
-        item.addEventListener('dblclick', () => { targetInput.value = item.dataset.path; close(); });
-      });
-    } catch (e) {
-      dd.querySelector('#kbList').innerHTML = `<div class="kd-batch-hint kd-batch-err">浏览失败: ${e.message}</div>`;
-    }
-  }
-
-  // 从驱动器列表开始浏览
-  browse('__drives__');
-
-  const close = () => { overlay.remove(); dd.remove(); };
-  overlay.addEventListener('click', close);
-  dd.querySelector('#kbCancel').addEventListener('click', close);
-  dd.querySelector('#kbUp').addEventListener('click', () => {
-    if (currentIsDrives) return; // 已经在驱动器列表，无法再上
-    // 优先使用后端返回的parent路径，更可靠（处理盘符根目录等情况）
-    if (currentParent) {
-      browse(currentParent);
-      return;
-    }
-    // 回退：手动路径切割
-    const p = dd.querySelector('#kbPath').value;
-    if (!p) { browse('__drives__'); return; }
-    const parent = p.replace(/[\\\/][^\\\/]+$/, '');
-    if (parent && parent !== p) browse(parent);
-    else browse('__drives__');
-  });
-  dd.querySelector('#kbGo').addEventListener('click', () => {
-    const val = dd.querySelector('#kbPath').value.trim();
-    browse(val || '__drives__');
-  });
-  dd.querySelector('#kbPath').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      const val = dd.querySelector('#kbPath').value.trim();
-      browse(val || '__drives__');
-    }
-  });
-  dd.querySelector('#kbOk').addEventListener('click', () => {
-    if (selectedPath) { targetInput.value = selectedPath; }
-    close();
-  });
+function showFileBrowser(callback) {
+  _kbTargetCallback = callback;
+  _kbSelectedPath = '';
+  _kbCurrentIsDrives = false;
+  _kbCurrentParent = '';
+  kdShowModal('kdBrowseMask', 'kdBrowseBox');
+  kbBrowse('__drives__');
 }
 
-// ===== 添加/编辑对话框 =====
+async function kbBrowse(path) {
+  document.getElementById('kbPath').value = (path === '__drives__') ? '' : path;
+  _kbSelectedPath = (path === '__drives__') ? '' : path;
+  _kbCurrentIsDrives = (path === '__drives__');
+  try {
+    const res = await fetch('/api/kdocs-browse', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ path }) });
+    const data = await res.json();
+    if (data.error) { document.getElementById('kbList').innerHTML = `<div class="kd-batch-hint kd-batch-err">${data.error}</div>`; return; }
+
+    _kbCurrentParent = data.parent || '';
+
+    const titleEl = document.getElementById('kbTitle');
+    if (data.is_drives) {
+      titleEl.textContent = '此电脑';
+      _kbCurrentIsDrives = true;
+    } else {
+      titleEl.textContent = '浏览本地文件';
+      _kbCurrentIsDrives = false;
+    }
+
+    let html = '';
+    if (data.parent) {
+      const parentLabel = data.parent === '__drives__' ? '.. (此电脑)' : '.. (上级目录)';
+      html += `<div class="kb-item kb-dir" data-path="${esc(data.parent)}"><span class="kb-icon"><svg class="icon" aria-hidden="true"><use xlink:href="#icon-folder"/></svg></span><span class="kb-name">${parentLabel}</span></div>`;
+    }
+    data.dirs.forEach(d => {
+      const icon = d.is_drive ? '<svg class="icon" aria-hidden="true"><use xlink:href="#icon-save"/></svg>' : '<svg class="icon" aria-hidden="true"><use xlink:href="#icon-folder"/></svg>';
+      const cls = d.is_drive ? 'kb-item kb-dir kb-drive' : 'kb-item kb-dir';
+      const label = d.is_drive ? `${d.name} 驱动器` : d.name;
+      html += `<div class="${cls}" data-path="${esc(d.path)}"><span class="kb-icon">${icon}</span><span class="kb-name">${esc(label)}</span></div>`;
+    });
+    if (!data.is_drives) {
+      data.files.forEach(f => { html += `<div class="kb-item kb-file" data-path="${esc(f.path)}"><span class="kb-icon"><svg class="icon" aria-hidden="true"><use xlink:href="#icon-file"/></svg></span><span class="kb-name">${esc(f.name)}</span><span class="kb-size">${(f.size / 1024).toFixed(0)}KB</span></div>`; });
+    }
+    if (!data.dirs.length && !data.files.length) html = '<div class="kd-batch-hint">此目录为空</div>';
+    document.getElementById('kbList').innerHTML = html;
+
+    if (data.is_drives) {
+      document.getElementById('kbInfo').textContent = `${data.dirs.length} 个驱动器`;
+    } else {
+      document.getElementById('kbInfo').textContent = `${data.dirs.length} 个文件夹, ${data.files.length} 个Excel`;
+    }
+
+    const kbListEl = document.getElementById('kbList');
+    kbListEl.querySelectorAll('.kb-dir').forEach(item => {
+      item.addEventListener('dblclick', () => kbBrowse(item.dataset.path));
+      item.addEventListener('click', () => { _kbSelectedPath = item.dataset.path; kbListEl.querySelectorAll('.kb-item').forEach(i => i.classList.remove('sel')); item.classList.add('sel'); });
+    });
+    kbListEl.querySelectorAll('.kb-file').forEach(item => {
+      item.addEventListener('click', () => { _kbSelectedPath = item.dataset.path; kbListEl.querySelectorAll('.kb-item').forEach(i => i.classList.remove('sel')); item.classList.add('sel'); });
+      item.addEventListener('dblclick', () => { if (_kbTargetCallback) _kbTargetCallback(item.dataset.path); kdHideModal('kdBrowseMask', 'kdBrowseBox'); });
+    });
+  } catch (e) {
+    document.getElementById('kbList').innerHTML = `<div class="kd-batch-hint kd-batch-err">浏览失败: ${e.message}</div>`;
+  }
+}
+
+// 文件浏览器事件绑定
+document.getElementById('kbCloseBtn').addEventListener('click', () => kdHideModal('kdBrowseMask', 'kdBrowseBox'));
+document.getElementById('kbCancel').addEventListener('click', () => kdHideModal('kdBrowseMask', 'kdBrowseBox'));
+document.getElementById('kdBrowseMask').addEventListener('click', () => kdHideModal('kdBrowseMask', 'kdBrowseBox'));
+document.getElementById('kbUp').addEventListener('click', () => {
+  if (_kbCurrentIsDrives) return;
+  if (_kbCurrentParent) { kbBrowse(_kbCurrentParent); return; }
+  const p = document.getElementById('kbPath').value;
+  if (!p) { kbBrowse('__drives__'); return; }
+  const parent = p.replace(/[\\\/][^\\\/]+$/, '');
+  if (parent && parent !== p) kbBrowse(parent);
+  else kbBrowse('__drives__');
+});
+document.getElementById('kbGo').addEventListener('click', () => {
+  const val = document.getElementById('kbPath').value.trim();
+  kbBrowse(val || '__drives__');
+});
+document.getElementById('kbPath').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { const val = document.getElementById('kbPath').value.trim(); kbBrowse(val || '__drives__'); }
+});
+document.getElementById('kbOk').addEventListener('click', () => {
+  if (_kbSelectedPath && _kbTargetCallback) _kbTargetCallback(_kbSelectedPath);
+  kdHideModal('kdBrowseMask', 'kdBrowseBox');
+});
+
+// ===== 编辑/添加对话框（使用HTML预置模态框） =====
 function showKdocsEditDialog(sid) {
   const isEdit = !!sid;
   const s = isEdit ? KD.sheets.find(x => x.id === sid) : {};
-  const overlay = document.createElement('div');
-  overlay.className = 'fd-overlay vis';
-  const dd = document.createElement('div');
-  dd.className = 'fd-dropdown vis';
-  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-height:85vh;overflow-y:auto;';
+  KD.editingId = sid || null;
+
+  document.getElementById('kdEditTitle').textContent = isEdit ? '编辑在线表格' : '添加在线表格';
+  document.getElementById('kdEdName').value = s.name || '';
+  document.getElementById('kdEdUrl').value = s.url || '';
+  document.getElementById('kdEdToken').value = s.api_token || '';
+  document.getElementById('kdEdWebhook').value = s.webhook_url || '';
+  document.getElementById('kdEdBatch').value = s.batch_size || 3;
 
   // 分类选项
   let catOpts = '<option value="default">默认</option>';
   KD.cats.forEach(c => { if (c.id !== 'default') catOpts += `<option value="${c.id}">${esc(c.name)}</option>`; });
+  document.getElementById('kdEdCat').innerHTML = catOpts;
+  if (s.category) document.getElementById('kdEdCat').value = s.category;
 
-  let html = `<div class="fd-head"><span class="fd-cn">${isEdit ? '编辑' : '添加'}在线表格</span></div>`;
-  html += '<div style="padding:16px;display:flex;flex-direction:column;gap:14px">';
-  html += `<div class="kd-form-row"><label>名称 *</label><input id="kdEdName" value="${esc(s.name || '')}" placeholder="如：6月商机统计表"></div>`;
-  html += `<div class="kd-form-row"><label>URL *</label><input id="kdEdUrl" value="${esc(s.url || '')}" placeholder="https://www.kdocs.cn/l/xxxx"></div>`;
-  html += '<div class="kd-form-row kd-form-2col">';
-  html += `<div class="kd-form-col"><label>API Token</label><input id="kdEdToken" type="password" value="${esc(s.api_token || '')}" placeholder="AirScript脚本令牌"></div>`;
-  html += `<div class="kd-form-col"><label>Webhook URL</label><input id="kdEdWebhook" type="password" value="${esc(s.webhook_url || '')}" placeholder="Webhook链接"></div>`;
-  html += '</div>';
+  // 本地文件拖拽区域
+  KD._selectedFilePath = s.excel_path || '';
+  const fileZone = document.getElementById('kdEdFileZone');
+  const fileText = document.getElementById('kdEdFileText');
+  if (KD._selectedFilePath) {
+    fileZone.classList.add('has-file');
+    fileText.textContent = KD._selectedFilePath;
+  } else {
+    fileZone.classList.remove('has-file');
+    fileText.textContent = '拖拽Excel文件到此处，或点击浏览';
+  }
 
-  // 本地路径：浏览选择
-  html += `<div class="kd-form-row"><label>本地Excel路径</label><div class="kd-path-row">`;
-  html += `<input id="kdEdPath" value="${esc(s.excel_path || '')}" placeholder="点击浏览选择本地Excel文件...">`;
-  html += '<button class="btn btn-outline btn-xs" id="kdEdBrowseBtn">浏览</button>';
-  html += '</div></div>';
-
-  html += '<div class="kd-form-row kd-form-2col">';
-  html += `<div class="kd-form-col"><label>分类</label><select id="kdEdCat" style="width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;color:var(--t1);font:12px var(--sf);outline:none">${catOpts}</select></div>`;
-  html += `<div class="kd-form-col"><label>批次大小</label><input id="kdEdBatch" type="number" value="${s.batch_size || 3}" min="1" max="20" style="width:100%"></div>`;
-  html += '</div>';
-  html += '</div>';
-  html += '<div class="fd-foot"><span></span><div class="fd-btns"><button class="btn btn-ghost btn-xs" id="kdEdCancel">取消</button><button class="btn btn-primary btn-xs" id="kdEdOk">保存</button></div></div>';
-
-  dd.innerHTML = html;
-  document.body.appendChild(overlay);
-  document.body.appendChild(dd);
-
-  // 设置当前分类
-  if (s.category) dd.querySelector('#kdEdCat').value = s.category;
-
-  // 浏览按钮
-  dd.querySelector('#kdEdBrowseBtn').addEventListener('click', () => {
-    showFileBrowser(dd.querySelector('#kdEdPath'), 'file');
-  });
-
-  const close = () => { overlay.remove(); dd.remove(); };
-  overlay.addEventListener('click', close);
-  dd.querySelector('#kdEdCancel').addEventListener('click', close);
-
-  dd.querySelector('#kdEdOk').addEventListener('click', async () => {
-    const name = dd.querySelector('#kdEdName').value.trim();
-    const url = dd.querySelector('#kdEdUrl').value.trim();
-    const api_token = dd.querySelector('#kdEdToken').value.trim();
-    const webhook_url = dd.querySelector('#kdEdWebhook').value.trim();
-    const excel_path = dd.querySelector('#kdEdPath').value.trim();
-    const batch_size = parseInt(dd.querySelector('#kdEdBatch').value) || 3;
-    const category = dd.querySelector('#kdEdCat').value;
-
-    if (!name || !url) { ntf('名称和URL不能为空', 'error'); return; }
-
-    // 编辑时：如果token/webhook为空，保留原值
-    const finalToken = api_token || (isEdit ? s.api_token : '');
-    const finalWebhook = webhook_url || (isEdit ? s.webhook_url : '');
-
-    const body = { name, url, api_token: finalToken, webhook_url: finalWebhook, excel_path, batch_size, category };
-
-    try {
-      if (isEdit) {
-        await fetch(`/api/kdocs-sheets/${sid}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
-      } else {
-        await fetch('/api/kdocs-sheets', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
-      }
-      close();
-      ntf(isEdit ? '已更新' : '已添加');
-      loadKdocsSheets();
-      loadKdocsCats();
-    } catch (e) { ntf('保存失败', 'error'); }
-  });
+  kdShowModal('kdEditMask', 'kdEditBox');
 }
+
+// 编辑对话框关闭
+function kdEditClose() {
+  kdHideModal('kdEditMask', 'kdEditBox');
+}
+document.getElementById('kdEditClose').addEventListener('click', kdEditClose);
+document.getElementById('kdEditCancelBtn').addEventListener('click', kdEditClose);
+document.getElementById('kdEditMask').addEventListener('click', kdEditClose);
+
+// 拖拽区域 - 点击浏览按钮（使用文件浏览器而非原生file picker）
+document.getElementById('kdEdFileZone').addEventListener('click', (e) => {
+  // 只在非input区域点击时触发浏览器
+  if (e.target.id !== 'kdEdFileInput') {
+    e.preventDefault();
+    showFileBrowser((path) => {
+      KD._selectedFilePath = path;
+      const fileZone = document.getElementById('kdEdFileZone');
+      const fileText = document.getElementById('kdEdFileText');
+      fileZone.classList.add('has-file');
+      fileText.textContent = path;
+    });
+  }
+});
+
+// 拖拽区域 - 拖放事件
+const kdFileZone = document.getElementById('kdEdFileZone');
+kdFileZone.addEventListener('dragover', (e) => { e.preventDefault(); kdFileZone.classList.add('dragover'); });
+kdFileZone.addEventListener('dragleave', () => { kdFileZone.classList.remove('dragover'); });
+kdFileZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  kdFileZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const ext = file.name.toLowerCase();
+    if (!ext.endsWith('.xlsx') && !ext.endsWith('.xls') && !ext.endsWith('.csv')) {
+      ntf('请选择Excel文件（.xlsx/.xls/.csv）', 'error');
+      return;
+    }
+    // 浏览器拖拽只能获取文件名，需要通过后端确认路径
+    KD._selectedFilePath = file.name;
+    const fileText = document.getElementById('kdEdFileText');
+    kdFileZone.classList.add('has-file');
+    fileText.textContent = file.name + ' (拖拽文件，路径可能需要手动调整)';
+  }
+});
+
+// 原生file input (作为备选)
+document.getElementById('kdEdFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    KD._selectedFilePath = file.name;
+    const fileText = document.getElementById('kdEdFileText');
+    kdFileZone.classList.add('has-file');
+    fileText.textContent = file.name;
+  }
+});
+
+// 保存按钮
+document.getElementById('kdEditOkBtn').addEventListener('click', async () => {
+  const name = document.getElementById('kdEdName').value.trim();
+  const url = document.getElementById('kdEdUrl').value.trim();
+  const api_token = document.getElementById('kdEdToken').value.trim();
+  const webhook_url = document.getElementById('kdEdWebhook').value.trim();
+  const excel_path = KD._selectedFilePath;
+  const batch_size = parseInt(document.getElementById('kdEdBatch').value) || 3;
+  const category = document.getElementById('kdEdCat').value;
+  const isEdit = !!KD.editingId;
+  const s = isEdit ? KD.sheets.find(x => x.id === KD.editingId) : {};
+
+  if (!name || !url) { ntf('名称和URL不能为空', 'error'); return; }
+
+  // 编辑时：如果token/webhook为空，保留原值
+  const finalToken = api_token || (isEdit ? s.api_token : '');
+  const finalWebhook = webhook_url || (isEdit ? s.webhook_url : '');
+
+  const body = { name, url, api_token: finalToken, webhook_url: finalWebhook, excel_path, batch_size, category };
+
+  try {
+    if (isEdit) {
+      await fetch(`/api/kdocs-sheets/${KD.editingId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    } else {
+      await fetch('/api/kdocs-sheets', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+    }
+    kdEditClose();
+    ntf(isEdit ? '已更新' : '已添加');
+    loadKdocsSheets();
+    loadKdocsCats();
+  } catch (e) { ntf('保存失败', 'error'); }
+});
 
 // ===== 单个推送 =====
 async function pushKdocsSingle(sid) {
@@ -444,7 +477,6 @@ async function pushKdocsSingle(sid) {
     } else {
       if (statusEl) { statusEl.textContent = `成功${data.success_count}行/失败${data.fail_count}行`; statusEl.className = 'kd-card-status ' + (data.fail_count > 0 ? 'partial' : 'ok'); }
       ntf(data.message, data.fail_count > 0 ? 'warn' : 'success');
-      // 推送成功后清除本地Excel路径
       try {
         await fetch(`/api/kdocs-sheets/${sid}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ excel_path: '' }) });
         loadKdocsSheets();
@@ -461,7 +493,7 @@ document.getElementById('kdBatchPushBtn').addEventListener('click', async () => 
   document.getElementById('kdBatchArea').style.display = '';
   document.getElementById('kdBatchResults').style.display = 'none';
   document.getElementById('kdBatchMatches').innerHTML = '';
-  await loadKdocsCats();  // 确保分类数据最新
+  await loadKdocsCats();
 });
 document.getElementById('kdBatchClose').addEventListener('click', () => {
   document.getElementById('kdBatchArea').style.display = 'none';
@@ -469,7 +501,10 @@ document.getElementById('kdBatchClose').addEventListener('click', () => {
 
 // 一键推送的浏览按钮
 document.getElementById('kdBatchBrowseBtn').addEventListener('click', () => {
-  showFileBrowser(document.getElementById('kdBatchFolder'), 'folder');
+  showFileBrowser((path) => {
+    document.getElementById('kdBatchFolder').value = path;
+    renderBatchMatches();
+  });
 });
 
 // 扫描匹配
@@ -493,11 +528,9 @@ async function renderBatchMatches() {
     const localFiles = data.files || [];
     if (!localFiles.length) { matchDiv.innerHTML = '<div class="kd-batch-hint">文件夹中无Excel文件</div>'; return; }
 
-    // 获取所有在线表格（不分分类）
     const allRes = await fetch('/api/kdocs-sheets');
     const allSheets = await allRes.json();
 
-    // 匹配
     let html = '<div class="kd-match-list">';
     let matchCount = 0;
     allSheets.forEach(s => {
@@ -510,7 +543,7 @@ async function renderBatchMatches() {
           break;
         }
       }
-      if (!matched) return; // 未匹配的不显示
+      if (!matched) return;
       matchCount++;
       const hasConfig = !!s.api_token && !!s.webhook_url;
       html += `<div class="kd-match-item ${hasConfig ? 'kd-match-ready' : 'kd-match-skip'}">
@@ -576,15 +609,8 @@ document.getElementById('kdBatchGoBtn').addEventListener('click', async () => {
 document.getElementById('kdAddBtn').addEventListener('click', () => showKdocsEditDialog(null));
 document.getElementById('kdRefreshBtn').addEventListener('click', () => { loadKdocsSheets(); loadKdocsCats(); });
 
-// 脚本代码查看按钮
+// ===== 脚本代码查看（使用HTML预置模态框） =====
 document.getElementById('kdShowScriptBtn').addEventListener('click', async () => {
-  const overlay = document.createElement('div');
-  overlay.className = 'fd-overlay vis';
-  const dd = document.createElement('div');
-  dd.className = 'fd-dropdown vis';
-  dd.style.cssText = 'left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-height:80vh;display:flex;flex-direction:column;';
-
-  // 从后端加载脚本代码
   async function loadCode() {
     try {
       const res = await fetch('/api/kdocs-airscript-code');
@@ -597,70 +623,68 @@ document.getElementById('kdShowScriptBtn').addEventListener('click', async () =>
   }
 
   let codeContent = await loadCode();
-  if (!codeContent) { overlay.remove(); dd.remove(); return; }
+  if (!codeContent) return;
 
-  dd.innerHTML = `<div class="fd-head"><span class="fd-cn">AirScript 脚本代码</span><span class="kd-script-badge" id="kdScriptModified" style="display:none">已修改</span></div>
-    <div style="padding:0;flex:1;overflow:auto;position:relative">
-      <textarea class="kd-script-editor" id="kdScriptEditor" spellcheck="false"></textarea>
-    </div>
-    <div class="fd-foot"><span class="kd-script-hint">编辑后可保存到文件，或一键复制粘贴到金山文档脚本编辑器</span><div class="fd-btns">
-      <button class="btn btn-ghost btn-xs" id="kdScriptRestore" title="还原为文件中的原始代码">一键还原</button>
-      <button class="btn btn-outline btn-xs" id="kdScriptSave">保存</button>
-      <button class="btn btn-primary btn-xs" id="kdScriptCopy">一键复制</button>
-      <button class="btn btn-ghost btn-xs" id="kdScriptClose">关闭</button>
-    </div></div>`;
-  document.body.appendChild(overlay);
-  document.body.appendChild(dd);
-
-  const editor = dd.querySelector('#kdScriptEditor');
-  const modifiedBadge = dd.querySelector('#kdScriptModified');
-  let originalCode = codeContent;
-  let lastSavedCode = codeContent;
-
+  const editor = document.getElementById('kdScriptEditor');
+  const modifiedBadge = document.getElementById('kdScriptModified');
   editor.value = codeContent;
+  modifiedBadge.style.display = 'none';
+  editor._lastSavedCode = codeContent;
+  editor._originalCode = codeContent;
 
-  // 监听编辑：显示"已修改"标记
-  editor.addEventListener('input', () => {
-    const changed = editor.value !== lastSavedCode;
-    modifiedBadge.style.display = changed ? '' : 'none';
-  });
-
-  // 一键复制
-  dd.querySelector('#kdScriptCopy').addEventListener('click', () => {
-    navigator.clipboard.writeText(editor.value).then(() => ntf('已复制到剪贴板')).catch(() => ntf('复制失败', 'error'));
-  });
-
-  // 一键还原
-  dd.querySelector('#kdScriptRestore').addEventListener('click', async () => {
-    const fresh = await loadCode();
-    if (fresh) {
-      editor.value = fresh;
-      originalCode = fresh;
-      lastSavedCode = fresh;
-      modifiedBadge.style.display = 'none';
-      ntf('已还原为原始代码');
-    }
-  });
-
-  // 保存
-  dd.querySelector('#kdScriptSave').addEventListener('click', async () => {
-    try {
-      const res = await fetch('/api/kdocs-airscript-code', {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ code: editor.value })
-      });
-      const data = await res.json();
-      if (data.error) { ntf(data.error, 'error'); return; }
-      lastSavedCode = editor.value;
-      modifiedBadge.style.display = 'none';
-      ntf('脚本代码已保存');
-    } catch (e) {
-      ntf('保存失败: ' + e.message, 'error');
-    }
-  });
-
-  const close = () => { overlay.remove(); dd.remove(); };
-  overlay.addEventListener('click', close);
-  dd.querySelector('#kdScriptClose').addEventListener('click', close);
+  kdShowModal('kdScriptMask', 'kdScriptBox');
 });
+
+// 脚本编辑器：监听修改
+document.getElementById('kdScriptEditor').addEventListener('input', function() {
+  const modifiedBadge = document.getElementById('kdScriptModified');
+  const changed = this.value !== (this._lastSavedCode || '');
+  modifiedBadge.style.display = changed ? '' : 'none';
+});
+
+// 脚本编辑器：一键复制
+document.getElementById('kdScriptCopy').addEventListener('click', () => {
+  const editor = document.getElementById('kdScriptEditor');
+  navigator.clipboard.writeText(editor.value).then(() => ntf('已复制到剪贴板')).catch(() => ntf('复制失败', 'error'));
+});
+
+// 脚本编辑器：一键还原
+document.getElementById('kdScriptRestore').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/kdocs-airscript-code');
+    const data = await res.json();
+    if (data.error) { ntf(data.error, 'error'); return; }
+    const fresh = data.code || '';
+    const editor = document.getElementById('kdScriptEditor');
+    editor.value = fresh;
+    editor._lastSavedCode = fresh;
+    editor._originalCode = fresh;
+    document.getElementById('kdScriptModified').style.display = 'none';
+    ntf('已还原为原始代码');
+  } catch (e) {
+    ntf('还原失败', 'error');
+  }
+});
+
+// 脚本编辑器：保存
+document.getElementById('kdScriptSave').addEventListener('click', async () => {
+  const editor = document.getElementById('kdScriptEditor');
+  try {
+    const res = await fetch('/api/kdocs-airscript-code', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ code: editor.value })
+    });
+    const data = await res.json();
+    if (data.error) { ntf(data.error, 'error'); return; }
+    editor._lastSavedCode = editor.value;
+    document.getElementById('kdScriptModified').style.display = 'none';
+    ntf('脚本代码已保存');
+  } catch (e) {
+    ntf('保存失败: ' + e.message, 'error');
+  }
+});
+
+// 脚本编辑器：关闭
+document.getElementById('kdScriptCloseBtn').addEventListener('click', () => kdHideModal('kdScriptMask', 'kdScriptBox'));
+document.getElementById('kdScriptMask').addEventListener('click', () => kdHideModal('kdScriptMask', 'kdScriptBox'));

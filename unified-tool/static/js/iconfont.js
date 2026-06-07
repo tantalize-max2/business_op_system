@@ -68,6 +68,8 @@
   +'<symbol id="icon-lock" viewBox="0 0 24 24"><path d="M12 1a5 5 0 0 1 5 5v2h1a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h1V6a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v2h6V6a3 3 0 0 0-3-3zm-6 7v10h12V10H6zm5 3h2v4h-2v-4z" fill="currentColor"/></symbol>'
   // 联系人/用户组
   +'<symbol id="icon-contacts" viewBox="0 0 24 24"><path d="M12 14v2a6 6 0 0 0-6 6H4a8 8 0 0 1 8-8zm0-1a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm6 7.531V20h2v-2.469a4.002 4.002 0 0 0-2.531-3.719l-.753-.301A5.977 5.977 0 0 1 12 15a5.977 5.977 0 0 1-2.716-.489l-.753.301A4.002 4.002 0 0 0 6 17.531V20h2v-2.469a2.001 2.001 0 0 1 1.266-1.86l.188-.075A7.96 7.96 0 0 0 12 16a7.96 7.96 0 0 0 2.546-.404l.188.075A2.001 2.001 0 0 1 16 17.531zM18 13a5 5 0 0 1-2.5-.669 7.01 7.01 0 0 0 1.462-1.614A3 3 0 0 0 20.5 8.5a3 3 0 0 0-3.37-2.967 6.97 6.97 0 0 0-.893-1.794A5 5 0 1 1 18 13z" fill="currentColor"/></symbol>'
+  // Excel文件图标
+  +'<symbol id="icon-file-excel" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 13h2l2 3 2-3h2l-3 4 3 4h-2l-2-3-2 3H8l3-4-3-4z" fill="currentColor"/></symbol>'
   +'</svg>';
   document.body.insertAdjacentHTML('afterbegin', svg);
 })();

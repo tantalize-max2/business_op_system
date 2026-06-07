@@ -396,7 +396,7 @@ def push_to_kdocs_batch(folder_path):
 
 
 def get_airscript_code():
-    code_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'airscript_code.js')
+    code_path = os.path.join(DATA_DIR, 'airscript_code.js')
     if not os.path.exists(code_path):
         return None
     try:
@@ -408,7 +408,7 @@ def get_airscript_code():
 
 
 def save_airscript_code(code):
-    code_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'airscript_code.js')
+    code_path = os.path.join(DATA_DIR, 'airscript_code.js')
     try:
         with open(code_path, 'w', encoding='utf-8') as f:
             f.write(code)

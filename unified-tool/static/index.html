@@ -475,6 +475,113 @@
 
     <!-- 在线表格列表 -->
     <div class="kd-sheet-list" id="kdSheetList"></div>
+
+    <!-- Step6 主题化模态框：确认对话框 -->
+    <div class="kd-modal-mask" id="kdModalMask"></div>
+    <div class="kd-modal-box" id="kdModalBox">
+      <div class="kd-mb-head">
+        <span class="kd-mb-title" id="kdModalTitle">确认</span>
+        <button class="kd-mb-close" id="kdModalClose" title="关闭">&times;</button>
+      </div>
+      <div class="kd-mb-body">
+        <div class="kd-mb-hint" id="kdModalHint"></div>
+      </div>
+      <div class="kd-mb-foot">
+        <button class="btn btn-ghost btn-sm" id="kdModalCancel">取消</button>
+        <button class="btn btn-danger btn-sm" id="kdModalOk">确定</button>
+      </div>
+    </div>
+
+    <!-- Step6 主题化模态框：编辑/添加在线表格 -->
+    <div class="kd-modal-mask" id="kdEditMask"></div>
+    <div class="kd-modal-box kd-modal-box-lg" id="kdEditBox">
+      <div class="kd-mb-head">
+        <span class="kd-mb-title" id="kdEditTitle">添加在线表格</span>
+        <button class="kd-mb-close" id="kdEditClose" title="关闭">&times;</button>
+      </div>
+      <div class="kd-mb-body" style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">
+        <div class="kd-form-row"><label>名称 *</label><input id="kdEdName" placeholder="如：6月商机统计表"></div>
+        <div class="kd-form-row"><label>URL *</label><input id="kdEdUrl" placeholder="https://www.kdocs.cn/l/xxxx"></div>
+        <div class="kd-form-row kd-form-2col">
+          <div class="kd-form-col"><label>API Token</label><input id="kdEdToken" type="password" placeholder="AirScript脚本令牌"></div>
+          <div class="kd-form-col"><label>Webhook URL</label><input id="kdEdWebhook" type="password" placeholder="Webhook链接"></div>
+        </div>
+        <div class="kd-form-row"><label>本地Excel文件</label>
+          <div class="kd-file-drop-zone" id="kdEdFileZone">
+            <svg class="icon icon-lg" aria-hidden="true"><use xlink:href="#icon-file-excel"/></svg>
+            <div class="kd-file-drop-text" id="kdEdFileText">拖拽Excel文件到此处，或点击浏览</div>
+            <input type="file" id="kdEdFileInput" accept=".xlsx,.xls,.csv" style="position:absolute;inset:0;opacity:0;cursor:pointer;z-index:2">
+          </div>
+        </div>
+        <div class="kd-form-row kd-form-2col">
+          <div class="kd-form-col"><label>分类</label><select id="kdEdCat" style="width:100%;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;color:var(--t1);font:12px var(--sf);outline:none"></select></div>
+          <div class="kd-form-col"><label>批次大小</label><input id="kdEdBatch" type="number" value="3" min="1" max="20" style="width:100%"></div>
+        </div>
+      </div>
+      <div class="kd-mb-foot">
+        <button class="btn btn-ghost btn-sm" id="kdEditCancelBtn">取消</button>
+        <button class="btn btn-primary btn-sm" id="kdEditOkBtn">保存</button>
+      </div>
+    </div>
+
+    <!-- Step6 主题化模态框：分类管理 -->
+    <div class="kd-modal-mask" id="kdCatMask"></div>
+    <div class="kd-modal-box" id="kdCatBox">
+      <div class="kd-mb-head">
+        <span class="kd-mb-title">管理分类</span>
+        <button class="kd-mb-close" id="kdCatModalClose" title="关闭">&times;</button>
+      </div>
+      <div class="kd-mb-body" style="padding:14px 20px;display:flex;flex-direction:column;gap:10px">
+        <div class="kd-cat-mgr-list" id="kdCatMgrList"></div>
+        <div class="kd-cat-add-row">
+          <input id="kdCatAddName" placeholder="新分类名称">
+          <input id="kdCatAddColor" type="color" value="#0d9488" style="width:36px;height:30px;padding:2px;border:1px solid var(--bd);border-radius:6px;cursor:pointer">
+          <button class="btn btn-primary btn-xs" id="kdCatAddBtn">添加</button>
+        </div>
+      </div>
+      <div class="kd-mb-foot">
+        <button class="btn btn-ghost btn-sm" id="kdCatCloseBtn">关闭</button>
+      </div>
+    </div>
+
+    <!-- Step6 主题化模态框：文件浏览器 -->
+    <div class="kd-modal-mask" id="kdBrowseMask"></div>
+    <div class="kd-modal-box kd-modal-box-lg" id="kdBrowseBox" style="max-height:80vh;flex-direction:column">
+      <div class="kd-mb-head">
+        <span class="kd-mb-title" id="kbTitle">浏览本地文件</span>
+        <button class="kd-mb-close" id="kbCloseBtn" title="关闭">&times;</button>
+      </div>
+      <div class="kd-browse-bar">
+        <button class="btn btn-ghost btn-xs" id="kbUp">↑ 上级</button>
+        <input id="kbPath" placeholder="路径..." style="flex:1;background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:6px 10px;color:var(--t1);font:11px var(--mf);outline:none">
+        <button class="btn btn-ghost btn-xs" id="kbGo">前往</button>
+      </div>
+      <div class="kd-browse-list" id="kbList" style="flex:1;overflow-y:auto;min-height:200px;max-height:400px"></div>
+      <div class="kd-mb-foot">
+        <span id="kbInfo" style="margin-right:auto;font-size:11px;color:var(--t3)"></span>
+        <button class="btn btn-ghost btn-sm" id="kbCancel">取消</button>
+        <button class="btn btn-primary btn-sm" id="kbOk">选择</button>
+      </div>
+    </div>
+
+    <!-- Step6 主题化模态框：AirScript脚本代码 -->
+    <div class="kd-modal-mask" id="kdScriptMask"></div>
+    <div class="kd-modal-box kd-modal-box-lg" id="kdScriptBox" style="max-height:80vh;flex-direction:column">
+      <div class="kd-mb-head">
+        <span class="kd-mb-title">AirScript 脚本代码</span>
+        <span class="kd-script-badge" id="kdScriptModified" style="display:none">已修改</span>
+        <button class="kd-mb-close" id="kdScriptCloseBtn" title="关闭">&times;</button>
+      </div>
+      <div style="padding:0;flex:1;overflow:auto;position:relative">
+        <textarea class="kd-script-editor" id="kdScriptEditor" spellcheck="false"></textarea>
+      </div>
+      <div class="kd-mb-foot">
+        <span class="kd-script-hint">编辑后可保存到文件，或一键复制粘贴到金山文档脚本编辑器</span>
+        <button class="btn btn-ghost btn-xs" id="kdScriptRestore" title="还原为文件中的原始代码">一键还原</button>
+        <button class="btn btn-outline btn-xs" id="kdScriptSave">保存</button>
+        <button class="btn btn-primary btn-xs" id="kdScriptCopy">一键复制</button>
+      </div>
+    </div>
   </section>
 
   <!-- ====== STEP 7: EMAIL ====== -->
