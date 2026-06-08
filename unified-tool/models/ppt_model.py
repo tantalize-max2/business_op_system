@@ -169,7 +169,7 @@ def _delivered_color_indices(data, col_idx):
     return result
 
 
-
+def get_bottom3(data):
     names = []
     for r in data[-3:]:
         m = re.match(r'(.+?)(（\d+）)?$', str(r[1]))
