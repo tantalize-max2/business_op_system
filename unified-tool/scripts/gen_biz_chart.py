@@ -33,7 +33,7 @@ import matplotlib.patches as mpatches
 from matplotlib import rcParams
 import numpy as np
 
-rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'SimSun']
+rcParams['font.sans-serif'] = ['Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'SimSun', 'DejaVu Sans']
 rcParams['axes.unicode_minus'] = False
 
 

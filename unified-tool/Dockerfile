@@ -12,6 +12,13 @@ WORKDIR /app
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# 安装中文字体（matplotlib/PPT图表需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-noto-cjk \
+    fonts-wqy-zenhei \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -c "import matplotlib; matplotlib.font_manager._load_fontmanager(try_read_cache=False)"
+
 # 设置环境变量，禁止 Python 写入 pyc 缓存、关闭 stdout 缓冲
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
