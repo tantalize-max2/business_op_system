@@ -29,7 +29,15 @@
   grid-template-columns: 1fr 1fr;
   gap: 18px;
   margin-bottom: 20px;
-  align-items: start;
+  align-items: stretch;
+}
+/* 让两列容器等高，内部上传区伸缩填满 */
+.ppt-config > div {
+  display: flex;
+  flex-direction: column;
+}
+.ppt-config > div > .ppt-upload-zone {
+  flex: 1;
 }
 
 /* 上传区域 */

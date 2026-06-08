@@ -210,6 +210,23 @@ def calc_progress_summary(data):
                 res_c=res_c, res_a=res_a)
 
 
+def calc_effective_summary(eff_data):
+    """计算有效商机汇总：分局金额之和 / 目标之和 → 完成率
+    
+    Returns:
+        (sum_amount, sum_target, rate_pct, rate_text)
+    """
+    sum_amount = sum(float(item[1] or 0) for item in eff_data)
+    sum_target = sum(float(item[2] or 0) for item in eff_data)
+    if sum_target > 0:
+        rate_pct = sum_amount / sum_target * 100
+        rate_text = f'完成率{rate_pct:.2f}%（{fmt_num(sum_amount)}/{fmt_num(sum_target)}万）'
+    else:
+        rate_pct = 0
+        rate_text = f'完成率0.00%（{fmt_num(sum_amount)}/0万）'
+    return sum_amount, sum_target, rate_pct, rate_text
+
+
 def count_below30(eff_data):
     """返回 (所有<30%分局数, 严重不足<10%分局名单)
     
@@ -232,6 +249,9 @@ def count_below30(eff_data):
 
 # ========== PPT文本操作辅助 ==========
 
+# 标题样式常量
+TITLE_FONT = {'font_name': '微软雅黑', 'font_size': 28, 'font_bold': True}
+
 def set_run_text(para, text):
     if not para.runs:
         return
@@ -240,24 +260,48 @@ def set_run_text(para, text):
         run.text = ''
 
 
-def set_shape_single_text(shape, text):
+def set_shape_single_text(shape, text, font_name=None, font_size=None, font_bold=None, font_color=None):
+    """设置shape中的文本，可选设置字体属性"""
     for para in shape.text_frame.paragraphs:
         if para.runs:
             set_run_text(para, '')
     if shape.text_frame.paragraphs and shape.text_frame.paragraphs[0].runs:
-        shape.text_frame.paragraphs[0].runs[0].text = str(text)
+        run = shape.text_frame.paragraphs[0].runs[0]
+        run.text = str(text)
+        _apply_run_font(run, font_name, font_size, font_bold, font_color)
 
 
-def set_shape_multiline(shape, lines, font_size=None):
-    """设置多行文本，保留模板原始字号（font_size=None时）或统一设置字号"""
+def _apply_run_font(run, font_name=None, font_size=None, font_bold=None, font_color=None):
+    """通用run字体设置"""
+    if font_name:
+        run.font.name = font_name
+    if font_size is not None:
+        run.font.size = Pt(font_size)
+    if font_bold is not None:
+        run.font.bold = font_bold
+    if font_color:
+        run.font.color.rgb = RGBColor(*font_color)
+
+
+def set_shape_multiline(shape, lines, font_size=None, font_color_line1=None, font_color_line2=None):
+    """设置多行文本，保留模板原始字号（font_size=None时）或统一设置字号
+    
+    font_color_line1: 第一行字体颜色 (R,G,B) 元组
+    font_color_line2: 第二行字体颜色 (R,G,B) 元组
+    """
     paras = shape.text_frame.paragraphs
+    colors = [font_color_line1, font_color_line2]
     for i, line in enumerate(lines):
+        line_color = colors[i] if i < len(colors) else None
         if i < len(paras):
             p = paras[i]
             if p.runs:
-                p.runs[0].text = str(line)
+                r = p.runs[0]
+                r.text = str(line)
                 if font_size is not None:
-                    p.runs[0].font.size = Pt(font_size)
+                    r.font.size = Pt(font_size)
+                if line_color:
+                    r.font.color.rgb = RGBColor(*line_color)
                 for run in p.runs[1:]:
                     run.text = ''
             else:
@@ -265,12 +309,16 @@ def set_shape_multiline(shape, lines, font_size=None):
                 r.text = str(line)
                 if font_size is not None:
                     r.font.size = Pt(font_size)
+                if line_color:
+                    r.font.color.rgb = RGBColor(*line_color)
         else:
             p = shape.text_frame.add_paragraph()
             r = p.add_run()
             r.text = str(line)
             if font_size is not None:
                 r.font.size = Pt(font_size)
+            if line_color:
+                r.font.color.rgb = RGBColor(*line_color)
     # 清除多余的空段落runs
     for i in range(len(lines), len(paras)):
         for run in paras[i].runs:
@@ -278,9 +326,10 @@ def set_shape_multiline(shape, lines, font_size=None):
 
 
 def _apply_cell_font(run, font_color=None):
-    """统一设置单元格run字体：微软雅黑 10号，可选颜色"""
+    """统一设置单元格run字体：微软雅黑 加粗 10号，可选颜色"""
     run.font.name = '微软雅黑'
     run.font.size = Pt(10)
+    run.font.bold = True
     if font_color:
         run.font.color.rgb = RGBColor(*font_color)
 
@@ -541,13 +590,13 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     # ====== Slide 1: 日期 ======
     for shape in prs.slides[0].shapes:
         if shape.name == 'date':
-            set_shape_single_text(shape, DATE_STR)
+            set_shape_single_text(shape, DATE_STR, **TITLE_FONT)
 
     # ====== Slide 3: 行业储备 ======
     slide3 = prs.slides[2]
     for shape in slide3.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'1、行业板块---2026年商机储备情况（{PERIOD_STR}）')
+            set_shape_single_text(shape, f'1、行业板块---2026年商机储备情况（{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 14':
             tbl = shape.table
             for i, rd in enumerate(industry_reserve):
@@ -568,7 +617,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
             set_shape_multiline(shape, [
                 f'1、{B27_TEXT}',
                 f'2、储备完成率不足的分局：{b3}'
-            ])
+            ], font_color_line1=None, font_color_line2=(0x00, 0x80, 0x00))
         elif shape.name == '文本框 5':
             update_crm_date(shape, PERIOD_STR, CRM_DATE_FULL)
 
@@ -576,7 +625,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     slide4 = prs.slides[3]
     for shape in slide4.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'1、商校板块---2026年商机储备情况（{PERIOD_STR}）')
+            set_shape_single_text(shape, f'1、商校板块---2026年商机储备情况（{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 14':
             tbl = shape.table
             for i, rd in enumerate(commercial_reserve):
@@ -597,29 +646,22 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
             set_shape_multiline(shape, [
                 f'1、{B28_TEXT}',
                 f'2、储备完成率不足的分局：{b3}'
-            ])
+            ], font_color_line1=None, font_color_line2=(0x00, 0x80, 0x00))
         elif shape.name == '文本框 5':
             update_crm_date(shape, PERIOD_STR, CRM_DATE_FULL)
 
     # ====== Slide 6: 行业有效商机 ======
     slide6 = prs.slides[5]
-    j27_lines = [l.strip() for l in J27_TEXT.split('\n') if l.strip()]
     ind_below30_count, ind_severe = count_below30(industry_effective)
-
-    ind_amount_raw = j27_lines[0].replace('行业有效商机金额', '').strip() if j27_lines else ''
-    ind_rate = ''
-    for l in j27_lines:
-        if '完成率' in l:
-            ind_rate = l
-            break
+    ind_sum_amt, ind_sum_tgt, ind_rate_pct, ind_rate_text = calc_effective_summary(industry_effective)
 
     for shape in slide6.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'2、行业板块---有效商机纳管情况（26年{PERIOD_STR}）')
+            set_shape_single_text(shape, f'2、行业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
-            set_shape_single_text(shape, ind_amount_raw)
+            set_shape_single_text(shape, fmt_num(ind_sum_amt))
         elif shape.name == 'Text 9':
-            set_shape_multiline(shape, ['有效商机/商机储备目标', ind_rate])
+            set_shape_multiline(shape, ['有效商机/商机储备目标', ind_rate_text])
         elif shape.name == 'Text 49':
             names_str = '、'.join(ind_severe[:8])
             set_shape_multiline(shape, [
@@ -634,23 +676,16 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     # ====== Slide 7: 商业有效商机 ======
     slide7 = prs.slides[6]
-    j28_lines = [l.strip() for l in J28_TEXT.split('\n') if l.strip()]
     comm_below30_count, comm_severe = count_below30(commercial_effective)
-
-    comm_amount_raw = j28_lines[0].replace('商业有效商机金额', '').strip() if j28_lines else ''
-    comm_rate = ''
-    for l in j28_lines:
-        if '完成率' in l:
-            comm_rate = l
-            break
+    comm_sum_amt, comm_sum_tgt, comm_rate_pct, comm_rate_text = calc_effective_summary(commercial_effective)
 
     for shape in slide7.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'2、商业板块---有效商机纳管情况（26年{PERIOD_STR}）')
+            set_shape_single_text(shape, f'2、商业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
-            set_shape_single_text(shape, comm_amount_raw)
+            set_shape_single_text(shape, fmt_num(comm_sum_amt))
         elif shape.name == 'Text 9':
-            set_shape_multiline(shape, ['有效商机/商机储备目标', comm_rate])
+            set_shape_multiline(shape, ['有效商机/商机储备目标', comm_rate_text])
         elif shape.name == 'Text 49':
             names_str = '、'.join(comm_severe[:8])
             set_shape_multiline(shape, [
@@ -669,7 +704,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide10.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、行业板块--商机项目推进情况（26年{PERIOD_STR}）')
+            set_shape_single_text(shape, f'3、行业板块--商机项目推进情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 27':
             tbl = shape.table
             for i, rd in enumerate(industry_progress):
@@ -690,7 +725,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide11.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、商校板块--商机项目推进情况（26年{PERIOD_STR}）')
+            set_shape_single_text(shape, f'3、商校板块--商机项目推进情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 1':
             tbl = shape.table
             for i, rd in enumerate(commercial_progress):
@@ -712,7 +747,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide13.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、行业板块--26年已完成交付项目情况（26年{PERIOD_STR}）')
+            set_shape_single_text(shape, f'3、行业板块--26年已完成交付项目情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 27':
             tbl = shape.table
             for i, rd in enumerate(industry_delivered):
@@ -740,7 +775,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide14.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、商校板块--26年已完成交付项目情况（26年{PERIOD_STR}）')
+            set_shape_single_text(shape, f'3、商校板块--26年已完成交付项目情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 2':
             tbl = shape.table
             for i, rd in enumerate(commercial_delivered):
