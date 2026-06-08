@@ -1,6 +1,6 @@
 /**
- * 邮件发送模块 - 独立 JS
- * 从 email-tool 整合，作为 unified-tool 第7步功能
+ * 邮件发送模块 - 第8步
+ * 从 email-tool 整合，作为 unified-tool 第8步功能
  * 所有函数和状态封装在 EmailTool 对象中，避免污染全局命名空间
  */
 const EmailTool = (() => {

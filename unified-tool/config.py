@@ -13,6 +13,8 @@ SPLIT_GROUPS_FILE = os.path.join(DATA_DIR, 'split_groups.json')
 SHEETS_FILE = os.path.join(DATA_DIR, 'kdocs_sheets.json')
 TEMPLATES_DIR = os.path.join(DATA_DIR, 'bureau_templates')
 NZ_TEMPLATES_DIR = os.path.join(DATA_DIR, 'nz_templates')
+PPT_TEMPLATES_DIR = os.path.join(DATA_DIR, 'ppt_templates')
+PPT_DATA_DIR = os.path.join(DATA_DIR, 'ppt_data')
 KDOCS_CATS_FILE = os.path.join(DATA_DIR, 'kdocs_categories.json')
 
 EMAIL_DATA_DIR = os.path.join(DATA_DIR, 'email')
@@ -81,5 +83,6 @@ MAIL_CONFIG = {
 
 def ensure_dirs():
     for d in [UPLOAD_DIR, OUTPUT_DIR, CONFIGS_DIR, TEMPLATES_DIR, NZ_TEMPLATES_DIR,
+              PPT_TEMPLATES_DIR, PPT_DATA_DIR,
               EMAIL_DATA_DIR, EMAIL_UPLOAD_DIR, TXT_VARS_DIR]:
         os.makedirs(d, exist_ok=True)

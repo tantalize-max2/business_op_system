@@ -12,6 +12,7 @@ from routes.file_routes import file_bp
 from routes.filter_routes import filter_bp
 from routes.stats_routes import stats_bp
 from routes.normalize_routes import normalize_bp
+from routes.ppt_routes import ppt_bp
 from routes.push_routes import push_bp
 from routes.email_routes import email_bp
 
@@ -24,6 +25,7 @@ app.register_blueprint(file_bp)
 app.register_blueprint(filter_bp)
 app.register_blueprint(stats_bp)
 app.register_blueprint(normalize_bp)
+app.register_blueprint(ppt_bp)
 app.register_blueprint(push_bp)
 app.register_blueprint(email_bp)
 

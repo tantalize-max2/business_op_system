@@ -13,8 +13,9 @@
 <link rel="stylesheet" href="css/modules/step3-split.css">
 <link rel="stylesheet" href="css/modules/step4-stats.css">
 <link rel="stylesheet" href="css/modules/step5-normalize.css">
-<link rel="stylesheet" href="css/modules/step6-push.css">
-<link rel="stylesheet" href="css/modules/step7-email.css">
+<link rel="stylesheet" href="css/modules/step6-ppt.css">
+<link rel="stylesheet" href="css/modules/step7-push.css">
+<link rel="stylesheet" href="css/modules/step8-email.css">
 <link rel="stylesheet" href="css/iconfont.css">
 </head>
 <body>
@@ -40,6 +41,9 @@
     </div>
     <div class="sb-item" data-step="normalize" id="navNormalize">
       <svg class="icon" aria-hidden="true"><use xlink:href="#icon-template"/></svg><span class="sb-label">数据标准化</span>
+    </div>
+    <div class="sb-item" data-step="ppt" id="navPpt">
+      <svg class="icon" aria-hidden="true"><use xlink:href="#icon-ppt"/></svg><span class="sb-label">PPT通报</span>
     </div>
     <div class="sb-item" data-step="kdocs" id="navKdocs">
       <svg class="icon" aria-hidden="true"><use xlink:href="#icon-cloud-upload"/></svg><span class="sb-label">在线推送</span>
@@ -429,7 +433,67 @@
     </div>
   </section>
 
-  <!-- ====== STEP 6: KDOCS ONLINE PUSH ====== -->
+  <!-- ====== STEP 6: PPT通报生成 ====== -->
+  <section class="step-panel" id="stepPpt">
+    <div class="step-header">
+      <h1 class="step-title">PPT通报</h1>
+      <p class="step-desc">基于数据Excel和PPT模板，一键生成商机通报PPT</p>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="ppt-toolbar">
+      <select id="pptTemplateSel" style="background:var(--bg2);border:1px solid var(--bd);border-radius:8px;padding:5px 8px;color:var(--t1);font:12px var(--sf);outline:none;min-width:180px"><option value="">-- 选择已保存模板 --</option></select>
+      <button class="btn btn-ghost btn-sm" id="pptSaveBtn">保存模板</button>
+      <button class="btn btn-ghost btn-sm" id="pptDeleteBtn">删除</button>
+      <div class="tb-spacer"></div>
+      <button class="btn btn-warn btn-sm" id="pptGenerateBtn">生成PPT</button>
+    </div>
+
+    <!-- 配置面板 -->
+    <div class="ppt-config">
+      <!-- PPT模板上传 -->
+      <div>
+        <div class="ppt-col-title">PPT模板</div>
+        <div class="ppt-upload-zone" id="pptUploadZone">
+          <div class="ppt-upload-icon"><svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-ppt"/></svg></div>
+          <div class="ppt-upload-text">点击选择或拖拽 .pptx 文件</div>
+          <div class="ppt-upload-hint">商机通报PPT模板文件</div>
+          <div class="ppt-upload-filename" id="pptUploadFilename"></div>
+        </div>
+        <input type="file" id="pptFileInput" accept=".pptx,.ppt" style="display:none">
+      </div>
+
+      <!-- 数据来源 -->
+      <div>
+        <div class="ppt-col-title">数据来源</div>
+        <div class="ppt-source-tabs">
+          <div class="ppt-source-tab active" data-source="upload">手动上传</div>
+          <div class="ppt-source-tab" data-source="nz">从标准化导入</div>
+        </div>
+        <!-- 手动上传区 -->
+        <div id="pptDataUploadWrap">
+          <div class="ppt-upload-zone" id="pptDataZone">
+            <div class="ppt-upload-icon"><svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-file-excel"/></svg></div>
+            <div class="ppt-upload-text">点击选择或拖拽 .xlsx 文件</div>
+            <div class="ppt-upload-hint">包含通报数据的Excel文件</div>
+            <div class="ppt-upload-filename" id="pptDataFilename"></div>
+          </div>
+          <input type="file" id="pptDataInput" accept=".xlsx,.xls" style="display:none">
+        </div>
+        <!-- 标准化导入区 -->
+        <div id="pptNzImport" style="display:none">
+          <div class="ppt-nz-import" id="pptNzInfo">
+            <div class="ppt-nz-empty">检查中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 生成结果 -->
+      <div id="pptResultArea" style="grid-column:1/-1;display:none"></div>
+    </div>
+  </section>
+
+  <!-- ====== STEP 7: KDOCS ONLINE PUSH ====== -->
   <section class="step-panel" id="stepKdocs">
     <div class="step-header">
       <h1 class="step-title">在线推送</h1>
@@ -585,7 +649,7 @@
     </div>
   </section>
 
-  <!-- ====== STEP 7: EMAIL ====== -->
+  <!-- ====== STEP 8: EMAIL ====== -->
   <section class="step-panel" id="stepEmail">
     <div class="step-header">
       <h1 class="step-title">邮件发送</h1>
@@ -881,6 +945,23 @@
   </div>
 </div>
 
+<!-- ============ PPT SAVE MODAL ============ -->
+<div class="ppt-modal-mask" id="pptModalMask"></div>
+<div class="ppt-modal-box" id="pptModalBox">
+  <div class="ppt-mb-head">
+    <span>保存PPT模板</span>
+    <button class="ppt-mb-close" id="pptModalClose">&times;</button>
+  </div>
+  <div class="ppt-mb-body">
+    <div class="ppt-mb-label">模板名称</div>
+    <input class="ppt-mb-input" id="pptModalInput" placeholder="请输入模板名称">
+  </div>
+  <div class="ppt-mb-foot">
+    <button class="btn btn-ghost btn-sm" id="pptModalCancel">取消</button>
+    <button class="btn btn-primary btn-sm" id="pptModalOk">保存</button>
+  </div>
+</div>
+
 <!-- ============ SCRIPTS ============ -->
 <script src="js/iconfont.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
@@ -890,7 +971,8 @@
 <script src="js/modules/step3-split.js"></script>
 <script src="js/modules/step4-stats.js"></script>
 <script src="js/modules/step5-normalize.js"></script>
-<script src="js/modules/step6-push.js"></script>
-<script src="js/email.js"></script>
+<script src="js/modules/step6-ppt.js"></script>
+<script src="js/modules/step7-push.js"></script>
+<script src="js/modules/step8-email.js"></script>
 </body>
 </html>

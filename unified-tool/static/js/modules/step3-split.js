@@ -670,7 +670,7 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
 document.querySelectorAll('.sb-item').forEach(item => {
   item.addEventListener('click', () => {
     const step = item.dataset.step;
-    if (step === 'upload' || step === 'kdocs' || step === 'normalize' || step === 'email' || step === 'split' || S.files.length) switchStep(step);
+    if (step === 'upload' || step === 'kdocs' || step === 'normalize' || step === 'ppt' || step === 'email' || step === 'split' || S.files.length) switchStep(step);
   });
 });
 

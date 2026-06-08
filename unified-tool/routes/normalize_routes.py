@@ -5,6 +5,7 @@ import base64
 from flask import Blueprint, request, jsonify, send_file, current_app
 from models.normalize_model import (list_nz_templates, save_nz_template, get_nz_template,
                                      delete_nz_template, fill_template)
+from models.ppt_model import save_last_nz_output
 
 normalize_bp = Blueprint('normalize', __name__)
 
@@ -72,6 +73,9 @@ def nz_fill_template():
 
     tmp_in = result['tmp_in']
     tmp_out = result['tmp_out']
+
+    # 保存标准化输出路径供PPT通报模块使用
+    save_last_nz_output(tmp_out)
 
     response = send_file(
         tmp_out,

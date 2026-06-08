@@ -2,10 +2,15 @@ __pycache__/
 *.pyc
 data/uploads/
 data/output/
+data/ppt_data/
+data/ppt_templates/
+data/nz_templates/
 data/split_groups.json
 data/email/cookies.json
 data/email/csrftoken.txt
 data/email/login_creds.json
 data/email/uploads/
+data/*.xlsx
 .env
 .temp/
+*.docx
