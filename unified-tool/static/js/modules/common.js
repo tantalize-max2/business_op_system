@@ -582,69 +582,11 @@ function findAncestorL1s(gid, grps, l1Groups) {
 // ========== 分组值自动清理 ==========
 // 当前过滤条件变化后，分组中某些值可能已不在过滤后数据中，自动剔除这些值
 function cleanGroupValues(file) {
-  if (!file || !file.grps.length) return false;
-  let l1Data = getFilteredData_forFile(file);
-  // 如果已执行拆分且该文件是拆分文件，排除未匹配行
-  if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
-    l1Data = filterBySplitMatch(l1Data, file);
-  }
-  // 收集每列在当前过滤数据中的可用值
-  const availByCol = {};
-  file.grps.forEach(g => {
-    if (g.column && !availByCol[g.column]) {
-      availByCol[g.column] = new Set(l1Data.map(r => String(r[g.column] ?? '').trim()));
-    }
-  });
-  let changed = false;
-  // 清理每组中不在过滤数据内的值
-  file.grps.forEach(g => {
-    if (g.level === 1) return; // 1级分组没有自己的values
-    const avail = availByCol[g.column];
-    if (!avail) return;
-    const origLen = g.values.length;
-    g.values = g.values.filter(v => avail.has(String(v).trim()));
-    if (g.values.length !== origLen) changed = true;
-  });
-  // 移除值已清空的2级+分组
-  const emptyGrpIds = new Set(
-    file.grps.filter(g => g.level !== 1 && g.values.length === 0).map(g => g.id)
-  );
-  // 级联删除：如果父分组被删除，子分组也应删除
-  let cascaded = true;
-  while (cascaded) {
-    cascaded = false;
-    file.grps.forEach(g => {
-      if (g.level >= 3 && g.parentId && emptyGrpIds.has(g.parentId) && !emptyGrpIds.has(g.id)) {
-        emptyGrpIds.add(g.id);
-        cascaded = true;
-      }
-    });
-  }
-  if (emptyGrpIds.size) {
-    file.grps = file.grps.filter(g => !emptyGrpIds.has(g.id));
-    // 清理1级分组的childGroupIds引用
-    file.grps.filter(g => g.level === 1 && g.childGroupIds).forEach(g => {
-      g.childGroupIds = g.childGroupIds.filter(id => !emptyGrpIds.has(id));
-    });
-    // 移除无子分组的1级分组
-    file.grps = file.grps.filter(g => g.level !== 1 || (g.childGroupIds && g.childGroupIds.length > 0));
-    // 清理其他分组的parentIds引用
-    file.grps.forEach(g => {
-      if (g.parentIds && g.parentIds.length) {
-        const newPids = g.parentIds.filter(id => !emptyGrpIds.has(id) && file.grps.some(x => x.id === id));
-        const newRels = g.parentRels ? g.parentRels.filter((_, i) => i < newPids.length) : [];
-        if (newPids.length !== g.parentIds.length) {
-          g.parentIds = newPids.length ? newPids : [];
-          g.parentRels = newRels;
-          g.parentId = newPids[0] || null;
-          g.parentRel = newRels[0] || null;
-          changed = true;
-        }
-      }
-    });
-    changed = true;
-  }
-  return changed;
+  // 核心原则：g.values 必须保持用户设置的原始值，不被统计逻辑修改或删除分组。
+  // 用户配置的分组保持完整，统计时没有数据的分组自然显示 count=0。
+  // （此前此函数会清空不在当前过滤数据中的 values 并级联删除分组，
+  //  导致一级过滤后无数据的分组（如 IDC）消失、编辑新增的标签被清理。）
+  return false;
 }
 
 // 刷新L2数据（清理分组值 + 重新渲染L2区域）
