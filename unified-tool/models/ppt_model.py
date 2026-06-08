@@ -149,8 +149,8 @@ def fmt_comma(v):
 
 
 def _delivered_color_indices(data, col_idx):
-    """根据指定列的数值，返回 {行索引: font_color} 标注前三红、倒数两名绿"""
-    RED = (0xFF, 0x00, 0x00)
+    """根据指定列的数值，返回 {行索引: font_color} 标注前三深红、倒数两名绿"""
+    DARK_RED = (0xC0, 0x00, 0x00)
     GREEN = (0x00, 0x80, 0x00)
     # 按 col_idx 数值排序，记录原始索引
     indexed = [(i, float(row[col_idx] or 0)) for i, row in enumerate(data) if row[col_idx] is not None]
@@ -158,9 +158,9 @@ def _delivered_color_indices(data, col_idx):
         return {}
     indexed.sort(key=lambda x: x[1], reverse=True)
     result = {}
-    # 前三标红
+    # 前三标深红
     for i, _ in indexed[:min(3, len(indexed))]:
-        result[i] = RED
+        result[i] = DARK_RED
     # 倒数两名标绿（取排序末尾，且不与标红重叠）
     bottom = indexed[-min(2, len(indexed)):]
     for i, _ in bottom:
@@ -230,10 +230,10 @@ def calc_effective_summary(eff_data):
 def count_below30(eff_data):
     """返回 (所有<30%分局数, 严重不足<10%分局名单)
     
-    严重不足分局 = biz-chart 图表中绿色柱条 (<10%) 的分局
+    严重不足分局按完成率升序排列，最后一个名加"分局"
     """
     below30_count = 0
-    severe = []
+    severe = []  # (name, ratio)
     for item in eff_data:
         name, amt, tgt = str(item[0] or ''), float(item[1] or 0), float(item[2] or 0)
         if tgt <= 0:
@@ -241,10 +241,29 @@ def count_below30(eff_data):
         ratio = amt / tgt * 100
         if ratio < 30:
             below30_count += 1
-        if ratio < 10:  # 绿色严重不足（匹配 biz-chart 配色）
+        if ratio < 10:
             m = re.match(r'(.+?)(（\d+）)?$', name)
-            severe.append(m.group(1) if m else name)
+            clean_name = m.group(1) if m else name
+            severe.append((clean_name, ratio))
+    # 按完成率升序排列（最不足的排最前）
+    severe.sort(key=lambda x: x[1])
     return below30_count, severe
+
+
+def _format_severe_names(severe_list):
+    """格式化严重不足分局名列表，最后一个加"分局"
+    
+    Args:
+        severe_list: [(name, ratio), ...] 已排序
+    Returns:
+        str: "A、B、C分局" 格式
+    """
+    names = [item[0] for item in severe_list[:8]]
+    if not names:
+        return ''
+    if len(names) == 1:
+        return names[0] + '分局'
+    return '、'.join(names[:-1]) + '、' + names[-1] + '分局'
 
 
 # ========== PPT文本操作辅助 ==========
@@ -326,12 +345,11 @@ def set_shape_multiline(shape, lines, font_size=None, font_color_line1=None, fon
 
 
 def _apply_cell_font(run, font_color=None):
-    """统一设置单元格run字体：微软雅黑 加粗 10号，可选颜色"""
+    """统一设置单元格run字体：微软雅黑 加粗 10号 黑色，可选颜色覆盖"""
     run.font.name = '微软雅黑'
     run.font.size = Pt(10)
     run.font.bold = True
-    if font_color:
-        run.font.color.rgb = RGBColor(*font_color)
+    run.font.color.rgb = RGBColor(*font_color) if font_color else RGBColor(0x00, 0x00, 0x00)
 
 
 def set_cell_text(cell, text, font_color=None):
@@ -659,11 +677,11 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         if shape.name == '标题 1':
             set_shape_single_text(shape, f'2、行业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
-            set_shape_single_text(shape, fmt_num(ind_sum_amt))
+            set_shape_single_text(shape, fmt_num(ind_sum_amt) + '万元')
         elif shape.name == 'Text 9':
             set_shape_multiline(shape, ['有效商机/商机储备目标', ind_rate_text])
         elif shape.name == 'Text 49':
-            names_str = '、'.join(ind_severe[:8])
+            names_str = _format_severe_names(ind_severe)
             set_shape_multiline(shape, [
                 f'{ind_below30_count}个分局未达30%储备率',
                 f'其中{names_str}商机储备纳管严重不足'
@@ -683,11 +701,11 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         if shape.name == '标题 1':
             set_shape_single_text(shape, f'2、商业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
-            set_shape_single_text(shape, fmt_num(comm_sum_amt))
+            set_shape_single_text(shape, fmt_num(comm_sum_amt) + '万元')
         elif shape.name == 'Text 9':
             set_shape_multiline(shape, ['有效商机/商机储备目标', comm_rate_text])
         elif shape.name == 'Text 49':
-            names_str = '、'.join(comm_severe[:8])
+            names_str = _format_severe_names(comm_severe)
             set_shape_multiline(shape, [
                 f'{comm_below30_count}个分局均未达30%储备率',
                 f'其中{names_str}商机纳管储备严重不足'
