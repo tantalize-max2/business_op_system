@@ -677,7 +677,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         if shape.name == '标题 1':
             set_shape_single_text(shape, f'2、行业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
-            set_shape_single_text(shape, fmt_num(ind_sum_amt) + '万元')
+            set_shape_single_text(shape, fmt_num(ind_sum_amt) + '万')
         elif shape.name == 'Text 9':
             set_shape_multiline(shape, ['有效商机/商机储备目标', ind_rate_text])
         elif shape.name == 'Text 49':
@@ -685,7 +685,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
             set_shape_multiline(shape, [
                 f'{ind_below30_count}个分局未达30%储备率',
                 f'其中{names_str}商机储备纳管严重不足'
-            ])
+            ], font_size=14)
         elif shape.name in ('文本框 123', '文本框 5'):
             update_crm_date(shape, PERIOD_STR, CRM_DATE_FULL)
 
@@ -701,7 +701,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         if shape.name == '标题 1':
             set_shape_single_text(shape, f'2、商业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
-            set_shape_single_text(shape, fmt_num(comm_sum_amt) + '万元')
+            set_shape_single_text(shape, fmt_num(comm_sum_amt) + '万')
         elif shape.name == 'Text 9':
             set_shape_multiline(shape, ['有效商机/商机储备目标', comm_rate_text])
         elif shape.name == 'Text 49':
@@ -709,7 +709,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
             set_shape_multiline(shape, [
                 f'{comm_below30_count}个分局均未达30%储备率',
                 f'其中{names_str}商机纳管储备严重不足'
-            ])
+            ], font_size=14)
         elif shape.name in ('文本框 123', '文本框 5'):
             update_crm_date(shape, PERIOD_STR, CRM_DATE_FULL)
 
