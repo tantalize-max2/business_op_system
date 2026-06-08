@@ -426,12 +426,21 @@ function getGroupContext(gid, l1Data, grps, cache) {
         }
       } else {
         // 后续父分组
-        if (rel === 'AND') {
-          // AND: 与已合并的取交集（必须同时满足所有AND父分组）
+        const isL1Parent = pg && pg.level === 1 && pg.childGroupIds && pg.childGroupIds.length;
+        if (rel === 'AND' && !isL1Parent) {
+          // 非L1父分组 AND: 取交集（约束条件必须同时满足）
           const ps = new Set(parentCtx);
           const nextCtx = selfMatch.filter(r => ps.has(r));
           const nextSet = new Set(nextCtx);
           mergedCtx = mergedCtx.filter(r => nextSet.has(r));
+        } else if (rel === 'AND' && isL1Parent) {
+          // L1父分组 AND: 取并集
+          // L1是范围/分类分组，多个L1(如行业+商业)互斥且覆盖全集，
+          // AND取交集必然为空，应取并集扩大覆盖范围
+          const ps = new Set(parentCtx);
+          const nextCtx = selfMatch.filter(r => ps.has(r));
+          const seen = new Set(mergedCtx);
+          nextCtx.forEach(r => { if (!seen.has(r)) { seen.add(r); mergedCtx.push(r); } });
         } else {
           // OR: 与已合并的取并集（满足任一OR父分组即可）
           const seen2 = new Set();
