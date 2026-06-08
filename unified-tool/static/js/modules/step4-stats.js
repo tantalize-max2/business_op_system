@@ -1562,6 +1562,10 @@ function showConfigPicker(configs) {
 
 function applyConfig(cfg) {
   if (!cfg.files || !cfg.files.length) { ntf('配置文件格式错误', 'error'); return; }
+  // 清除之前的拆分状态，避免加载配置后二级统计仍应用旧的拆分过滤
+  S.splitMatchedRows = null;
+  S.splitFileId = null;
+  S.splitResult = null;
   let cleanedCount = 0;
   cfg.files.forEach((fc, fi) => {
     // 按表头匹配找到对应的当前文件
