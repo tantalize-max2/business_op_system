@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from openpyxl import load_workbook
 from pptx import Presentation
 from pptx.util import Pt
+from pptx.dml.color import RGBColor
 from config import PPT_TEMPLATES_DIR, PPT_DATA_DIR
 
 
@@ -147,7 +148,28 @@ def fmt_comma(v):
         return str(v)
 
 
-def get_bottom3(data):
+def _delivered_color_indices(data, col_idx):
+    """根据指定列的数值，返回 {行索引: font_color} 标注前三红、倒数两名绿"""
+    RED = (0xFF, 0x00, 0x00)
+    GREEN = (0x00, 0x80, 0x00)
+    # 按 col_idx 数值排序，记录原始索引
+    indexed = [(i, float(row[col_idx] or 0)) for i, row in enumerate(data) if row[col_idx] is not None]
+    if not indexed:
+        return {}
+    indexed.sort(key=lambda x: x[1], reverse=True)
+    result = {}
+    # 前三标红
+    for i, _ in indexed[:min(3, len(indexed))]:
+        result[i] = RED
+    # 倒数两名标绿（取排序末尾，且不与标红重叠）
+    bottom = indexed[-min(2, len(indexed)):]
+    for i, _ in bottom:
+        if i not in result:
+            result[i] = GREEN
+    return result
+
+
+
     names = []
     for r in data[-3:]:
         m = re.match(r'(.+?)(（\d+）)?$', str(r[1]))
@@ -255,17 +277,31 @@ def set_shape_multiline(shape, lines, font_size=None):
             run.text = ''
 
 
-def set_cell_text(cell, text):
+def _apply_cell_font(run, font_color=None):
+    """统一设置单元格run字体：微软雅黑 10号，可选颜色"""
+    run.font.name = '微软雅黑'
+    run.font.size = Pt(10)
+    if font_color:
+        run.font.color.rgb = RGBColor(*font_color)
+
+
+def set_cell_text(cell, text, font_color=None):
     p = cell.text_frame.paragraphs[0] if cell.text_frame.paragraphs else None
     if p:
         if p.runs:
-            p.runs[0].text = str(text)
+            run = p.runs[0]
+            run.text = str(text)
+            _apply_cell_font(run, font_color)
             for run in p.runs[1:]:
                 run.text = ''
         else:
-            cell.text = str(text)
+            run = p.add_run()
+            run.text = str(text)
+            _apply_cell_font(run, font_color)
     else:
         cell.text = str(text)
+        if cell.text_frame.paragraphs and cell.text_frame.paragraphs[0].runs:
+            _apply_cell_font(cell.text_frame.paragraphs[0].runs[0], font_color)
 
 
 def replace_picture(slide, shape_name, img_path):
@@ -671,6 +707,9 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     # ====== Slide 13: 行业交付 ======
     slide13 = prs.slides[12]
+    ind_count_colors = _delivered_color_indices(industry_delivered, 2)   # 已交付数量列
+    ind_amount_colors = _delivered_color_indices(industry_delivered, 3)  # 已交付金额列
+
     for shape in slide13.shapes:
         if shape.name == '标题 1':
             set_shape_single_text(shape, f'3、行业板块--26年已完成交付项目情况（26年{PERIOD_STR}）')
@@ -680,17 +719,25 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
                 r = i + 1
                 for c in range(4):
                     v = rd[c]
+                    color = None
+                    if c == 2:
+                        color = ind_count_colors.get(i)
+                    elif c == 3:
+                        color = ind_amount_colors.get(i)
                     if c == 3:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v))
+                        set_cell_text(tbl.cell(r, c), fmt_num(v), font_color=color)
                     elif c == 2:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0))
+                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0), font_color=color)
                     else:
-                        set_cell_text(tbl.cell(r, c), str(v) if v else '')
+                        set_cell_text(tbl.cell(r, c), str(v) if v else '', font_color=color)
         elif shape.name == '文本框 3':
             set_shape_single_text(shape, AI27_TEXT)
 
     # ====== Slide 14: 商业交付 ======
     slide14 = prs.slides[13]
+    comm_count_colors = _delivered_color_indices(commercial_delivered, 2)
+    comm_amount_colors = _delivered_color_indices(commercial_delivered, 3)
+
     for shape in slide14.shapes:
         if shape.name == '标题 1':
             set_shape_single_text(shape, f'3、商校板块--26年已完成交付项目情况（26年{PERIOD_STR}）')
@@ -700,12 +747,17 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
                 r = i + 1
                 for c in range(4):
                     v = rd[c]
+                    color = None
+                    if c == 2:
+                        color = comm_count_colors.get(i)
+                    elif c == 3:
+                        color = comm_amount_colors.get(i)
                     if c == 3:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v))
+                        set_cell_text(tbl.cell(r, c), fmt_num(v), font_color=color)
                     elif c == 2:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0))
+                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0), font_color=color)
                     else:
-                        set_cell_text(tbl.cell(r, c), str(v) if v else '')
+                        set_cell_text(tbl.cell(r, c), str(v) if v else '', font_color=color)
         elif shape.name == '文本框 5':
             set_shape_single_text(shape, AI28_TEXT)
 

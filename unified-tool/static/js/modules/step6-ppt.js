@@ -62,6 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const delBtn = document.getElementById('pptDeleteBtn');
   if (delBtn) delBtn.addEventListener('click', doDeleteTemplate);
 
+  // 下载模板按钮
+  const dlTplBtn = document.getElementById('pptDownloadTplBtn');
+  if (dlTplBtn) dlTplBtn.addEventListener('click', doDownloadTemplate);
+
   // 模态框事件
   const modalClose = document.getElementById('pptModalClose');
   if (modalClose) modalClose.addEventListener('click', hideSaveModal);
@@ -88,6 +92,7 @@ function handlePptFile(file) {
   reader.onload = e => {
     PPT.templateData = arrayBufferToBase64(e.target.result);
     updateUploadZone('pptUploadZone', file.name);
+    showDownloadTplBtn();
     ntf(`PPT模板已加载: ${file.name}`);
   };
   reader.readAsArrayBuffer(file);
@@ -260,6 +265,7 @@ async function onTemplateSelect() {
       PPT.templateData = data.templateData;
       PPT.templateName = name;
       updateUploadZone('pptUploadZone', name + '.pptx');
+      showDownloadTplBtn();
       ntf('PPT模板已加载');
     }
     if (data.dataFileData) {
@@ -358,6 +364,32 @@ function renderNzImport(info) {
   } else {
     el.innerHTML = `<div class="ppt-nz-empty">暂无标准化输出数据，请先在"数据标准化"步骤执行填充操作</div>`;
   }
+}
+
+// ===== 下载PPT模板 =====
+function showDownloadTplBtn() {
+  const btn = document.getElementById('pptDownloadTplBtn');
+  if (btn) btn.style.display = '';
+}
+
+function doDownloadTemplate() {
+  if (!PPT.templateData) {
+    ntf('没有可下载的PPT模板', 'error');
+    return;
+  }
+  const binaryStr = atob(PPT.templateData);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = PPT.templateName || 'PPT模板.pptx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  ntf('PPT模板已开始下载');
 }
 
 // ===== 进入步骤时初始化 =====
