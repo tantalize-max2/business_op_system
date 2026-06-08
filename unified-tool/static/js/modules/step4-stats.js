@@ -904,6 +904,8 @@ function calcAllStats() {
   let html = '';
   S.files.forEach((file, fi) => {
     if (!file.raw.length) return;
+    // 同步分组值与映射数据，确保所有分局人员都被覆盖
+    syncGrpsWithMapping(file.grps, S.mappingData);
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
     if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
@@ -1335,6 +1337,8 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   if (!S.files.length) { ntf('无数据可导出', 'error'); return; }
   const wb = XLSX.utils.book_new();
   S.files.forEach(file => {
+    // 同步分组值与映射数据，确保导出数据与统计一致
+    syncGrpsWithMapping(file.grps, S.mappingData);
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
     // 如果已执行拆分且该文件是拆分文件，排除未匹配行

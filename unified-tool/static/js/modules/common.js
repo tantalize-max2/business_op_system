@@ -326,6 +326,34 @@ function getSortedData(data) {
   return data;
 }
 
+// ========== 分组值与映射同步 ==========
+/**
+ * 将 mappingData 中的分局人员名单同步到分组的 values 中
+ * 确保统计时所有映射中的客户经理都能被正确匹配
+ * @param {Array} grps - 分组数组
+ * @param {Object} mappingData - 分局映射数据 {分局名: [人员名...]}
+ */
+function syncGrpsWithMapping(grps, mappingData) {
+  if (!mappingData || typeof mappingData !== 'object') return;
+  const keys = Object.keys(mappingData);
+  if (!keys.length) return;
+  grps.forEach(g => {
+    if (g.level === 1 || g._unmatched) return;
+    const mapped = mappingData[g.name];
+    if (mapped && Array.isArray(mapped) && mapped.length) {
+      const existing = new Set((g.values || []).map(v => String(v).trim()));
+      mapped.forEach(v => {
+        const vs = String(v).trim();
+        if (vs && !existing.has(vs)) {
+          existing.add(vs);
+          if (!g.values) g.values = [];
+          g.values.push(vs);
+        }
+      });
+    }
+  });
+}
+
 // ========== L2 GROUP CONTEXT ==========
 function getGroupContext(gid, l1Data, grps, cache) {
   if (cache[gid]) return cache[gid];
@@ -358,49 +386,60 @@ function getGroupContext(gid, l1Data, grps, cache) {
     // 支持多父分组依赖
     const pids = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
     const prels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
-    // 先取第一个父分组的上下文作为基础
+    const valSet = new Set(g.values.map(v => String(v).trim()));
+    const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
     let mergedCtx;
     pids.forEach((pid, i) => {
       const rel = prels[i] || 'AND';
       const pg = grps.find(x => x.id === pid);
-      // 如果父分组是L1分组，直接用L1的子分组数据（不走递归），避免循环依赖
       let parentCtx;
       if (pg && pg.level === 1 && pg.childGroupIds && pg.childGroupIds.length) {
+        // 父分组是L1：聚合其所有子分组的上下文
         const seen = new Set();
         parentCtx = [];
         pg.childGroupIds.forEach(cid => {
-          // 只取不在当前分组依赖链中的子分组上下文
-          const cc = getGroupContext(cid, l1Data, grps, cache);
+          const cg = grps.find(x => x.id === cid);
+          if (cg && cg._unmatched) return; // 跳过未匹配子分组
+          let cc;
+          if (cid === gid) {
+            // 循环依赖防护：当前分组自身出现在L1子分组中时，
+            // 用 selfMatch 代替递归（依赖自身所属L1等价于无约束）
+            cc = selfMatch;
+          } else {
+            cc = getGroupContext(cid, l1Data, grps, cache);
+          }
           cc.forEach(r => { if (!seen.has(r)) { seen.add(r); parentCtx.push(r); } });
         });
       } else {
         parentCtx = getGroupContext(pid, l1Data, grps, cache);
       }
-      const valSet = new Set(g.values.map(v => String(v).trim()));
-      const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
       if (i === 0) {
         // 第一个父分组
         if (rel === 'AND') {
           const ps = new Set(parentCtx);
           mergedCtx = selfMatch.filter(r => ps.has(r));
         } else {
+          // OR: selfMatch ∪ parentCtx
           const seen = new Set();
           mergedCtx = [];
           [...parentCtx, ...selfMatch].forEach(r => { if (!seen.has(r)) { seen.add(r); mergedCtx.push(r); } });
         }
       } else {
-        // 后续父分组：与已合并的取并集
-        let nextCtx;
+        // 后续父分组
         if (rel === 'AND') {
+          // AND: 与已合并的取交集（必须同时满足所有AND父分组）
           const ps = new Set(parentCtx);
-          nextCtx = selfMatch.filter(r => ps.has(r));
+          const nextCtx = selfMatch.filter(r => ps.has(r));
+          const nextSet = new Set(nextCtx);
+          mergedCtx = mergedCtx.filter(r => nextSet.has(r));
         } else {
+          // OR: 与已合并的取并集（满足任一OR父分组即可）
           const seen2 = new Set();
-          nextCtx = [];
+          const nextCtx = [];
           [...parentCtx, ...selfMatch].forEach(r => { if (!seen2.has(r)) { seen2.add(r); nextCtx.push(r); } });
+          const seen = new Set(mergedCtx);
+          nextCtx.forEach(r => { if (!seen.has(r)) { seen.add(r); mergedCtx.push(r); } });
         }
-        const seen = new Set(mergedCtx);
-        nextCtx.forEach(r => { if (!seen.has(r)) { seen.add(r); mergedCtx.push(r); } });
       }
     });
     ctx = mergedCtx;

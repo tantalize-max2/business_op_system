@@ -381,6 +381,8 @@ function nzComputeStats() {
   const result = {}; // fileIdx -> { entries: [], l1Groups: [], total: {} }
   S.files.forEach((file, fi) => {
     if (!file.raw.length) return;
+    // 同步分组值与映射数据，确保所有分局人员都被覆盖
+    syncGrpsWithMapping(file.grps, S.mappingData);
     const fileIdx = fi + 1;
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
