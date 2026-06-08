@@ -156,15 +156,21 @@ function renderVP2(col) {
   const inScopeVals = uniq(col, fd), inScopeSet = new Set(inScopeVals), allVals = uniq(col);
   const grouped = new Set();
   f.grps.forEach(g => { if (g.column === col) g.values.forEach(v => grouped.add(String(v))); });
+  // 补充：已分组但不在当前数据中的值（新Excel可能缺少某些标签，但配置中已定义）
+  const allValsSet = new Set(allVals);
+  const notInData = new Set();
+  grouped.forEach(v => { if (!allValsSet.has(v)) { allVals.push(v); notInData.add(v); } });
   const inScope = allVals.filter(v => inScopeSet.has(v)), outScope = allVals.filter(v => !inScopeSet.has(v));
   let html = '';
   [...inScope, ...outScope].forEach(v => {
     const isG = grouped.has(v), isS = S.selGVals.includes(v), isIn = inScopeSet.has(v);
+    const noData = notInData.has(v); // 在当前数据中完全不存在
     let cls = 'vp2-i';
     if (isS) cls += ' sel';
     if (isG) cls += ' grp';
     if (!isIn) cls += ' l1out';
-    html += `<div class="${cls}" data-v="${esc(v)}">${esc(!isIn ? v + ' (L1外)' : v)}</div>`;
+    const label = noData ? v + ' (无数据)' : (!isIn ? v + ' (L1外)' : v);
+    html += `<div class="${cls}" data-v="${esc(v)}">${esc(label)}</div>`;
   });
   pk.innerHTML = html;
   pk.querySelectorAll('.vp2-i').forEach(el => el.addEventListener('click', () => {
@@ -904,8 +910,6 @@ function calcAllStats() {
   let html = '';
   S.files.forEach((file, fi) => {
     if (!file.raw.length) return;
-    // 同步分组值与映射数据，确保所有分局人员都被覆盖
-    syncGrpsWithMapping(file.grps, S.mappingData);
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
     if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
@@ -959,7 +963,7 @@ function calcAllStats() {
             const cg = file.grps.find(x => x.id === cid);
             if (!cg) return;
             const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
-            const valSet = new Set(g.values.map(v => String(v).trim()));
+            const valSet = getGroupValues(g);
             const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
             let ctx;
             if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }
@@ -1337,8 +1341,6 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   if (!S.files.length) { ntf('无数据可导出', 'error'); return; }
   const wb = XLSX.utils.book_new();
   S.files.forEach(file => {
-    // 同步分组值与映射数据，确保导出数据与统计一致
-    syncGrpsWithMapping(file.grps, S.mappingData);
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
     // 如果已执行拆分且该文件是拆分文件，排除未匹配行
@@ -1563,9 +1565,7 @@ function showConfigPicker(configs) {
 function applyConfig(cfg) {
   if (!cfg.files || !cfg.files.length) { ntf('配置文件格式错误', 'error'); return; }
   // 清除之前的拆分状态，避免加载配置后二级统计仍应用旧的拆分过滤
-  S.splitMatchedRows = null;
-  S.splitFileId = null;
-  S.splitResult = null;
+  clearSplitState();
   let cleanedCount = 0;
   cfg.files.forEach((fc, fi) => {
     // 按表头匹配找到对应的当前文件

@@ -500,9 +500,7 @@ document.getElementById('btnClrL1').addEventListener('click', () => {
   f.sumCol = '';
   f.hiddenCols = new Set();
   // 重置拆分关联状态
-  S.splitMatchedRows = null;
-  S.splitFileId = null;
-  S.splitResult = null;
+  clearSplitState();
   const splitResults = document.getElementById('splitResults');
   if (splitResults) splitResults.style.display = 'none';
   // 刷新所有视图
@@ -696,9 +694,7 @@ document.getElementById('btnPreprocess').addEventListener('click', async () => {
     console.warn('预处理: 重新生成文件数据失败', e);
   }
   // 重算 splitMatchedRows（数据已变）
-  S.splitMatchedRows = null;
-  S.splitFileId = null;
-  S.splitResult = null;
+  clearSplitState();
   document.getElementById('splitResults').style.display = 'none';
   debouncedSave();
   if (emptyCount > 0) {

@@ -575,6 +575,9 @@ async function doSplit() {
       });
       S.splitMatchedRows = matchedSet;
       S.splitFileId = f.id;
+      // 持久化拆分状态（用于刷新后恢复）
+      S.splitFileName = f.name;
+      S.splitColName = splitColName;
     }
     renderSplitResults();
     debouncedSave();

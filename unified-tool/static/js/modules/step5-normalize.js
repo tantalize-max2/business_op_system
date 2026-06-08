@@ -381,8 +381,6 @@ function nzComputeStats() {
   const result = {}; // fileIdx -> { entries: [], l1Groups: [], total: {} }
   S.files.forEach((file, fi) => {
     if (!file.raw.length) return;
-    // 同步分组值与映射数据，确保所有分局人员都被覆盖
-    syncGrpsWithMapping(file.grps, S.mappingData);
     const fileIdx = fi + 1;
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
@@ -529,7 +527,7 @@ function nzComputeStats() {
                   const cg = file.grps.find(x => x.id === cid);
                   if (!cg) return;
                   const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
-                  const valSet = new Set(g.values.map(v => String(v).trim()));
+                  const valSet = getGroupValues(g);
                   const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
                   let ctx;
                   if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }
@@ -538,16 +536,11 @@ function nzComputeStats() {
                   const crossEntry = {
                     name: `${cg.name} · ${g.name}`, isGroup: true, column: g.column, count: ctx.length,
                     pct: l1Data.length > 0 ? (ctx.length / l1Data.length * 100).toFixed(1) : '0',
-                    depInfo: `${rel}→${pg.name}.${cg.name}`, l1Name: pg.name, l1Id: pg.id, isL1Cross: true, _ctx: ctx
+                    depInfo: `${rel}→${pg.name}.${cg.name}`, indent: 1, l1Name: pg.name, l1Id: pg.id, isL1Cross: true, _ctx: ctx
                   };
                   if (sumCol) crossEntry.sum = ctx.reduce((a, r) => a + (parseFloat(r[sumCol]) || 0), 0);
-                  file.addedCols.forEach(ac => {
-                    const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; });
-                    crossEntry['ac_' + ac] = tc;
-                  });
+                  file.addedCols.forEach(ac => { const tc = {}; ctx.forEach(r => { const v = String(r[ac] ?? ''); tc[v] = (tc[v] || 0) + 1; }); crossEntry['ac_' + ac] = tc; });
                   totalEntry.crossItems.push(crossEntry);
-                  // 分发交叉项到对应L1
-                  if (!l1Entries[pg.id]) l1Entries[pg.id] = [];
                   l1Entries[pg.id].push(crossEntry);
                 });
               }
@@ -599,7 +592,7 @@ function nzComputeStats() {
                   const cg = file.grps.find(x => x.id === cid);
                   if (!cg) return;
                   const childCtx = getGroupContext(cid, l1Data, file.grps, ctxCache);
-                  const valSet = new Set(g.values.map(v => String(v).trim()));
+                  const valSet = getGroupValues(g);
                   const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
                   let ctx;
                   if (rel === 'AND') { const ps = new Set(childCtx); ctx = selfMatch.filter(r => ps.has(r)); }

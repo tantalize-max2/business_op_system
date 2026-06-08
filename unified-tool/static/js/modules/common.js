@@ -32,13 +32,21 @@ function toggleTheme() {
 
 // ========== 刷新持久化 ==========
 function saveState() {
-  // 保存mappingData和splitGroups
+  // 保存mappingData、splitGroups和拆分状态（用于刷新后恢复）
   try {
-    localStorage.setItem('ba-state', JSON.stringify({ mappingData: S.mappingData, splitGroups: S.splitGroups }));
+    const hasSplit = S.splitMatchedRows && S.splitMatchedRows.size > 0;
+    localStorage.setItem('ba-state', JSON.stringify({
+      mappingData: S.mappingData,
+      splitGroups: S.splitGroups,
+      // 只在有拆分状态时持久化，清除时保存null
+      splitFileName: hasSplit ? S.splitFileName : null,
+      splitColName: hasSplit ? S.splitColName : null
+    }));
   } catch (e) { /* ignore */ }
 }
 
-// loadState 已移除：每次启动为空白，不再恢复旧文件状态
+// loadState 已移除：mappingData 通过后端 API 持久化
+// 拆分状态的恢复在 step1-upload.js 的 restoreSplitState 中处理（需要文件存在）
 
 // 定时自动保存 + 关键操作后保存
 let _saveTimer = null;
@@ -68,6 +76,8 @@ const S = {
   mappingData: {},
   splitMatchedRows: null,  // Set<row index> - 拆分后匹配的行索引集合（仅对 splitFileId 文件有效）
   splitGroups: null,       // {组名: [分局列表]} - 拆分组配置，null时使用默认值
+  splitFileName: null,     // 执行拆分时的文件名（用于刷新后恢复拆分状态）
+  splitColName: null,      // 执行拆分时的拆分列名（用于刷新后恢复拆分状态）
 };
 
 const CM = {
@@ -163,6 +173,16 @@ function filterBySplitMatch(l1Data, file) {
     const idx = file.raw.indexOf(r);
     return idx >= 0 && S.splitMatchedRows.has(idx);
   });
+}
+
+// 辅助：完全清除拆分状态（内存 + 持久化记录）
+function clearSplitState() {
+  S.splitMatchedRows = null;
+  S.splitFileId = null;
+  S.splitResult = null;
+  S.splitFileName = null;
+  S.splitColName = null;
+  saveState(); // 立即保存到 localStorage（不用 debouncedSave，避免延迟期间刷新导致状态残留）
 }
 
 function updSbStats() {
@@ -328,30 +348,20 @@ function getSortedData(data) {
 
 // ========== 分组值与映射同步 ==========
 /**
- * 将 mappingData 中的分局人员名单同步到分组的 values 中
+ * 获取分组的有效值集合（动态合并 mappingData，不修改原始 g.values）
  * 确保统计时所有映射中的客户经理都能被正确匹配
- * @param {Array} grps - 分组数组
- * @param {Object} mappingData - 分局映射数据 {分局名: [人员名...]}
+ * @param {Object} g - 分组对象
+ * @returns {Set} 有效值集合
  */
-function syncGrpsWithMapping(grps, mappingData) {
-  if (!mappingData || typeof mappingData !== 'object') return;
-  const keys = Object.keys(mappingData);
-  if (!keys.length) return;
-  grps.forEach(g => {
-    if (g.level === 1 || g._unmatched) return;
-    const mapped = mappingData[g.name];
-    if (mapped && Array.isArray(mapped) && mapped.length) {
-      const existing = new Set((g.values || []).map(v => String(v).trim()));
-      mapped.forEach(v => {
-        const vs = String(v).trim();
-        if (vs && !existing.has(vs)) {
-          existing.add(vs);
-          if (!g.values) g.values = [];
-          g.values.push(vs);
-        }
-      });
-    }
-  });
+function getGroupValues(g) {
+  const vals = new Set((g.values || []).map(v => String(v).trim()));
+  if (S.mappingData && g.name && S.mappingData[g.name]) {
+    S.mappingData[g.name].forEach(v => {
+      const vs = String(v).trim();
+      if (vs) vals.add(vs);
+    });
+  }
+  return vals;
 }
 
 // ========== L2 GROUP CONTEXT ==========
@@ -375,18 +385,18 @@ function getGroupContext(gid, l1Data, grps, cache) {
   } else if (g.level >= 3 && g.parentId) {
     // 3级+分组：与父分组上下文取交集
     const parentCtx = getGroupContext(g.parentId, l1Data, grps, cache);
-    const valSet = new Set(g.values.map(v => String(v).trim()));
+    const valSet = getGroupValues(g);
     const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
     const ps = new Set(parentCtx);
     ctx = selfMatch.filter(r => ps.has(r));
   } else if (!g.parentId && (!g.parentIds || !g.parentIds.length)) {
-    const valSet = new Set(g.values.map(v => String(v).trim()));
+    const valSet = getGroupValues(g);
     ctx = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
   } else {
     // 支持多父分组依赖
     const pids = g.parentIds && g.parentIds.length ? g.parentIds : (g.parentId ? [g.parentId] : []);
     const prels = g.parentRels && g.parentRels.length ? g.parentRels : (g.parentRel ? [g.parentRel] : []);
-    const valSet = new Set(g.values.map(v => String(v).trim()));
+    const valSet = getGroupValues(g);
     const selfMatch = l1Data.filter(r => valSet.has(String(r[g.column] ?? '').trim()));
     let mergedCtx;
     pids.forEach((pid, i) => {

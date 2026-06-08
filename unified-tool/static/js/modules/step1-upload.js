@@ -35,6 +35,30 @@ function handleFiles(files) {
   }
 }
 
+/**
+ * 刷新后恢复拆分状态
+ * 如果上传的文件名与持久化的拆分记录匹配，重新计算 splitMatchedRows
+ * 行索引基于重新解析的 file.raw，与执行拆分时的逻辑一致
+ */
+function restoreSplitState(fileObj) {
+  if (!S.splitFileName || !S.splitColName) return;
+  if (S.splitFileName !== fileObj.name) return; // 文件名不匹配，不恢复
+  if (!S.mappingData || !Object.keys(S.mappingData).length) return; // 无映射数据，无法恢复
+  // 重新计算匹配的行索引（与 step3-split.js 执行拆分时的逻辑一致）
+  const matchedSet = new Set();
+  fileObj.raw.forEach((row, idx) => {
+    const val = String(row[S.splitColName] ?? '').trim();
+    for (const members of Object.values(S.mappingData)) {
+      if (members.some(m => m === val)) { matchedSet.add(idx); break; }
+    }
+  });
+  if (matchedSet.size > 0) {
+    S.splitMatchedRows = matchedSet;
+    S.splitFileId = fileObj.id;
+    ntf('已自动恢复拆分过滤状态');
+  }
+}
+
 function handleFile(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   if (!['xlsx', 'xls', 'csv'].includes(ext)) { ntf('不支持该格式', 'error'); return; }
@@ -61,7 +85,7 @@ function handleFile(file) {
         fileObj.id = newId;
         S.files[oldIdx] = fileObj;
         // 清理与旧文件关联的拆分状态
-        if (S.splitFileId === newId) { S.splitFileId = null; S.splitMatchedRows = null; S.splitResult = null; }
+        if (S.splitFileId === newId) clearSplitState();
         ntf(`已替换 ${file.name} (${raw.length} 行)`);
       } else {
         newId = ++fileIdCounter;
@@ -70,6 +94,8 @@ function handleFile(file) {
         ntf(`已加载 ${file.name} (${raw.length} 行)`);
       }
       S.activeFileId = newId;
+      // 刷新后恢复拆分状态：如果文件名匹配持久化的拆分记录，重新计算 splitMatchedRows
+      restoreSplitState(fileObj);
       renderFileList();
       renderFileTabs();
       renderTable();
@@ -102,7 +128,7 @@ function reparseFileWithSkipRows(fileId, skipRows) {
   f.hiddenCols = new Set();
   f.sumCol = '';
   // 清理拆分状态
-  if (S.splitFileId === fileId) { S.splitFileId = null; S.splitMatchedRows = null; S.splitResult = null; }
+  if (S.splitFileId === fileId) clearSplitState();
   renderFileList();
   renderFileTabs();
   renderTable();
@@ -120,11 +146,7 @@ function removeFile(id) {
     S.activeFileId = S.files.length ? S.files[0].id : null;
   }
   // 清理与该文件关联的拆分状态
-  if (S.splitFileId === id) {
-    S.splitFileId = null;
-    S.splitMatchedRows = null;
-    S.splitResult = null;
-  }
+  if (S.splitFileId === id) clearSplitState();
   renderFileList();
   // 刷新当前页面显示
   if (S.files.length) {
@@ -188,9 +210,15 @@ document.getElementById('preprocessColSel').addEventListener('change', onPreproc
 document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 applyThemeUI(document.documentElement.getAttribute('data-theme') || 'dark');
 
-// 恢复持久化状态（不恢复文件列表和mappingData，每次启动为空白，mappingData从后端加载）
+// 恢复持久化状态（不恢复文件列表，每次启动为空白；mappingData从后端加载）
+// 拆分状态在文件上传时按文件名匹配恢复
 (function restoreState() {
-  // mappingData 已通过后端 API 持久化，不需要从 localStorage 恢复
-  // 清除旧的文件状态，确保启动时为空白
-  localStorage.removeItem('ba-state');
+  // 读取持久化的状态
+  try {
+    const saved = JSON.parse(localStorage.getItem('ba-state') || '{}');
+    // 恢复拆分状态（splitFileName/splitColName），供文件上传时恢复
+    if (saved.splitFileName) { S.splitFileName = saved.splitFileName; S.splitColName = saved.splitColName; }
+    // mappingData fallback：后端 API 异步加载，文件上传时可能还没完成，先从 localStorage 恢复
+    if (saved.mappingData && Object.keys(saved.mappingData).length) { S.mappingData = saved.mappingData; }
+  } catch (e) { /* ignore */ }
 })();
