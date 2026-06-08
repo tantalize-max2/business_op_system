@@ -13,11 +13,17 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 安装中文字体（matplotlib/PPT图表需要）
+# fonts-wqy-zenhei: 文泉驿正黑 ~5MB，轻量可靠
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    fonts-noto-cjk \
     fonts-wqy-zenhei \
-    && rm -rf /var/lib/apt/lists/* \
-    && python -c "import matplotlib; matplotlib.font_manager._load_fontmanager(try_read_cache=False)"
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载微软雅黑字体用于matplotlib图表
+RUN mkdir -p /usr/share/fonts/truetype/msyh && \
+    curl -fsSL "https://raw.githubusercontent.com/SilentByte/fonts/master/Microsoft%20YaHei.ttf" \
+    -o /usr/share/fonts/truetype/msyh/msyh.ttf || true && \
+    fc-cache -fv && \
+    rm -rf ~/.cache/matplotlib
 
 # 设置环境变量，禁止 Python 写入 pyc 缓存、关闭 stdout 缓冲
 ENV PYTHONDONTWRITEBYTECODE=1

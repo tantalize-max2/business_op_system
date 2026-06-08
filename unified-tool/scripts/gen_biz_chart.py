@@ -31,9 +31,13 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib import rcParams
+import matplotlib.font_manager as fm
 import numpy as np
 
-rcParams['font.sans-serif'] = ['Microsoft YaHei', 'Noto Sans CJK SC', 'WenQuanYi Zen Hei', 'SimHei', 'SimSun', 'DejaVu Sans']
+# 强制重建字体缓存（解决Docker容器首次运行找不到字体的问题）
+fm._load_fontmanager(try_read_cache=False)
+
+rcParams['font.sans-serif'] = ['Microsoft YaHei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'SimHei', 'SimSun', 'DejaVu Sans']
 rcParams['axes.unicode_minus'] = False
 
 
