@@ -64,6 +64,7 @@ def main():
     parser.add_argument('--subtitle', default='有效商机 / 商机储备目标', help='副标题文字')
     parser.add_argument('--xlabel', default='有效商机完成率', help='X轴标签')
     parser.add_argument('--target-line', type=float, action='append', default=[], help='考核线百分比(可多次)')
+    parser.add_argument('--year', default='2026', help='年份(4位)')
     args = parser.parse_args()
 
     if not args.target_line:
@@ -130,7 +131,7 @@ def main():
         if i % 2 == 0:
             ax.axhspan(i - 0.5, i + 0.5, color='#FAFAFA', zorder=1)
 
-    title = f'{args.title_prefix}——2026年{args.title_suffix}'
+    title = f'{args.title_prefix}——{args.year}年{args.title_suffix}'
     subtitle = f'{args.subtitle}  |  截至{args.date}'
     fig.suptitle(title, fontsize=20, fontweight='bold', color='#E8383D', y=0.97)
     ax.set_title(subtitle, fontsize=11, color='#666666', pad=12)

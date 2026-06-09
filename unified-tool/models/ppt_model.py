@@ -402,8 +402,8 @@ def update_crm_date(shape, period_str, crm_date_full):
         new_text = full_text
         # 替换中文日期: X月X日—X月X日 或 X月X日-X月X日
         new_text = re.sub(r'\d+月\d+日[—\-]\d+月\d+日', period_str, new_text)
-        # 替换完整CRM日期: 2026.X.X-2026.X.XX
-        new_text = re.sub(r'2026\.\d+\.\d+-2026\.\d+\.\d+', crm_date_full, new_text)
+        # 替换完整CRM日期: XXXX.X.X-XXXX.X.XX (匹配任意年份)
+        new_text = re.sub(r'\d{4}\.\d+\.\d+-\d{4}\.\d+\.\d+', crm_date_full, new_text)
         if new_text != full_text and para.runs:
             para.runs[0].text = new_text
             for run in para.runs[1:]:
@@ -416,7 +416,7 @@ SCRIPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 GEN_BIZ_CHART = os.path.join(SCRIPTS_DIR, 'gen_biz_chart.py')
 
 
-def _generate_biz_chart(eff_data, output_path, title_prefix, date_str):
+def _generate_biz_chart(eff_data, output_path, title_prefix, date_str, year='2026'):
     """
     使用 biz-chart 技能的 gen_biz_chart.py 生成专业横向柱状图
     
@@ -461,6 +461,7 @@ def _generate_biz_chart(eff_data, output_path, title_prefix, date_str):
             '--subtitle', '有效商机 / 商机储备目标',
             '--xlabel', '有效商机完成率',
             '--target-line', '30',
+            '--year', year,
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, encoding='utf-8')
         if result.returncode != 0:
@@ -518,7 +519,13 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         DATE_STR = excel_date_to_str(cell_val(ws, 2, 30))
         PERIOD_STR = str(cell_val(ws, 2, 31))
         PERIOD_CRM = period_to_crm(PERIOD_STR)
-        CRM_DATE_FULL = f'2026.{PERIOD_CRM}'.replace('-', '-2026.')
+
+        # 从B30日期(如"2026年5月22日")动态提取年份和短年份
+        _year_match = re.match(r'(\d{4})年', DATE_STR)
+        YEAR_FULL = _year_match.group(1) if _year_match else '2026'
+        YEAR_SHORT = YEAR_FULL[2:]  # "26"
+
+        CRM_DATE_FULL = f'{YEAR_FULL}.{PERIOD_CRM}'.replace('-', f'-{YEAR_FULL}.')
 
         B27_TEXT = str(cell_val(ws, 2, 27)).strip().replace('\n', '')
         B28_TEXT = str(cell_val(ws, 2, 28)).strip().replace('\n', '')
@@ -567,9 +574,9 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     date_suffix = PERIOD_STR.split('—')[-1] if '—' in PERIOD_STR else PERIOD_STR.split('-')[-1] if '-' in PERIOD_STR else PERIOD_STR
 
     # 行业有效商机图表（Slide 6）
-    _generate_biz_chart(industry_effective, industry_chart_path, '行业各分局', date_suffix)
+    _generate_biz_chart(industry_effective, industry_chart_path, '行业各分局', date_suffix, year=YEAR_FULL)
     # 商业有效商机图表（Slide 7）
-    _generate_biz_chart(commercial_effective, commercial_chart_path, '商业各分局', date_suffix)
+    _generate_biz_chart(commercial_effective, commercial_chart_path, '商业各分局', date_suffix, year=YEAR_FULL)
 
     # 4. 加载PPT模板并填充
     try:
@@ -614,7 +621,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     slide3 = prs.slides[2]
     for shape in slide3.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'1、行业板块---2026年商机储备情况（{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'1、行业板块---{YEAR_FULL}年商机储备情况（{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 14':
             tbl = shape.table
             for i, rd in enumerate(industry_reserve):
@@ -643,7 +650,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     slide4 = prs.slides[3]
     for shape in slide4.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'1、商校板块---2026年商机储备情况（{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'1、商校板块---{YEAR_FULL}年商机储备情况（{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 14':
             tbl = shape.table
             for i, rd in enumerate(commercial_reserve):
@@ -675,7 +682,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide6.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'2、行业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'2、行业板块---有效商机纳管情况（{YEAR_SHORT}年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
             set_shape_single_text(shape, fmt_num(ind_sum_amt) + '万')
         elif shape.name == 'Text 9':
@@ -699,7 +706,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide7.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'2、商业板块---有效商机纳管情况（26年{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'2、商业板块---有效商机纳管情况（{YEAR_SHORT}年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == 'Text 7':
             set_shape_single_text(shape, fmt_num(comm_sum_amt) + '万')
         elif shape.name == 'Text 9':
@@ -722,7 +729,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide10.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、行业板块--商机项目推进情况（26年{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'3、行业板块--商机项目推进情况（{YEAR_SHORT}年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 27':
             tbl = shape.table
             for i, rd in enumerate(industry_progress):
@@ -743,7 +750,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide11.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、商校板块--商机项目推进情况（26年{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'3、商校板块--商机项目推进情况（{YEAR_SHORT}年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 1':
             tbl = shape.table
             for i, rd in enumerate(commercial_progress):
@@ -765,7 +772,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide13.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、行业板块--26年已完成交付项目情况（26年{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'3、行业板块--{YEAR_SHORT}年已完成交付项目情况（{YEAR_SHORT}年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 27':
             tbl = shape.table
             for i, rd in enumerate(industry_delivered):
@@ -793,7 +800,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
 
     for shape in slide14.shapes:
         if shape.name == '标题 1':
-            set_shape_single_text(shape, f'3、商校板块--26年已完成交付项目情况（26年{PERIOD_STR}）', **TITLE_FONT)
+            set_shape_single_text(shape, f'3、商校板块--{YEAR_SHORT}年已完成交付项目情况（{YEAR_SHORT}年{PERIOD_STR}）', **TITLE_FONT)
         elif shape.name == '表格 2':
             tbl = shape.table
             for i, rd in enumerate(commercial_delivered):
