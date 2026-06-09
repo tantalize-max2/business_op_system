@@ -41,11 +41,11 @@ COPY . .
 RUN python -c "from config import ensure_dirs; ensure_dirs()"
 
 # 暴露端口
-EXPOSE 5557
+EXPOSE 9527
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5557/', timeout=5)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9527/', timeout=5)" || exit 1
 
 # 启动命令（debug 模式由环境变量 FLASK_DEBUG 控制）
 CMD ["python", "app.py"]

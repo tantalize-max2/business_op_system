@@ -11,7 +11,7 @@ services:
     container_name: business-tool
     restart: unless-stopped
     ports:
-      - "5557:5557"
+      - "9527:9527"
     env_file:
       - .env
     volumes:
