@@ -129,6 +129,8 @@ function reparseFileWithSkipRows(fileId, skipRows) {
   f.sumCol = '';
   // 清理拆分状态
   if (S.splitFileId === fileId) clearSplitState();
+  // 同步拆分列选择器（跳过行后表头可能变化）
+  populateSplitColSel();
   renderFileList();
   renderFileTabs();
   renderTable();

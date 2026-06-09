@@ -698,16 +698,23 @@ function populateSplitColSel() {
   if (f) {
     let hasExactMatch = false;
     f.hdr.forEach(c => { if (c === '客户经理') hasExactMatch = true; });
+    let autoSelected = false;
     f.hdr.forEach(c => {
       const opt = document.createElement('option');
       opt.value = c;
       opt.textContent = c;
       // 精确匹配"客户经理"列优先，否则匹配包含"客户经理"的列
-      if (hasExactMatch ? (c === '客户经理') : c.includes('客户经理')) opt.selected = true;
+      if (hasExactMatch ? (c === '客户经理') : c.includes('客户经理')) {
+        opt.selected = true;
+        autoSelected = true;
+      }
       sel.appendChild(opt);
     });
+    // 如果旧值仍在新表头中，且没有自动匹配到客户经理列，则保留旧值
+    if (!autoSelected && cur && [...sel.options].some(o => o.value === cur)) {
+      sel.value = cur;
+    }
   }
-  if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
   // 同步预处理列选择器
   syncPreprocessColSel();
 }
