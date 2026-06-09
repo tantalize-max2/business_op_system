@@ -497,7 +497,7 @@ function showBureauTemplateDialog(templates) {
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   dlg.querySelector('#btClose').addEventListener('click', () => overlay.remove());
 
-  // 保存当前映射为模板
+  // 保存当前映射为模板（同时保存拆分组配置）
   dlg.querySelector('#btSaveBtn').addEventListener('click', async () => {
     const name = dlg.querySelector('#btNewName').value.trim();
     if (!name) { ntf('请输入模板名称', 'error'); return; }
@@ -506,7 +506,7 @@ function showBureauTemplateDialog(templates) {
     const res = await fetch('/api/bureau-templates', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ name, mapping: map, savedAt: Date.now() })
+      body: JSON.stringify({ name, mapping: map, splitGroups: S.splitGroups || null, savedAt: Date.now() })
     });
     const data = await res.json();
     if (data.error) { ntf(data.error, 'error'); return; }
@@ -532,6 +532,14 @@ function showBureauTemplateDialog(templates) {
         S.mappingData = data.mapping;
         S.splitMappingReady = true;
         S._localMapping = null; // 清空临时映射
+        // 恢复拆分组：模板自带则使用，否则基于新 mappingData 重新生成
+        if (data.splitGroups && Object.keys(data.splitGroups).length) {
+          S.splitGroups = data.splitGroups;
+        } else {
+          S.splitGroups = null; // null 会触发 getDefaultSplitGroups() 基于新分局自动生成
+        }
+        saveSplitGroups();
+        renderSplitGroups();
         renderMapping();
         saveMapping();
         updSplitLayoutVisibility();

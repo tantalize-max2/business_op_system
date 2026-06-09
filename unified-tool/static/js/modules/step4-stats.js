@@ -1398,7 +1398,7 @@ function buildConfigData() {
   f.hdr.forEach(col => {
     fc.l1[col] = {checked: f.l1[col].checked ? [...f.l1[col].checked] : null, cascade: f.l1[col].cascade || false, dependCol: f.l1[col].dependCol || null, sort: f.l1[col].sort || null, condOn: f.l1[col].condOn || false, condOp: f.l1[col].condOp || 'eq', condVal: f.l1[col].condVal || ''};
   });
-  return {files: [fc], mappingData: S.mappingData && Object.keys(S.mappingData).length ? S.mappingData : null};
+  return {files: [fc], mappingData: S.mappingData && Object.keys(S.mappingData).length ? S.mappingData : null, splitGroups: S.splitGroups || null};
 }
 
 function saveGlobalConfig() {
@@ -1629,6 +1629,15 @@ function applyConfig(cfg) {
     S.splitMappingReady = true;
     saveMapping();
     renderMapping();
+  }
+  // 恢复拆分组配置
+  if (cfg.splitGroups && Object.keys(cfg.splitGroups).length) {
+    S.splitGroups = cfg.splitGroups;
+    saveSplitGroups();
+    renderSplitGroups();
+  } else if (cfg.mappingData) {
+    // 配置无拆分组但有映射数据，重置为基于新映射自动生成
+    S.splitGroups = null;
   }
   initActiveFile();
   popDepGrp();
