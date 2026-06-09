@@ -1626,6 +1626,7 @@ function applyConfig(cfg) {
   // 恢复分局映射排序
   if (cfg.mappingData && typeof cfg.mappingData === 'object') {
     S.mappingData = cfg.mappingData;
+    S.splitMappingReady = true;
     saveMapping();
     renderMapping();
   }

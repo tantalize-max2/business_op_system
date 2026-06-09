@@ -78,6 +78,8 @@ const S = {
   splitGroups: null,       // {组名: [分局列表]} - 拆分组配置，null时使用默认值
   splitFileName: null,     // 执行拆分时的文件名（用于刷新后恢复拆分状态）
   splitColName: null,      // 执行拆分时的拆分列名（用于刷新后恢复拆分状态）
+  splitMappingReady: false, // 是否已通过应用模板或加载配置激活分局映射（控制拆分区域显示）
+  _localMapping: null       // 未激活模板时的临时映射（添加分局不污染默认 mappingData）
 };
 
 const CM = {
@@ -97,6 +99,82 @@ function ntf(m, t='success') {
   e.textContent = m;
   e.className = `toast ${t} show`;
   setTimeout(() => e.classList.remove('show'), 2200);
+}
+
+// ========== 玻璃拟态弹窗（替代原生 confirm / prompt） ==========
+/**
+ * 玻璃拟态确认框（替代 confirm）
+ * @param {string} message - 提示信息
+ * @param {Function} onConfirm - 确认回调
+ * @param {Object} [opts] - 选项 { title, confirmText, cancelText }
+ */
+function glassConfirm(message, onConfirm, opts = {}) {
+  const title = opts.title || '确认操作';
+  const confirmText = opts.confirmText || '确定';
+  const cancelText = opts.cancelText || '取消';
+  const overlay = document.createElement('div');
+  overlay.className = 'glass-overlay';
+  const dlg = document.createElement('div');
+  dlg.className = 'glass-dialog';
+  dlg.innerHTML = `
+    <div class="glass-dlg-head">
+      <span class="glass-dlg-title">${esc(title)}</span>
+      <span class="glass-dlg-close" data-close>&times;</span>
+    </div>
+    <div class="glass-dlg-body">${esc(message)}</div>
+    <div class="glass-dlg-foot">
+      <button class="btn btn-ghost btn-sm glass-dlg-cancel">${esc(cancelText)}</button>
+      <button class="btn btn-primary btn-sm glass-dlg-ok">${esc(confirmText)}</button>
+    </div>`;
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  dlg.querySelector('[data-close]').addEventListener('click', close);
+  dlg.querySelector('.glass-dlg-cancel').addEventListener('click', close);
+  dlg.querySelector('.glass-dlg-ok').addEventListener('click', () => { close(); onConfirm(); });
+}
+
+/**
+ * 玻璃拟态输入框（替代 prompt）
+ * @param {string} message - 提示信息
+ * @param {Function} onConfirm - 确认回调（参数为输入值）
+ * @param {Object} [opts] - 选项 { title, placeholder, defaultValue, confirmText, cancelText }
+ */
+function glassPrompt(message, onConfirm, opts = {}) {
+  const title = opts.title || '输入';
+  const placeholder = opts.placeholder || '';
+  const defaultValue = opts.defaultValue || '';
+  const confirmText = opts.confirmText || '确定';
+  const cancelText = opts.cancelText || '取消';
+  const overlay = document.createElement('div');
+  overlay.className = 'glass-overlay';
+  const dlg = document.createElement('div');
+  dlg.className = 'glass-dialog';
+  dlg.innerHTML = `
+    <div class="glass-dlg-head">
+      <span class="glass-dlg-title">${esc(title)}</span>
+      <span class="glass-dlg-close" data-close>&times;</span>
+    </div>
+    <div class="glass-dlg-body">
+      <div style="margin-bottom:12px">${esc(message)}</div>
+      <input type="text" class="glass-dlg-input" placeholder="${esc(placeholder)}" value="${esc(defaultValue)}">
+    </div>
+    <div class="glass-dlg-foot">
+      <button class="btn btn-ghost btn-sm glass-dlg-cancel">${esc(cancelText)}</button>
+      <button class="btn btn-primary btn-sm glass-dlg-ok">${esc(confirmText)}</button>
+    </div>`;
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+  const input = dlg.querySelector('.glass-dlg-input');
+  setTimeout(() => input.focus(), 50);
+  const close = () => overlay.remove();
+  const confirm = () => { const v = input.value.trim(); if (v) { close(); onConfirm(v); } };
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  dlg.querySelector('[data-close]').addEventListener('click', close);
+  dlg.querySelector('.glass-dlg-cancel').addEventListener('click', close);
+  dlg.querySelector('.glass-dlg-ok').addEventListener('click', confirm);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
 }
 function fmtN(n) {
   if (Number.isInteger(n)) return n.toLocaleString();
@@ -240,7 +318,9 @@ function getDataFilteredForCol(col) {
 }
 
 function getFilteredData() {
-  const hdr = getActiveHdr(), l1 = getActiveFile().l1;
+  const af = getActiveFile();
+  if (!af) return [];
+  const hdr = af.hdr, l1 = af.l1;
   const order = [];
   const visited = new Set();
   const visiting = new Set();

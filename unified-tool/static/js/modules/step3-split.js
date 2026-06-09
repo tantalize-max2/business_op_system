@@ -11,7 +11,7 @@ function getSplitGroups() {
 function getDefaultSplitGroups() {
   // 从后端获取默认拆分组（DEFAULT_SPLIT_GROUPS）
   // 前端也维护一份默认值作为 fallback
-  const bureaus = Object.keys(S.mappingData);
+  const bureaus = Object.keys(getWorkingMapping());
   const industryBureaus = bureaus.filter(b =>
     b.includes('政企分局') || b.includes('智改数转服务局')
   );
@@ -63,7 +63,7 @@ function renderSplitGroups() {
   const list = document.getElementById('sgList');
   if (!list) return;
   const groups = getSplitGroups();
-  const bureaus = Object.keys(S.mappingData);
+  const bureaus = Object.keys(getWorkingMapping());
   const groupNames = Object.keys(groups);
 
   let html = '';
@@ -117,16 +117,17 @@ function bindSplitGroupActions() {
       e.stopPropagation();
       const card = btn.closest('.sg-card');
       const oldName = card.dataset.group;
-      const newName = prompt('输入新组名：', oldName);
-      if (!newName || newName === oldName) return;
-      if (S.splitGroups && S.splitGroups[newName]) { ntf('组名已存在', 'error'); return; }
-      const members = S.splitGroups[oldName];
-      delete S.splitGroups[oldName];
-      S.splitGroups[newName] = members;
-      saveSplitGroups();
-      renderSplitGroups();
-      renderMapping();
-      ntf(`已重命名为「${newName}」`);
+      glassPrompt('输入新组名：', newName => {
+        if (newName === oldName) return;
+        if (S.splitGroups && S.splitGroups[newName]) { ntf('组名已存在', 'error'); return; }
+        const members = S.splitGroups[oldName];
+        delete S.splitGroups[oldName];
+        S.splitGroups[newName] = members;
+        saveSplitGroups();
+        renderSplitGroups();
+        renderMapping();
+        ntf(`已重命名为「${newName}」`);
+      }, { title: '重命名拆分组', placeholder: '输入新组名', defaultValue: oldName });
     });
   });
 
@@ -136,27 +137,28 @@ function bindSplitGroupActions() {
       e.stopPropagation();
       const card = btn.closest('.sg-card');
       const name = card.dataset.group;
-      if (!confirm(`确定删除拆分组「${name}」？分局不会被删除，仅移出分组。`)) return;
-      delete S.splitGroups[name];
-      saveSplitGroups();
-      renderSplitGroups();
-      renderMapping();
-      ntf(`已删除拆分组「${name}」`);
+      glassConfirm(`确定删除拆分组「${name}」？分局不会被删除，仅移出分组。`, () => {
+        delete S.splitGroups[name];
+        saveSplitGroups();
+        renderSplitGroups();
+        renderMapping();
+        ntf(`已删除拆分组「${name}」`);
+      }, { title: '删除拆分组', confirmText: '删除' });
     });
   });
 }
 
 // 新建组
 document.getElementById('sgAddBtn').addEventListener('click', () => {
-  const name = prompt('输入新拆分组名称：');
-  if (!name) return;
-  if (!S.splitGroups) S.splitGroups = getDefaultSplitGroups();
-  if (S.splitGroups[name]) { ntf('该组名已存在', 'error'); return; }
-  S.splitGroups[name] = [];
-  saveSplitGroups();
-  renderSplitGroups();
-  renderMapping();
-  ntf(`已创建拆分组「${name}」`);
+  glassPrompt('输入新拆分组名称：', name => {
+    if (!S.splitGroups) S.splitGroups = getDefaultSplitGroups();
+    if (S.splitGroups[name]) { ntf('该组名已存在', 'error'); return; }
+    S.splitGroups[name] = [];
+    saveSplitGroups();
+    renderSplitGroups();
+    renderMapping();
+    ntf(`已创建拆分组「${name}」`);
+  }, { title: '新建拆分组', placeholder: '输入组名' });
 });
 
 // 从组中移除分局
@@ -171,7 +173,7 @@ function removeBureauFromGroup(groupName, bureauName) {
 // 向组中添加分局（弹出选择器）
 function addBureauToGroup(groupName) {
   if (!S.splitGroups) return;
-  const bureaus = Object.keys(S.mappingData);
+  const bureaus = Object.keys(getWorkingMapping());
   const currentGroups = S.splitGroups;
   const assigned = new Set();
   Object.values(currentGroups).forEach(m => m.forEach(b => assigned.add(b)));
@@ -278,20 +280,46 @@ function getBureauGroupName(bureauName) {
 }
 
 // ========== 分局拆分 ==========
+
+// 获取当前工作映射：激活时用 mappingData，未激活时用临时映射 _localMapping
+function getWorkingMapping() {
+  if (S.splitMappingReady) return S.mappingData;
+  if (!S._localMapping) S._localMapping = {};
+  return S._localMapping;
+}
+
+// 控制分局列表/拆分组/添加按钮的显示/隐藏
+// 分局人员配置头部和拆分列选择器始终可见
+// 两层控制：
+//   - splitMappingReady（应用模板/加载配置）→ 显示分局列表、拆分组
+//   - 有文件上传 → 显示添加按钮（无需模板）
+function updSplitLayoutVisibility() {
+  const hasMapping = S.splitMappingReady;
+  const hasFile = S.files.length > 0;
+  const showBureau = hasMapping;
+  const showAdd = hasMapping || hasFile;
+  document.getElementById('splitEmptyHint').style.display = showAdd ? 'none' : '';
+  document.getElementById('bureauList').style.display = showBureau ? '' : 'none';
+  document.getElementById('splitGroupsSection').style.display = showBureau ? '' : 'none';
+  document.getElementById('addBureauRow').style.display = showAdd ? '' : 'none';
+}
+
 async function loadMapping() {
   const res = await fetch('/api/mapping');
   S.mappingData = await res.json();
   renderMapping();
+  updSplitLayoutVisibility();
 }
 
 function renderMapping() {
   const list = document.getElementById('bureauList');
-  const keys = Object.keys(S.mappingData);
+  const map = getWorkingMapping();
+  const keys = Object.keys(map);
   const groups = getSplitGroups();
   const groupNames = Object.keys(groups);
   let html = '';
   keys.forEach((bureau, i) => {
-    const managers = S.mappingData[bureau];
+    const managers = map[bureau];
     // 查找所属拆分组
     const groupName = getBureauGroupName(bureau);
     const groupIdx = groupName ? groupNames.indexOf(groupName) : -1;
@@ -355,15 +383,21 @@ function bindBureauDrag(container) {
       e.preventDefault();
       card.classList.remove('bureau-reorder-over');
       if (!_dragBureau || _dragBureau === card.dataset.bureau) return;
-      const keys = Object.keys(S.mappingData);
+      const map = getWorkingMapping();
+      const keys = Object.keys(map);
       const iFrom = keys.indexOf(_dragBureau);
       const iTo = keys.indexOf(card.dataset.bureau);
       if (iFrom < 0 || iTo < 0) return;
       // 重建有序对象
-      const entries = Object.entries(S.mappingData);
+      const entries = Object.entries(map);
       const [moved] = entries.splice(iFrom, 1);
       entries.splice(iTo, 0, moved);
-      S.mappingData = Object.fromEntries(entries);
+      // 写回工作映射
+      if (S.splitMappingReady) {
+        S.mappingData = Object.fromEntries(entries);
+      } else {
+        S._localMapping = Object.fromEntries(entries);
+      }
       renderMapping();
       saveMapping();
       ntf('分局顺序已调整');
@@ -374,7 +408,8 @@ document.getElementById('collapseAll').addEventListener('click', () => document.
 document.getElementById('expandAll').addEventListener('click', () => document.querySelectorAll('.bureau-card').forEach(c => c.classList.add('open')));
 
 async function removeManager(bureau, name) {
-  S.mappingData[bureau] = S.mappingData[bureau].filter(m => m !== name);
+  const map = getWorkingMapping();
+  map[bureau] = map[bureau].filter(m => m !== name);
   await saveMapping();
   renderMapping();
 }
@@ -383,8 +418,9 @@ async function addManager(bureau, index) {
   const input = document.getElementById(`addPerson-${index}`);
   const name = input.value.trim();
   if (!name) return;
-  if (S.mappingData[bureau].includes(name)) { ntf('该人员已存在', 'error'); return; }
-  S.mappingData[bureau].push(name);
+  const map = getWorkingMapping();
+  if (map[bureau].includes(name)) { ntf('该人员已存在', 'error'); return; }
+  map[bureau].push(name);
   input.value = '';
   await saveMapping();
   renderMapping();
@@ -392,29 +428,37 @@ async function addManager(bureau, index) {
 }
 
 async function deleteBureau(bureau) {
-  if (!confirm(`确定删除分局「${bureau}」？`)) return;
-  delete S.mappingData[bureau];
-  await saveMapping();
-  renderMapping();
+  glassConfirm(`确定删除分局「${bureau}」？`, async () => {
+    const map = getWorkingMapping();
+    delete map[bureau];
+    await saveMapping();
+    renderMapping();
+  }, { title: '删除分局', confirmText: '删除' });
 }
 
 document.getElementById('addBureauBtn').addEventListener('click', async () => {
   const name = document.getElementById('newBureauName').value.trim();
   if (!name) { ntf('请输入分局名称', 'error'); return; }
-  if (S.mappingData[name]) { ntf('该分局已存在', 'error'); return; }
-  S.mappingData[name] = [];
+  const map = getWorkingMapping();
+  if (map[name]) { ntf('该分局已存在', 'error'); return; }
+  map[name] = [];
   document.getElementById('newBureauName').value = '';
   await saveMapping();
+  // 如果分局列表之前隐藏（未激活模板），现在有数据后显示它
+  if (!S.splitMappingReady) {
+    document.getElementById('bureauList').style.display = '';
+  }
   renderMapping();
   document.querySelectorAll('.bureau-card').forEach(c => c.classList.add('open'));
   ntf(`已添加分局「${name}」`);
 });
 
 document.getElementById('resetMapping').addEventListener('click', async () => {
-  if (!confirm('确定恢复为默认映射？')) return;
-  await fetch('/api/reset-mapping', {method: 'POST'});
-  await loadMapping();
-  ntf('已恢复默认映射');
+  glassConfirm('确定恢复为默认映射？', async () => {
+    await fetch('/api/reset-mapping', {method: 'POST'});
+    await loadMapping();
+    ntf('已恢复默认映射');
+  }, { title: '恢复默认映射' });
 });
 
 // ========== 分局模板 ==========
@@ -422,6 +466,11 @@ document.getElementById('btnBureauTemplate').addEventListener('click', async () 
   const res = await fetch('/api/bureau-templates');
   const templates = await res.json();
   showBureauTemplateDialog(templates);
+});
+
+// 空状态提示区域的"应用模板"按钮
+document.getElementById('btnTemplateFromHint').addEventListener('click', () => {
+  document.getElementById('btnBureauTemplate').click();
 });
 
 function showBureauTemplateDialog(templates) {
@@ -452,11 +501,12 @@ function showBureauTemplateDialog(templates) {
   dlg.querySelector('#btSaveBtn').addEventListener('click', async () => {
     const name = dlg.querySelector('#btNewName').value.trim();
     if (!name) { ntf('请输入模板名称', 'error'); return; }
-    if (!Object.keys(S.mappingData).length) { ntf('当前映射为空', 'error'); return; }
+    const map = getWorkingMapping();
+    if (!Object.keys(map).length) { ntf('当前映射为空', 'error'); return; }
     const res = await fetch('/api/bureau-templates', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ name, mapping: S.mappingData, savedAt: Date.now() })
+      body: JSON.stringify({ name, mapping: map, savedAt: Date.now() })
     });
     const data = await res.json();
     if (data.error) { ntf(data.error, 'error'); return; }
@@ -475,15 +525,19 @@ function showBureauTemplateDialog(templates) {
       e.stopPropagation();
       const item = btn.closest('.bt-item');
       const name = item.dataset.btname;
-      if (!confirm(`确定应用模板「${name}」？当前映射将被替换。`)) return;
-      const res = await fetch(`/api/bureau-templates/${encodeURIComponent(name)}`);
-      const data = await res.json();
-      if (data.error) { ntf(data.error, 'error'); return; }
-      S.mappingData = data.mapping;
-      renderMapping();
-      saveMapping();
-      ntf(`已应用模板「${name}」`);
-      overlay.remove();
+      glassConfirm(`确定应用模板「${name}」？当前映射将被替换。`, async () => {
+        const res = await fetch(`/api/bureau-templates/${encodeURIComponent(name)}`);
+        const data = await res.json();
+        if (data.error) { ntf(data.error, 'error'); return; }
+        S.mappingData = data.mapping;
+        S.splitMappingReady = true;
+        S._localMapping = null; // 清空临时映射
+        renderMapping();
+        saveMapping();
+        updSplitLayoutVisibility();
+        ntf(`已应用模板「${name}」`);
+        overlay.remove();
+      }, { title: '应用模板' });
     });
   });
 
@@ -493,23 +547,28 @@ function showBureauTemplateDialog(templates) {
       e.stopPropagation();
       const item = btn.closest('.bt-item');
       const name = item.dataset.btname;
-      if (!confirm(`确定删除模板「${name}」？`)) return;
-      await fetch(`/api/bureau-templates/${encodeURIComponent(name)}`, {method: 'DELETE'});
-      item.remove();
-      ntf(`模板「${name}」已删除`);
-      if (!dlg.querySelectorAll('.bt-item').length) {
-        dlg.querySelector('#btList').innerHTML = '<div style="color:var(--t3);font-size:12px;text-align:center;padding:20px">暂无保存的模板</div>';
-      }
+      glassConfirm(`确定删除模板「${name}」？`, async () => {
+        await fetch(`/api/bureau-templates/${encodeURIComponent(name)}`, {method: 'DELETE'});
+        item.remove();
+        ntf(`模板「${name}」已删除`);
+        if (!dlg.querySelectorAll('.bt-item').length) {
+          dlg.querySelector('#btList').innerHTML = '<div style="color:var(--t3);font-size:12px;text-align:center;padding:20px">暂无保存的模板</div>';
+        }
+      }, { title: '删除模板', confirmText: '删除' });
     });
   });
 }
 
 async function saveMapping() {
-  await fetch('/api/mapping', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(S.mappingData)
-  });
+  if (S.splitMappingReady) {
+    // 已激活模板：保存到后端
+    await fetch('/api/mapping', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(S.mappingData)
+    });
+  }
+  // 未激活时只保存在内存（_localMapping），不写入后端
   debouncedSave();
 }
 
@@ -551,7 +610,7 @@ async function doSplit() {
         fileName: f.name,
         fileDataBase64: b64,
         filteredRowIndices: filteredIndices,
-        mapping: S.mappingData,
+        mapping: getWorkingMapping(),
         splitColumn: splitCol,
         splitGroups: S.splitGroups || null
       })
@@ -562,11 +621,12 @@ async function doSplit() {
     S.splitResult = data;
     // 计算拆分后匹配的行索引集合（用于L2统计时排除未匹配行）
     const splitColName = getSplitCol();
-    if (splitColName && S.mappingData) {
+    const workingMap = getWorkingMapping();
+    if (splitColName && workingMap && Object.keys(workingMap).length) {
       const matchedSet = new Set();
       f.raw.forEach((row, idx) => {
         const val = String(row[splitColName] ?? '').trim();
-        for (const members of Object.values(S.mappingData)) {
+        for (const members of Object.values(workingMap)) {
           if (members.some(m => m === val)) {
             matchedSet.add(idx);
             break;
@@ -615,7 +675,7 @@ function autoCreateBureauGroups() {
   let colorIdx = 0;
   bureausWithRows.forEach(bf => {
     const bureauName = bf.bureau;
-    const managers = S.mappingData[bureauName] || [];
+    const managers = getWorkingMapping()[bureauName] || [];
     if (!managers.length) return;
     const l1f = f.l1[splitCol];
     f.grps.push({
@@ -670,7 +730,8 @@ document.getElementById('downloadAllBtn').addEventListener('click', () => {
 document.querySelectorAll('.sb-item').forEach(item => {
   item.addEventListener('click', () => {
     const step = item.dataset.step;
-    if (step === 'upload' || step === 'kdocs' || step === 'normalize' || step === 'ppt' || step === 'email' || step === 'split' || S.files.length) switchStep(step);
+    // filter1/filter2/separator 无条件可进入（无文件时显示空状态）
+    switchStep(step);
   });
 });
 

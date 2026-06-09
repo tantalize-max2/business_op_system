@@ -147,6 +147,8 @@ function removeFile(id) {
   }
   // 清理与该文件关联的拆分状态
   if (S.splitFileId === id) clearSplitState();
+  // 刷新分局拆分区域可见性（文件全删后隐藏添加按钮）
+  if (typeof updSplitLayoutVisibility === 'function') updSplitLayoutVisibility();
   renderFileList();
   // 刷新当前页面显示
   if (S.files.length) {

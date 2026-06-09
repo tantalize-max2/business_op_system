@@ -132,7 +132,7 @@
       <p class="step-desc">基于一级过滤后的数据，按客户经理匹配分局进行拆分</p>
       <div class="split-active-file" id="splitActiveFile" style="display:none"></div>
     </div>
-    <div class="split-layout">
+    <div class="split-layout" id="splitLayout">
       <div class="split-mapping">
         <div class="mapping-header">
           <h3>分局人员配置</h3>
@@ -147,16 +147,22 @@
           <label>拆分列</label>
           <select id="splitColSel"><option value="">-- 选择拆分列 --</option></select>
         </div>
-        <!-- 拆分组管理 -->
-        <div class="split-groups-section">
+        <!-- 拆分组管理（激活后显示） -->
+        <div class="split-groups-section" id="splitGroupsSection" style="display:none">
           <div class="sg-header">
             <h3>拆分组管理</h3>
             <button class="btn btn-ghost btn-xs" id="sgAddBtn">+ 新建组</button>
           </div>
           <div class="sg-list" id="sgList"></div>
         </div>
+        <!-- 分局列表空状态提示（未激活时显示） -->
+        <div class="split-empty-hint" id="splitEmptyHint">
+          <svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-template"/></svg>
+          <div class="seh-text">请先点击「模板」按钮应用分局映射模板，或上传文件后加载配置</div>
+          <button class="btn btn-primary btn-sm" id="btnTemplateFromHint">应用模板</button>
+        </div>
         <div class="bureau-list" id="bureauList"></div>
-        <div class="add-bureau-row">
+        <div class="add-bureau-row" id="addBureauRow" style="display:none">
           <input type="text" id="newBureauName" placeholder="输入新分局名称...">
           <button class="btn btn-primary btn-sm" id="addBureauBtn">添加</button>
         </div>
