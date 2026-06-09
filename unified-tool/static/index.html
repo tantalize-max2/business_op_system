@@ -20,6 +20,9 @@
 </head>
 <body>
 
+<!-- ============ WALLPAPER ============ -->
+<div class="wallpaper-bg" id="wallpaperBg"></div>
+
 <!-- ============ PARTICLES ============ -->
 <div id="particles-js"></div>
 
@@ -56,6 +59,10 @@
     </div>
   </nav>
   <div class="sb-footer">
+    <div class="wallpaper-toggle" id="wpToggle" title="切换壁纸（左键切换，右键关闭）">
+      <svg class="icon" aria-hidden="true"><use xlink:href="#icon-image"/></svg>
+      <span>壁纸</span>
+    </div>
     <div class="theme-toggle" id="themeToggle" title="切换主题">
       <svg class="icon" aria-hidden="true" id="themeIconSvg"><use xlink:href="#icon-sun"/></svg>
       <span id="themeLabel">白天</span>
@@ -984,6 +991,7 @@
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/particles.js/2.0.0/particles.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js'"></script>
 <script src="js/modules/particles.js"></script>
+<script src="js/modules/wallpaper.js"></script>
 <script src="js/modules/common.js"></script>
 <script src="js/modules/step1-upload.js"></script>
 <script src="js/modules/step2-filter.js"></script>

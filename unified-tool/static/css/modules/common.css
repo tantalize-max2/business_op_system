@@ -5,6 +5,7 @@
 /* ---- 亮色主题 (默认) ---- */
 :root {
   --bg0: #f0f4f8;
+  --bg0-rgb: 240,244,248;
   --bg: #f8fafc;
   --bg2: #ffffff;
   --bg3: #f1f5f9;
@@ -43,6 +44,7 @@
 /* ---- 暗色主题 ---- */
 [data-theme="dark"] {
   --bg0: #0f172a;
+  --bg0-rgb: 15,23,42;
   --bg: #131c2e;
   --bg2: #1a2540;
   --bg3: #213052;
@@ -76,6 +78,7 @@
 /* ---- 护眼主题 ---- */
 [data-theme="eyecare"] {
   --bg0: #f5f0e6;
+  --bg0-rgb: 245,240,230;
   --bg: #faf6ed;
   --bg2: #fefcf5;
   --bg3: #f0ece2;
@@ -117,6 +120,41 @@ body {
   overflow: hidden;
   transition: background .35s, color .35s;
 }
+
+/* ================================================================
+   WALLPAPER（壁纸背景层）
+   ================================================================ */
+.wallpaper-bg {
+  position: fixed; inset: 0; z-index: -1;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+/* 开启壁纸时，内容区域半透明让壁纸透出 */
+body.has-wallpaper .sidebar {
+  background: rgba(var(--bg0-rgb, 255,255,255), .82) !important;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+body.has-wallpaper .main-content {
+  background: rgba(var(--bg0-rgb, 255,255,255), .75) !important;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+
+/* 壁纸切换按钮（sidebar footer） */
+.wallpaper-toggle {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 8px;
+  cursor: pointer; font-size: 12px; color: var(--t2);
+  transition: all .2s; user-select: none;
+}
+.wallpaper-toggle:hover { background: var(--acg); color: var(--ac); }
+.wallpaper-toggle.off { color: var(--t3); }
+.wallpaper-toggle.loading .icon {
+  animation: wp-spin .8s linear infinite;
+}
+@keyframes wp-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 ::-webkit-scrollbar { width:6px; height:6px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--bd); border-radius:3px; }

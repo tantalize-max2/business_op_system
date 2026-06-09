@@ -72,6 +72,8 @@
   +'<symbol id="icon-file-excel" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 13h2l2 3 2-3h2l-3 4 3 4h-2l-2-3-2 3H8l3-4-3-4z" fill="currentColor"/></symbol>'
   // PPT/演示文稿图标
   +'<symbol id="icon-ppt" viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H5V5h14v14zM7 7h4v2H9v8H7V7zm6 0h2a3 3 0 0 1 0 6h-2v4h-2V7h2zm0 2v2h2a1 1 0 0 0 0-2h-2z" fill="currentColor"/></symbol>'
+  // 壁纸/图片图标
+  +'<symbol id="icon-image" viewBox="0 0 24 24"><path d="M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v14.5l3.5-3.5 2.5 2.5 5-6.5 5 5V4H4zm4 3.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" fill="currentColor"/></symbol>'
   +'</svg>';
   document.body.insertAdjacentHTML('afterbegin', svg);
 })();
