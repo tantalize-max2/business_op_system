@@ -338,7 +338,7 @@
 /* ================================================================
    RESULT AREA
    ================================================================ */
-.result-area { border:1px solid var(--bd); border-radius:var(--rl); background:var(--bg2); overflow:hidden; }
+.result-area { border:1px solid var(--bd); border-radius:var(--rl); background:var(--bg2); overflow:hidden; position:relative; z-index:10000; }
 .result-toolbar { display:flex; gap:8px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--bd); background:var(--bg3); }
 #resContent { padding:18px; max-height:calc(100vh - 440px); overflow-y:auto; }
 .rv-section { margin-bottom:22px; border:1px solid var(--bd); border-radius:var(--rl); overflow:hidden; }

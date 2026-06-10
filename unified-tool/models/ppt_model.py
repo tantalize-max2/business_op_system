@@ -45,11 +45,12 @@ def list_ppt_templates():
     return templates
 
 
-def save_ppt_template(name, template_data=None, data_file_data=None):
+def save_ppt_template(name, template_data=None, data_file_data=None, data_map=None):
     template_record = {
         'name': name,
         'templateData': template_data or '',
         'dataFileData': data_file_data or '',
+        'dataMap': data_map or {},
         'savedAt': datetime.now().timestamp() * 1000
     }
     fpath = ppt_template_path(name)
@@ -148,6 +149,19 @@ def fmt_comma(v):
         return str(v)
 
 
+def fmt_ca(s):
+    """格式化数量(金额)字符串：如果数量和金额都为0，只输出'0'"""
+    if s is None:
+        return ''
+    s_str = str(s).strip()
+    if not s_str:
+        return ''
+    c, a = parse_ca(s_str)
+    if c == 0 and a == 0.0:
+        return '0'
+    return s_str
+
+
 def _delivered_color_indices(data, col_idx):
     """根据指定列的数值，返回 {行索引: font_color} 标注前三深红、倒数两名绿"""
     DARK_RED = (0xC0, 0x00, 0x00)
@@ -218,13 +232,14 @@ def calc_effective_summary(eff_data):
     """
     sum_amount = sum(float(item[1] or 0) for item in eff_data)
     sum_target = sum(float(item[2] or 0) for item in eff_data)
+    bureau_count = len([item for item in eff_data if item[0] is not None and str(item[0]).strip()])
     if sum_target > 0:
         rate_pct = sum_amount / sum_target * 100
         rate_text = f'完成率{rate_pct:.2f}%（{fmt_num(sum_amount)}/{fmt_num(sum_target)}万）'
     else:
         rate_pct = 0
         rate_text = f'完成率0.00%（{fmt_num(sum_amount)}/0万）'
-    return sum_amount, sum_target, rate_pct, rate_text
+    return sum_amount, sum_target, rate_pct, rate_text, bureau_count
 
 
 def count_below30(eff_data):
@@ -288,6 +303,11 @@ def set_shape_single_text(shape, text, font_name=None, font_size=None, font_bold
         run = shape.text_frame.paragraphs[0].runs[0]
         run.text = str(text)
         _apply_run_font(run, font_name, font_size, font_bold, font_color)
+        # 确保所有段落的所有 run 都应用相同的加粗设置
+        if font_bold is not None:
+            for para in shape.text_frame.paragraphs:
+                for r in para.runs:
+                    r.font.bold = font_bold
 
 
 def _apply_run_font(run, font_name=None, font_size=None, font_bold=None, font_color=None):
@@ -434,6 +454,9 @@ def _generate_biz_chart(eff_data, output_path, title_prefix, date_str, year='202
         tgt = float(item[2] or 0)
         if not name or tgt <= 0:
             continue
+        # 跳过合计行
+        if name in ('合计', '总计', '小计', '行业合计', '商业合计'):
+            continue
         chart_items.append({
             'name': name,
             'amount': round(amt, 2),
@@ -480,7 +503,52 @@ def _generate_biz_chart(eff_data, output_path, title_prefix, date_str, year='202
 
 # ========== 核心：PPT生成 ==========
 
-def generate_ppt(template_bytes, data_bytes, custom_texts=None):
+# ========== 默认数据映射（原始Excel行列位置） ==========
+DEFAULT_DATA_MAP = {
+    'date_cell': 'B30',          # 截止日期
+    'period_cell': 'B31',        # 周期（如 1月1日—5月22日）
+    'B27_cell': 'B27',           # 行业储备说明
+    'B28_cell': 'B28',           # 商业储备说明
+    'J27_cell': 'J27',           # 行业交付说明1
+    'J28_cell': 'J28',           # 商业交付说明1
+    'AI27_cell': 'AI27',         # 行业交付说明2
+    'AI28_cell': 'AI28',         # 商业交付说明2
+    'industry_reserve': 'A2:G12',      # 行业储备
+    'commercial_reserve': 'A13:G25',    # 商业储备
+    'industry_effective': 'J2:M13',     # 行业有效商机
+    'commercial_effective': 'J14:M25',  # 商业有效商机
+    'industry_progress': 'V5:AF15',     # 行业项目推进
+    'commercial_progress': 'V16:AF28',  # 商业项目推进
+    'industry_delivered': 'AH2:AK12',   # 行业交付
+    'commercial_delivered': 'AH13:AK25', # 商业交付
+}
+
+
+def _parse_cell_ref(ref):
+    """将单元格引用如 B30 转为 (col_1based, row_1based)"""
+    m = re.match(r'^([A-Z]{1,3})(\d+)$', ref.upper().strip())
+    if not m:
+        return None, None
+    col_str, row_str = m.group(1), m.group(2)
+    col = 0
+    for ch in col_str:
+        col = col * 26 + (ord(ch) - ord('A') + 1)
+    return col, int(row_str)
+
+
+def _parse_range_ref(ref):
+    """将范围引用如 A2:G12 转为 (min_row, max_row, min_col, max_col)，1-based"""
+    m = re.match(r'^([A-Z]{1,3})(\d+):([A-Z]{1,3})(\d+)$', ref.upper().strip())
+    if not m:
+        return None, None, None, None
+    c1, r1 = _parse_cell_ref(m.group(1) + m.group(2))
+    c2, r2 = _parse_cell_ref(m.group(3) + m.group(4))
+    if c1 is None or c2 is None:
+        return None, None, None, None
+    return min(r1, r2), max(r1, r2), min(c1, c2), max(c1, c2)
+
+
+def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
     """
     根据模板PPT和数据Excel生成通报PPT
 
@@ -488,10 +556,24 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         template_bytes: PPT模板文件字节
         data_bytes: 数据Excel文件字节
         custom_texts: 自定义文本替换（可选）
+        data_map: 数据映射配置（可选），指定Excel中各区域位置
 
     Returns:
         dict: {ok: True, output_path: str} 或 {ok: False, error: str}
     """
+    dm = dict(DEFAULT_DATA_MAP)
+    if data_map:
+        dm.update(data_map)
+
+    # 解析单元格引用
+    date_col, date_row = _parse_cell_ref(dm['date_cell'])
+    period_col, period_row = _parse_cell_ref(dm['period_cell'])
+    b27_col, b27_row = _parse_cell_ref(dm['B27_cell'])
+    b28_col, b28_row = _parse_cell_ref(dm['B28_cell'])
+    j27_col, j27_row = _parse_cell_ref(dm['J27_cell'])
+    j28_col, j28_row = _parse_cell_ref(dm['J28_cell'])
+    ai27_col, ai27_row = _parse_cell_ref(dm['AI27_cell'])
+    ai28_col, ai28_row = _parse_cell_ref(dm['AI28_cell'])
     # 1. 写入临时文件
     tmp_ppt = tempfile.NamedTemporaryFile(suffix='.pptx', delete=False)
     tmp_ppt.write(template_bytes)
@@ -515,24 +597,24 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         return {'ok': False, 'error': f'读取数据文件失败: {str(e)}'}
 
     try:
-        # 读取关键数据
-        DATE_STR = excel_date_to_str(cell_val(ws, 2, 30))
-        PERIOD_STR = str(cell_val(ws, 2, 31))
+        # 读取关键数据（使用可配置的单元格位置）
+        DATE_STR = excel_date_to_str(cell_val(ws, date_col, date_row))
+        PERIOD_STR = str(cell_val(ws, period_col, period_row))
         PERIOD_CRM = period_to_crm(PERIOD_STR)
 
-        # 从B30日期(如"2026年5月22日")动态提取年份和短年份
+        # 从日期(如"2026年5月22日")动态提取年份和短年份
         _year_match = re.match(r'(\d{4})年', DATE_STR)
         YEAR_FULL = _year_match.group(1) if _year_match else '2026'
         YEAR_SHORT = YEAR_FULL[2:]  # "26"
 
         CRM_DATE_FULL = f'{YEAR_FULL}.{PERIOD_CRM}'.replace('-', f'-{YEAR_FULL}.')
 
-        B27_TEXT = str(cell_val(ws, 2, 27)).strip().replace('\n', '')
-        B28_TEXT = str(cell_val(ws, 2, 28)).strip().replace('\n', '')
-        J27_TEXT = str(cell_val(ws, 10, 27)).strip()
-        J28_TEXT = str(cell_val(ws, 10, 28)).strip()
-        AI27_TEXT = str(cell_val(ws, 35, 27)).strip()
-        AI28_TEXT = str(cell_val(ws, 35, 28)).strip()
+        B27_TEXT = str(cell_val(ws, b27_col, b27_row)).strip().replace('\n', '')
+        B28_TEXT = str(cell_val(ws, b28_col, b28_row)).strip().replace('\n', '')
+        J27_TEXT = str(cell_val(ws, j27_col, j27_row)).strip()
+        J28_TEXT = str(cell_val(ws, j28_col, j28_row)).strip()
+        AI27_TEXT = str(cell_val(ws, ai27_col, ai27_row)).strip()
+        AI28_TEXT = str(cell_val(ws, ai28_col, ai28_row)).strip()
 
         # 允许自定义文本覆盖
         if custom_texts:
@@ -543,18 +625,26 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
             AI27_TEXT = custom_texts.get('AI27', AI27_TEXT)
             AI28_TEXT = custom_texts.get('AI28', AI28_TEXT)
 
-        # 读取各区域数据
-        industry_reserve = read_range(ws, 2, 12, 1, 7)
+        # 读取各区域数据（使用可配置的范围引用）
+        ir_r1, ir_r2, ir_c1, ir_c2 = _parse_range_ref(dm['industry_reserve'])
+        industry_reserve = read_range(ws, ir_r1, ir_r2, ir_c1, ir_c2)
         industry_reserve.sort(key=lambda x: float(x[6]) if x[6] is not None else 0, reverse=True)
-        commercial_reserve = read_range(ws, 13, 25, 1, 7)
+        cr_r1, cr_r2, cr_c1, cr_c2 = _parse_range_ref(dm['commercial_reserve'])
+        commercial_reserve = read_range(ws, cr_r1, cr_r2, cr_c1, cr_c2)
         commercial_reserve.sort(key=lambda x: float(x[6]) if x[6] is not None else 0, reverse=True)
 
-        industry_effective = read_range(ws, 2, 13, 10, 13)
-        commercial_effective = read_range(ws, 14, 25, 10, 13)
-        industry_progress = read_range(ws, 5, 15, 22, 32)
-        commercial_progress = read_range(ws, 16, 28, 22, 32)
-        industry_delivered = read_range(ws, 2, 12, 34, 37)
-        commercial_delivered = read_range(ws, 13, 25, 34, 37)
+        ie_r1, ie_r2, ie_c1, ie_c2 = _parse_range_ref(dm['industry_effective'])
+        industry_effective = read_range(ws, ie_r1, ie_r2, ie_c1, ie_c2)
+        ce_r1, ce_r2, ce_c1, ce_c2 = _parse_range_ref(dm['commercial_effective'])
+        commercial_effective = read_range(ws, ce_r1, ce_r2, ce_c1, ce_c2)
+        ip_r1, ip_r2, ip_c1, ip_c2 = _parse_range_ref(dm['industry_progress'])
+        industry_progress = read_range(ws, ip_r1, ip_r2, ip_c1, ip_c2)
+        cp_r1, cp_r2, cp_c1, cp_c2 = _parse_range_ref(dm['commercial_progress'])
+        commercial_progress = read_range(ws, cp_r1, cp_r2, cp_c1, cp_c2)
+        id_r1, id_r2, id_c1, id_c2 = _parse_range_ref(dm['industry_delivered'])
+        industry_delivered = read_range(ws, id_r1, id_r2, id_c1, id_c2)
+        cd_r1, cd_r2, cd_c1, cd_c2 = _parse_range_ref(dm['commercial_delivered'])
+        commercial_delivered = read_range(ws, cd_r1, cd_r2, cd_c1, cd_c2)
 
         wb.close()
     except Exception as e:
@@ -570,13 +660,38 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     industry_chart_path = os.path.join(chart_dir, 'industry_chart.png')
     commercial_chart_path = os.path.join(chart_dir, 'commercial_chart.png')
 
+    # 清除旧的缓存图表文件，避免使用过期数据
+    for old_chart in [industry_chart_path, commercial_chart_path]:
+        if os.path.exists(old_chart):
+            try: os.unlink(old_chart)
+            except: pass
+
     # 从周期字符串提取日期，如"1月1日—5月22日" → "5月22日"
     date_suffix = PERIOD_STR.split('—')[-1] if '—' in PERIOD_STR else PERIOD_STR.split('-')[-1] if '-' in PERIOD_STR else PERIOD_STR
 
     # 行业有效商机图表（Slide 6）
-    _generate_biz_chart(industry_effective, industry_chart_path, '行业各分局', date_suffix, year=YEAR_FULL)
+    ind_chart_ok = _generate_biz_chart(industry_effective, industry_chart_path, '行业各分局', date_suffix, year=YEAR_FULL)
     # 商业有效商机图表（Slide 7）
-    _generate_biz_chart(commercial_effective, commercial_chart_path, '商业各分局', date_suffix, year=YEAR_FULL)
+    comm_chart_ok = _generate_biz_chart(commercial_effective, commercial_chart_path, '商业各分局', date_suffix, year=YEAR_FULL)
+
+    # 调试信息：有效商机图表实际使用的数据
+    def _eff_data_debug(eff_data, max_n=5):
+        items = []
+        for item in eff_data[:max_n]:
+            name = str(item[0] or '').strip()
+            amt = float(item[1] or 0)
+            tgt = float(item[2] or 0)
+            items.append(f'{name}: {amt}/{tgt}')
+        return '; '.join(items) + (f' ...共{len(eff_data)}行' if len(eff_data) > max_n else '')
+
+    chart_debug = {
+        'industry_effective_range': dm['industry_effective'],
+        'industry_data_preview': _eff_data_debug(industry_effective),
+        'industry_chart_ok': ind_chart_ok,
+        'commercial_effective_range': dm['commercial_effective'],
+        'commercial_data_preview': _eff_data_debug(commercial_effective),
+        'commercial_chart_ok': comm_chart_ok,
+    }
 
     # 4. 加载PPT模板并填充
     try:
@@ -678,7 +793,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     # ====== Slide 6: 行业有效商机 ======
     slide6 = prs.slides[5]
     ind_below30_count, ind_severe = count_below30(industry_effective)
-    ind_sum_amt, ind_sum_tgt, ind_rate_pct, ind_rate_text = calc_effective_summary(industry_effective)
+    ind_sum_amt, ind_sum_tgt, ind_rate_pct, ind_rate_text, ind_bureau_count = calc_effective_summary(industry_effective)
 
     for shape in slide6.shapes:
         if shape.name == '标题 1':
@@ -690,7 +805,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         elif shape.name == 'Text 49':
             names_str = _format_severe_names(ind_severe)
             set_shape_multiline(shape, [
-                f'{ind_below30_count}个分局未达30%储备率',
+                f'{ind_below30_count}个分局未达30%储备率（共{ind_bureau_count}个）',
                 f'其中{names_str}商机储备纳管严重不足'
             ], font_size=14)
         elif shape.name in ('文本框 123', '文本框 5'):
@@ -702,7 +817,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
     # ====== Slide 7: 商业有效商机 ======
     slide7 = prs.slides[6]
     comm_below30_count, comm_severe = count_below30(commercial_effective)
-    comm_sum_amt, comm_sum_tgt, comm_rate_pct, comm_rate_text = calc_effective_summary(commercial_effective)
+    comm_sum_amt, comm_sum_tgt, comm_rate_pct, comm_rate_text, comm_bureau_count = calc_effective_summary(commercial_effective)
 
     for shape in slide7.shapes:
         if shape.name == '标题 1':
@@ -714,7 +829,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         elif shape.name == 'Text 49':
             names_str = _format_severe_names(comm_severe)
             set_shape_multiline(shape, [
-                f'{comm_below30_count}个分局均未达30%储备率',
+                f'{comm_below30_count}个分局均未达30%储备率（共{comm_bureau_count}个）',
                 f'其中{names_str}商机纳管储备严重不足'
             ], font_size=14)
         elif shape.name in ('文本框 123', '文本框 5'):
@@ -735,7 +850,12 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
             for i, rd in enumerate(industry_progress):
                 r = i + 2
                 for c in range(11):
-                    set_cell_text(tbl.cell(r, c), str(rd[c]) if rd[c] is not None else '')
+                    val = rd[c] if rd[c] is not None else ''
+                    # 列6-10为商机类型数据，格式化 0(0.0) → 0
+                    if c >= 6 and c <= 10:
+                        set_cell_text(tbl.cell(r, c), fmt_ca(val))
+                    else:
+                        set_cell_text(tbl.cell(r, c), str(val))
         elif shape.name == '文本框 3':
             s = ind_s
             set_shape_multiline(shape, [
@@ -756,7 +876,12 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
             for i, rd in enumerate(commercial_progress):
                 r = i + 2
                 for c in range(11):
-                    set_cell_text(tbl.cell(r, c), str(rd[c]) if rd[c] is not None else '')
+                    val = rd[c] if rd[c] is not None else ''
+                    # 列6-10为商机类型数据，格式化 0(0.0) → 0
+                    if c >= 6 and c <= 10:
+                        set_cell_text(tbl.cell(r, c), fmt_ca(val))
+                    else:
+                        set_cell_text(tbl.cell(r, c), str(val))
         elif shape.name == '文本框 5':
             s = comm_s
             set_shape_multiline(shape, [
@@ -844,5 +969,6 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None):
         'industry_bureaus': len(industry_reserve),
         'commercial_bureaus': len(commercial_reserve),
         'industry_below30': ind_below30_count,
-        'commercial_below30': comm_below30_count
+        'commercial_below30': comm_below30_count,
+        'chart_debug': chart_debug,
     }

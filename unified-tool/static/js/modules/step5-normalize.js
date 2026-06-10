@@ -14,6 +14,8 @@ const NZ = {
   selectedRange: null,    // {r1,c1,r2,c2} 拖选范围（2+格时有效）
   cellEdits: {},          // 'sheetIdx!row!col' -> newValue 编辑缓存
   cellFormats: {},        // 'sheetIdx!row!col' -> {bold,italic,align,fontSize,fontName} 格式缓存
+  rowHeights: {},         // 'sheetIdx!row' -> height(px) 行高缓存
+  insertedRows: {},       // 'sheetIdx!row' -> true 标记插入的空行
   _stickyDecimal: 2,    // 用户上次设置的小数位（粘性，切换单元格不重置）
   _stickyPercent: false, // 用户上次设置的百分比状态（粘性）
   previewMode: false,     // 是否为预览模式（显示计算值）
@@ -30,9 +32,13 @@ let nzSuppressNextClick = false;// 拖选结束后抑制一次 click 事件
 // 单公式精确匹配（向后兼容）
 const NZ_FORMULA_RE = /^\{\{(.+?)\}\}$/;
 // 全局查找所有 {{...}} 的正则（用于多公式表达式）
-const NZ_FORMULA_GLOBAL_RE = /\{\{(.+?)\}\}/g;
+const NZ_FORMULA_GLOBAL_RE = /\{\{.+?\}\}/g;
+// 匹配文本中嵌入的 =SUM(...) 或 =AVG(...)（内联函数）
+const NZ_INLINE_FUNC_RE = /=\s*(SUM|AVG)\s*\(([^)]+)\)/gi;
+// 匹配 SUM(...) 或 AVG(...) 函数调用（纯函数，无 = 前缀）
+const NZ_FUNC_RE = /\b(SUM|AVG)\s*\(([^)]+)\)/gi;
 // 判断单元格值是否包含至少一个公式
-function nzHasFormula(val) { return /\{\{.+?\}\}/.test(val) || nzIsExpression(val); }
+function nzHasFormula(val) { return /\{\{.+?\}\}/.test(val) || nzIsExpression(val) || /=\s*(SUM|AVG)\s*\(/i.test(val); }
 // 判断是否为纯公式表达式（以 = 开头或仅一个 {{...}}）
 function nzIsExpression(val) { return String(val).startsWith('='); }
 
@@ -60,8 +66,6 @@ function nzFormatValue(value, fmt) {
 const NZ_CELL_REF_RE = /\b([A-Z]{1,3})(\d{1,5})\b/g;
 // 匹配单元格范围: A1:B5
 const NZ_RANGE_RE = /\b([A-Z]{1,3})(\d{1,5}):([A-Z]{1,3})(\d{1,5})\b/g;
-// 匹配 SUM(...) 或 AVG(...) 函数调用
-const NZ_FUNC_RE = /\b(SUM|AVG)\s*\(([^)]+)\)/gi;
 
 /**
  * 将范围引用（如 A1:B5）展开为所有单元格的值
@@ -368,13 +372,33 @@ function nzResolveCellFormula(cellVal, statsData, sheetIdx) {
 
   // 混合文本模式：替换所有 {{...}} 为数值
   let anyFail = false;
-  const textResult = cellVal.replace(NZ_FORMULA_GLOBAL_RE, (match) => {
+  let textResult = cellVal.replace(NZ_FORMULA_GLOBAL_RE, (match) => {
     const parsed = nzParseFormula(match);
     if (!parsed) { anyFail = true; return match; }
     const result = nzResolveFormula(parsed, statsData);
     if (!result.ok) { anyFail = true; return match; }
     return String(result.value);
   });
+
+  // 内联函数模式：替换文本中的 =SUM(...) / =AVG(...) 为计算值
+  textResult = textResult.replace(NZ_INLINE_FUNC_RE, (match, funcName, argsStr) => {
+    const si = sheetIdx != null ? sheetIdx : NZ.activeSheet;
+    const { values, ok } = nzResolveRange(argsStr, si, null, statsData);
+    if (!ok) { anyFail = true; return match; }
+    const fn = funcName.toUpperCase();
+    let computed;
+    if (fn === 'SUM') {
+      computed = values.reduce((a, b) => a + b, 0);
+    } else if (fn === 'AVG') {
+      computed = values.reduce((a, b) => a + b, 0) / values.length;
+    } else {
+      anyFail = true;
+      return match;
+    }
+    // 保留原始小数精度
+    return Number.isInteger(computed) ? String(computed) : String(parseFloat(computed.toFixed(10)));
+  });
+
   return { ok: !anyFail, value: textResult };
 }
 
@@ -952,7 +976,10 @@ function nzRenderTable() {
   // 数据行
   let tbody = '';
   for (let r = 0; r <= maxR; r++) {
-    tbody += `<tr><td>${r + 1}</td>`;
+    const rowKey = `${NZ.activeSheet}!${r}`;
+    const rh = NZ.rowHeights[rowKey];
+    const rhStyle = rh ? ` style="height:${rh}px"` : '';
+    tbody += `<tr${rhStyle}><td>${r + 1}</td>`;
     for (let c = 0; c <= maxC; c++) {
       const ref = XLSX.utils.encode_cell({ r, c });
       const editKey = `${NZ.activeSheet}!${r}!${c}`;
@@ -1368,6 +1395,14 @@ function nzUpdateEditBar() {
   const pctBtn = document.getElementById('nzPercentBtn');
   if (decSel) decSel.value = NZ._stickyDecimal;
   if (pctBtn) pctBtn.classList.toggle('active', NZ._stickyPercent);
+
+  // 同步行高输入框
+  const rowHEl = document.getElementById('nzRowHeightInput');
+  if (rowHEl) {
+    const rowKey = `${NZ.activeSheet}!${row}`;
+    const h = NZ.rowHeights[rowKey];
+    rowHEl.value = h || 28;
+  }
 }
 
 // ---- 单元格编辑 ----
@@ -2263,4 +2298,210 @@ function base64ToArrayBuffer(base64) {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
+}
+
+// ---- 行高调整 ----
+document.getElementById('nzRowHeightInput').addEventListener('change', function () {
+  if (!NZ.selectedCell || !NZ.wb) return;
+  const h = Math.max(18, Math.min(120, parseInt(this.value) || 28));
+  this.value = h;
+  const rowKey = `${NZ.activeSheet}!${NZ.selectedCell.row}`;
+  NZ.rowHeights[rowKey] = h;
+  nzRenderTable();
+});
+
+// ---- 插入行（上方） ----
+document.getElementById('nzInsertRowAboveBtn').addEventListener('click', function () {
+  if (!NZ.selectedCell || !NZ.wb) { ntf('请先选中一个单元格', 'warn'); return; }
+  nzInsertRowAt(NZ.selectedCell.row);
+  ntf('已在当前行上方插入空行');
+});
+
+// ---- 插入行（下方） ----
+document.getElementById('nzInsertRowBelowBtn').addEventListener('click', function () {
+  if (!NZ.selectedCell || !NZ.wb) { ntf('请先选中一个单元格', 'warn'); return; }
+  nzInsertRowAt(NZ.selectedCell.row + 1);
+  ntf('已在当前行下方插入空行');
+});
+
+// ---- 删除行 ----
+document.getElementById('nzDeleteRowBtn').addEventListener('click', function () {
+  if (!NZ.selectedCell || !NZ.wb) { ntf('请先选中一个单元格', 'warn'); return; }
+  const si = NZ.activeSheet;
+  const ws = NZ.wb.Sheets[NZ.wb.SheetNames[si]];
+  if (!ws || !ws['!ref']) return;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  // 只剩1行时不允许删除
+  if (range.e.r - range.s.r < 1) { ntf('至少保留一行', 'warn'); return; }
+  nzDeleteRowAt(NZ.selectedCell.row);
+  ntf('已删除当前行');
+});
+
+/**
+ * 在指定行位置插入一个空行
+ * 把 insertRow 及以下的所有编辑缓存、格式缓存、行高缓存都下移一行
+ */
+function nzInsertRowAt(insertRow) {
+  const si = NZ.activeSheet;
+  // 扩展 worksheet 范围
+  const ws = NZ.wb.Sheets[NZ.wb.SheetNames[si]];
+  if (ws && ws['!ref']) {
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    // 在插入行位置，把所有单元格下移一行
+    // 从最后一行开始往下处理，避免覆盖
+    for (let r = range.e.r; r >= insertRow; r--) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const srcRef = XLSX.utils.encode_cell({ r, c });
+        const dstRef = XLSX.utils.encode_cell({ r: r + 1, c });
+        if (ws[srcRef]) {
+          ws[dstRef] = ws[srcRef];
+          delete ws[srcRef];
+        } else if (ws[dstRef]) {
+          delete ws[dstRef];
+        }
+      }
+    }
+    range.e.r += 1;
+    ws['!ref'] = XLSX.utils.encode_range(range);
+  }
+
+  // 下移编辑缓存（从最大行号开始）
+  const editsToMove = [];
+  for (const key in NZ.cellEdits) {
+    const m = key.match(/^(\d+)!(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] >= insertRow) {
+      editsToMove.push({ key, col: +m[3], oldRow: +m[2] });
+    }
+  }
+  editsToMove.sort((a, b) => b.oldRow - a.oldRow); // 从下往上
+  for (const item of editsToMove) {
+    const newKey = `${si}!${item.oldRow + 1}!${item.col}`;
+    NZ.cellEdits[newKey] = NZ.cellEdits[item.key];
+    delete NZ.cellEdits[item.key];
+  }
+
+  // 下移格式缓存
+  const fmtsToMove = [];
+  for (const key in NZ.cellFormats) {
+    const m = key.match(/^(\d+)!(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] >= insertRow) {
+      fmtsToMove.push({ key, col: +m[3], oldRow: +m[2] });
+    }
+  }
+  fmtsToMove.sort((a, b) => b.oldRow - a.oldRow);
+  for (const item of fmtsToMove) {
+    const newKey = `${si}!${item.oldRow + 1}!${item.col}`;
+    NZ.cellFormats[newKey] = NZ.cellFormats[item.key];
+    delete NZ.cellFormats[item.key];
+  }
+
+  // 下移行高缓存
+  const heightsToMove = [];
+  for (const key in NZ.rowHeights) {
+    const m = key.match(/^(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] >= insertRow) {
+      heightsToMove.push({ key, oldRow: +m[2] });
+    }
+  }
+  heightsToMove.sort((a, b) => b.oldRow - a.oldRow);
+  for (const item of heightsToMove) {
+    const newKey = `${si}!${item.oldRow + 1}`;
+    NZ.rowHeights[newKey] = NZ.rowHeights[item.key];
+    delete NZ.rowHeights[item.key];
+  }
+
+  nzRenderTable();
+}
+
+/**
+ * 删除指定行：把 deleteRow 以下的所有单元格上移一行，并清理缓存
+ */
+function nzDeleteRowAt(deleteRow) {
+  const si = NZ.activeSheet;
+  const ws = NZ.wb.Sheets[NZ.wb.SheetNames[si]];
+  if (ws && ws['!ref']) {
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    // 把 deleteRow+1 及以下的单元格上移一行
+    for (let r = deleteRow; r < range.e.r; r++) {
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const srcRef = XLSX.utils.encode_cell({ r: r + 1, c });
+        const dstRef = XLSX.utils.encode_cell({ r, c });
+        if (ws[srcRef]) {
+          ws[dstRef] = ws[srcRef];
+          delete ws[srcRef];
+        } else if (ws[dstRef]) {
+          delete ws[dstRef];
+        }
+      }
+    }
+    // 清除最后一行的残留
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const ref = XLSX.utils.encode_cell({ r: range.e.r, c });
+      delete ws[ref];
+    }
+    range.e.r -= 1;
+    if (range.e.r < range.s.r) range.e.r = range.s.r;
+    ws['!ref'] = XLSX.utils.encode_range(range);
+  }
+
+  // 删除当前行的编辑缓存
+  for (const key in NZ.cellEdits) {
+    const m = key.match(/^(\d+)!(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] === deleteRow) {
+      delete NZ.cellEdits[key];
+    }
+  }
+  // 上移 deleteRow+1 以下的编辑缓存
+  const editsToMove = [];
+  for (const key in NZ.cellEdits) {
+    const m = key.match(/^(\d+)!(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] > deleteRow) {
+      editsToMove.push({ key, col: +m[3], oldRow: +m[2] });
+    }
+  }
+  editsToMove.sort((a, b) => a.oldRow - b.oldRow); // 从上往下
+  for (const item of editsToMove) {
+    const newKey = `${si}!${item.oldRow - 1}!${item.col}`;
+    NZ.cellEdits[newKey] = NZ.cellEdits[item.key];
+    delete NZ.cellEdits[item.key];
+  }
+
+  // 删除当前行的格式缓存 + 上移
+  for (const key in NZ.cellFormats) {
+    const m = key.match(/^(\d+)!(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] === deleteRow) {
+      delete NZ.cellFormats[key];
+    }
+  }
+  const fmtsToMove = [];
+  for (const key in NZ.cellFormats) {
+    const m = key.match(/^(\d+)!(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] > deleteRow) {
+      fmtsToMove.push({ key, col: +m[3], oldRow: +m[2] });
+    }
+  }
+  fmtsToMove.sort((a, b) => a.oldRow - b.oldRow);
+  for (const item of fmtsToMove) {
+    const newKey = `${si}!${item.oldRow - 1}!${item.col}`;
+    NZ.cellFormats[newKey] = NZ.cellFormats[item.key];
+    delete NZ.cellFormats[item.key];
+  }
+
+  // 删除当前行的行高缓存 + 上移
+  delete NZ.rowHeights[`${si}!${deleteRow}`];
+  const heightsToMove = [];
+  for (const key in NZ.rowHeights) {
+    const m = key.match(/^(\d+)!(\d+)$/);
+    if (m && +m[1] === si && +m[2] > deleteRow) {
+      heightsToMove.push({ key, oldRow: +m[2] });
+    }
+  }
+  heightsToMove.sort((a, b) => a.oldRow - b.oldRow);
+  for (const item of heightsToMove) {
+    const newKey = `${si}!${item.oldRow - 1}`;
+    NZ.rowHeights[newKey] = NZ.rowHeights[item.key];
+    delete NZ.rowHeights[item.key];
+  }
+
+  nzRenderTable();
 }

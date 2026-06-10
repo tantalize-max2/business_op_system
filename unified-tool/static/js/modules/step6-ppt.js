@@ -9,6 +9,7 @@ const PPT = {
   nzAvailable: false,     // 上次标准化输出是否可用
   nzInfo: null,           // 上次标准化输出信息
   generating: false,
+  dataMap: null,          // 自定义数据映射（覆盖 DEFAULT_DATA_MAP）
 };
 
 // ===== 初始化 =====
@@ -49,6 +50,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // 生成按钮
   const genBtn = document.getElementById('pptGenerateBtn');
   if (genBtn) genBtn.addEventListener('click', doGenerate);
+
+  // 校准数据按钮
+  const previewBtn = document.getElementById('pptPreviewBtn');
+  if (previewBtn) previewBtn.addEventListener('click', doPreviewData);
 
   // 下载按钮
   const dlBtn = document.getElementById('pptDownloadBtn');
@@ -164,7 +169,8 @@ async function doGenerate() {
       body: JSON.stringify({
         templateData: PPT.templateData,
         dataFileData: dataFileData,
-        customTexts: {}
+        customTexts: {},
+        dataMap: PPT.dataMap
       })
     });
 
@@ -182,12 +188,40 @@ async function doGenerate() {
     const info = {};
     res.headers.forEach((v, k) => { info[k] = v; });
 
+    // 图表调试信息（响应头值是 URL 编码的中文）
+    const indRange = decodeURIComponent(info['x-ind-range'] || '');
+    const indPreview = decodeURIComponent(info['x-ind-preview'] || '');
+    const indChartOk = decodeURIComponent(info['x-ind-chart-ok'] || '') === 'True';
+    const commRange = decodeURIComponent(info['x-comm-range'] || '');
+    const commPreview = decodeURIComponent(info['x-comm-preview'] || '');
+    const commChartOk = decodeURIComponent(info['x-comm-chart-ok'] || '') === 'True';
+
+    let debugHtml = '';
+    if (indRange || commRange) {
+      debugHtml = `<div class="ppt-chart-debug">
+        <div class="ppt-chart-debug-title">图表数据校验</div>
+        <div class="ppt-chart-debug-row">
+          <span class="ppt-chart-debug-label">行业图表:</span>
+          <span class="ppt-chart-debug-status ${indChartOk ? 'ok' : 'fail'}">${indChartOk ? '生成成功' : '生成失败'}</span>
+          <span class="ppt-chart-debug-range">(${indRange})</span>
+        </div>
+        <div class="ppt-chart-debug-data">${esc(indPreview)}</div>
+        <div class="ppt-chart-debug-row">
+          <span class="ppt-chart-debug-label">商业图表:</span>
+          <span class="ppt-chart-debug-status ${commChartOk ? 'ok' : 'fail'}">${commChartOk ? '生成成功' : '生成失败'}</span>
+          <span class="ppt-chart-debug-range">(${commRange})</span>
+        </div>
+        <div class="ppt-chart-debug-data">${esc(commPreview)}</div>
+      </div>`;
+    }
+
     if (resultArea) {
       resultArea.innerHTML = `
         <div class="ppt-result ppt-result-success">
           <div class="ppt-result-icon"><svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-download"/></svg></div>
           <div class="ppt-result-title" style="color:var(--ok)">PPT通报生成成功</div>
           <div class="ppt-result-desc">文件已就绪，点击下方按钮下载</div>
+          ${debugHtml}
           <div style="margin-top:18px">
             <button class="btn btn-primary" id="pptDownloadBtn2" onclick="doDownload()" style="padding:10px 36px;">
               <svg class="icon" aria-hidden="true"><use xlink:href="#icon-download"/></svg>
@@ -274,6 +308,13 @@ async function onTemplateSelect() {
       updateUploadZone('pptDataZone', name + '_data.xlsx');
       ntf('数据文件已加载');
     }
+    // 恢复 dataMap
+    if (data.dataMap && Object.keys(data.dataMap).length > 0) {
+      PPT.dataMap = data.dataMap;
+      ntf('数据映射已恢复');
+    } else {
+      PPT.dataMap = null;
+    }
   } catch (e) {
     ntf('加载模板失败', 'error');
   }
@@ -308,7 +349,8 @@ async function doSaveTemplate() {
       body: JSON.stringify({
         name,
         templateData: PPT.templateData,
-        dataFileData: PPT.dataFileData
+        dataFileData: PPT.dataFileData,
+        dataMap: PPT.dataMap
       })
     });
     const data = await res.json();
@@ -390,6 +432,235 @@ function doDownloadTemplate() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   ntf('PPT模板已开始下载');
+}
+
+// ===== 校准数据预览 =====
+async function doPreviewData() {
+  const area = document.getElementById('pptPreviewArea');
+  if (!area) return;
+
+  area.style.display = '';
+  area.innerHTML = '<div style="padding:20px;text-align:center;color:var(--t3)"><div class="spinner" style="margin:0 auto 10px"></div>正在读取数据...</div>';
+
+  try {
+    const res = await fetch('/api/ppt-data-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataFileData: PPT.dataFileData, dataMap: PPT.dataMap })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      area.innerHTML = `<div style="padding:20px;color:var(--err)">${esc(data.error)}</div>`;
+      return;
+    }
+
+    // 构建预览表格
+    let html = '<div class="ppt-preview-panel">';
+
+    // ===== 数据映射编辑区 =====
+    html += '<div class="ppt-dm-section">';
+    html += '<div class="ppt-dm-header"><h3>数据区域映射</h3><span class="ppt-dm-hint">修改范围后点击"应用"更新预览</span></div>';
+    html += '<div class="ppt-dm-grid">';
+
+    const dmFields = [
+      { key: 'date_cell', label: '截止日期', desc: '如 B30', type: 'cell' },
+      { key: 'period_cell', label: '周期', desc: '如 B31', type: 'cell' },
+      { key: 'B27_cell', label: '行业储备说明', desc: '如 B27', type: 'cell' },
+      { key: 'B28_cell', label: '商业储备说明', desc: '如 B28', type: 'cell' },
+      { key: 'industry_reserve', label: '行业储备', desc: '如 A2:G12', type: 'range' },
+      { key: 'commercial_reserve', label: '商业储备', desc: '如 A13:G25', type: 'range' },
+      { key: 'industry_effective', label: '行业有效商机', desc: '如 J2:M13', type: 'range' },
+      { key: 'commercial_effective', label: '商业有效商机', desc: '如 J14:M25', type: 'range' },
+      { key: 'industry_progress', label: '行业项目推进', desc: '如 V5:AF15', type: 'range' },
+      { key: 'commercial_progress', label: '商业项目推进', desc: '如 V16:AF28', type: 'range' },
+      { key: 'industry_delivered', label: '行业交付', desc: '如 AH2:AK12', type: 'range' },
+      { key: 'commercial_delivered', label: '商业交付', desc: '如 AH13:AK25', type: 'range' },
+    ];
+
+    const defaultMap = {
+      date_cell: 'B30', period_cell: 'B31', B27_cell: 'B27', B28_cell: 'B28',
+      industry_reserve: 'A2:G12', commercial_reserve: 'A13:G25',
+      industry_effective: 'J2:M13', commercial_effective: 'J14:M25',
+      industry_progress: 'V5:AF15', commercial_progress: 'V16:AF28',
+      industry_delivered: 'AH2:AK12', commercial_delivered: 'AH13:AK25',
+    };
+
+    dmFields.forEach(f => {
+      const currentVal = PPT.dataMap ? (PPT.dataMap[f.key] || defaultMap[f.key]) : defaultMap[f.key];
+      const isChanged = PPT.dataMap && PPT.dataMap[f.key] && PPT.dataMap[f.key] !== defaultMap[f.key];
+      html += `<div class="ppt-dm-row">`;
+      html += `<label class="ppt-dm-label">${f.label}</label>`;
+      html += `<input class="ppt-dm-input${isChanged ? ' ppt-dm-changed' : ''}" data-dm-key="${f.key}" value="${currentVal}" placeholder="${f.desc}">`;
+      html += `<span class="ppt-dm-default">默认: ${defaultMap[f.key]}</span>`;
+      html += `</div>`;
+    });
+
+    html += '</div>'; // ppt-dm-grid
+    html += '<div class="ppt-dm-actions">';
+    html += '<button class="btn btn-primary btn-sm" onclick="applyDataMap()">应用并刷新预览</button>';
+    html += '<button class="btn btn-ghost btn-sm" onclick="resetDataMap()">恢复默认</button>';
+    html += '</div>';
+    html += '</div>'; // ppt-dm-section
+
+    // ===== 关键单元格 =====
+    html += '<div class="ppt-dm-section">';
+    html += '<h3>关键单元格</h3>';
+    html += '<table class="ppt-preview-table"><thead><tr>';
+    html += '<th>单元格</th><th>内容</th><th>说明</th>';
+    html += '</tr></thead><tbody>';
+    const cells = [
+      ['B30', data.date, '截止日期'],
+      ['B31', data.period, '周期'],
+      ['B27', data.B27, '行业储备说明(前100字)'],
+      ['B28', data.B28, '商业储备说明(前100字)'],
+      ['J27', data.J27, '行业交付说明1'],
+      ['J28', data.J28, '商业交付说明1'],
+      ['AI27', data.AI27, '行业交付说明2'],
+      ['AI28', data.AI28, '商业交付说明2'],
+    ];
+    cells.forEach(([cell, val, desc]) => {
+      const empty = !val || val === 'None' || val === '';
+      html += `<tr><td class="ppt-cell-ref">${cell}</td>`;
+      html += `<td class="ppt-cell-val${empty ? ' ppt-cell-empty' : ''}">${esc(val || '(空)')}</td>`;
+      html += `<td class="ppt-cell-desc">${desc}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    html += '</div>';
+
+    // ===== 数据区域 =====
+    const ranges = data.ranges || {};
+
+    // 行业有效商机 - 完整数据（用于图表校准）
+    const indEff = ranges.industry_effective || {};
+    const commEff = ranges.commercial_effective || {};
+
+    html += '<div class="ppt-dm-section ppt-eff-section">';
+    html += '<h3>有效商机完整数据 <span class="ppt-dm-hint">(用于图表，检查分局名称和数值是否正确)</span></h3>';
+
+    // 行业
+    html += '<div class="ppt-eff-block">';
+    html += `<div class="ppt-eff-title">行业有效商机 — 实际${indEff.rows || 0}行</div>`;
+    if (indEff.full && indEff.full.length > 0) {
+      html += '<div class="ppt-table-scroll"><table class="ppt-preview-table ppt-full-table"><thead><tr>';
+      indEff.full[0].forEach((_, ci) => {
+        const colLabels = ['分局名称', '有效商机', '储备目标', '完成率'];
+        html += `<th>${colLabels[ci] || '列' + ci}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      indEff.full.forEach((row, ri) => {
+        html += '<tr>';
+        row.forEach((cell, ci) => {
+          const cls = ci === 0 ? 'ppt-cell-name' : 'ppt-cell-num';
+          html += `<td class="${cls}">${esc(cell)}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div class="ppt-no-data">无数据</div>';
+    }
+    html += '</div>';
+
+    // 商业
+    html += '<div class="ppt-eff-block">';
+    html += `<div class="ppt-eff-title">商业有效商机 — 实际${commEff.rows || 0}行</div>`;
+    if (commEff.full && commEff.full.length > 0) {
+      html += '<div class="ppt-table-scroll"><table class="ppt-preview-table ppt-full-table"><thead><tr>';
+      commEff.full[0].forEach((_, ci) => {
+        const colLabels = ['分局名称', '有效商机', '储备目标', '完成率'];
+        html += `<th>${colLabels[ci] || '列' + ci}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      commEff.full.forEach((row, ri) => {
+        html += '<tr>';
+        row.forEach((cell, ci) => {
+          const cls = ci === 0 ? 'ppt-cell-name' : 'ppt-cell-num';
+          html += `<td class="${cls}">${esc(cell)}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div class="ppt-no-data">无数据</div>';
+    }
+    html += '</div>';
+    html += '</div>'; // ppt-eff-section
+
+    // 其他数据区域（样本预览）
+    html += '<div class="ppt-dm-section">';
+    html += '<h3>其他数据区域 <span class="ppt-dm-hint">(前3行样本)</span></h3>';
+    const otherRanges = [
+      ['industry_reserve', '行业储备'],
+      ['commercial_reserve', '商业储备'],
+      ['industry_progress', '行业项目推进'],
+      ['commercial_progress', '商业项目推进'],
+      ['industry_delivered', '行业交付'],
+      ['commercial_delivered', '商业交付'],
+    ];
+    otherRanges.forEach(([key, title]) => {
+      const r = ranges[key] || {};
+      const rows = r.rows || 0;
+      const sample = r.sample || [];
+      const ok = rows > 0;
+      html += `<div class="ppt-range-block">`;
+      html += `<div class="ppt-range-title" style="color:${ok ? 'var(--ok)' : 'var(--err)'}">${title} — 实际${rows}行</div>`;
+      if (sample.length > 0) {
+        html += '<div class="ppt-table-scroll"><table class="ppt-preview-table"><thead><tr>';
+        sample[0].forEach((_, ci) => {
+          html += `<th>列${ci}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+        sample.forEach(row => {
+          html += '<tr>';
+          row.forEach(cell => {
+            html += `<td>${esc(cell)}</td>`;
+          });
+          html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+      } else {
+        html += '<div class="ppt-no-data">无数据</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+
+    html += '</div>'; // ppt-preview-panel
+    area.innerHTML = html;
+    ntf('数据预览已加载');
+  } catch (e) {
+    area.innerHTML = `<div style="padding:20px;color:var(--err)">预览失败: ${esc(e.message)}</div>`;
+  }
+}
+
+// ===== dataMap 编辑 =====
+function applyDataMap() {
+  const inputs = document.querySelectorAll('.ppt-dm-input[data-dm-key]');
+  const newMap = {};
+  const defaultMap = {
+    date_cell: 'B30', period_cell: 'B31', B27_cell: 'B27', B28_cell: 'B28',
+    industry_reserve: 'A2:G12', commercial_reserve: 'A13:G25',
+    industry_effective: 'J2:M13', commercial_effective: 'J14:M25',
+    industry_progress: 'V5:AF15', commercial_progress: 'V16:AF28',
+    industry_delivered: 'AH2:AK12', commercial_delivered: 'AH13:AK25',
+  };
+  let hasChange = false;
+  inputs.forEach(inp => {
+    const key = inp.dataset.dmKey;
+    const val = inp.value.trim();
+    if (val && val !== defaultMap[key]) {
+      newMap[key] = val;
+      hasChange = true;
+    }
+  });
+  PPT.dataMap = hasChange ? newMap : null;
+  doPreviewData(); // 刷新预览
+}
+
+function resetDataMap() {
+  PPT.dataMap = null;
+  doPreviewData();
 }
 
 // ===== 进入步骤时初始化 =====

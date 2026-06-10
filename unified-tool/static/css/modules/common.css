@@ -184,10 +184,18 @@ body.has-wallpaper .main-content {
   transition: opacity .3s;
 }
 #particles-js.particles-off { opacity: 0; pointer-events: none; }
-.sidebar, .main-content { position: relative; z-index: 1; }
-/* 一级过滤表格和数据标准化表格区域屏蔽粒子 */
-.table-wrap, .nz-table-wrap { position: relative; z-index: 10000; background: var(--bg2); }
-.nz-workspace { position: relative; z-index: 10000; }
+.sidebar { position: relative; z-index: 1; }
+.main-content { position: relative; z-index: 1; }
+/* 表格区域屏蔽粒子：z-index 高于粒子(9999) + 不透明背景 */
+.table-wrap { position: relative; z-index: 10000; background: var(--bg2); }
+.nz-table-wrap { position: relative; z-index: 10000; background: var(--bg2); }
+.nz-workspace { position: relative; z-index: 10000; background: var(--bg2); }
+/* 统计预览和结果表格也屏蔽粒子 */
+.l2-preview { position: relative; z-index: 10000; }
+.l2-base-info { position: relative; z-index: 10000; }
+.result-area { position: relative; z-index: 10000; }
+/* 通用卡片/表格容器屏蔽粒子（邮件、在线文档等） */
+.card { position: relative; z-index: 10000; background: var(--bg2); border-radius: var(--rl); }
 
 /* 粒子控制栏（sidebar footer） */
 .particle-bar {

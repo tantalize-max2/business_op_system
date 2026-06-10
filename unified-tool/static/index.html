@@ -372,6 +372,11 @@
             </select>
           </div>
           <button class="btn btn-ghost btn-xs nz-fmt-btn" id="nzPercentBtn" title="百分比格式（值×100+%）">%</button>
+          <span class="nz-bar-sep"></span>
+          <label class="nz-row-h-ctrl" title="调整当前行高"><span>行高</span><input type="number" id="nzRowHeightInput" min="18" max="120" value="28" step="2"></label>
+          <button class="btn btn-ghost btn-xs" id="nzInsertRowAboveBtn" title="在当前行上方插入空行">↑插入行</button>
+          <button class="btn btn-ghost btn-xs" id="nzInsertRowBelowBtn" title="在当前行下方插入空行">↓插入行</button>
+          <button class="btn btn-ghost btn-xs" id="nzDeleteRowBtn" title="删除当前行">✕删行</button>
           <button class="btn btn-ghost btn-xs" id="nzQuickInsertBtn">快速插入</button>
         </div>
         <!-- 范围选取提示条 -->
@@ -470,6 +475,7 @@
       <button class="btn btn-ghost btn-sm" id="pptSaveBtn">保存模板</button>
       <button class="btn btn-ghost btn-sm" id="pptDeleteBtn">删除</button>
       <button class="btn btn-ghost btn-sm" id="pptDownloadTplBtn" style="display:none">下载模板</button>
+      <button class="btn btn-outline btn-sm" id="pptPreviewBtn">校准数据</button>
       <div class="tb-spacer"></div>
       <button class="btn btn-warn btn-sm" id="pptGenerateBtn">生成PPT</button>
     </div>
@@ -512,6 +518,9 @@
           </div>
         </div>
       </div>
+
+      <!-- 数据校准预览 -->
+      <div id="pptPreviewArea" style="grid-column:1/-1;display:none"></div>
 
       <!-- 生成结果 -->
       <div id="pptResultArea" style="grid-column:1/-1;display:none"></div>

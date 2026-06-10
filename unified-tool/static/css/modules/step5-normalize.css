@@ -156,6 +156,17 @@
 }
 .nz-decimal-ctrl select:focus { border-color:var(--ac); }
 #nzPercentBtn { font-weight:700 !important; font-size:13px !important; }
+.nz-bar-sep { width:1px; height:18px; background:var(--bd); margin:0 4px; flex-shrink:0; }
+.nz-row-h-ctrl {
+  display:flex; align-items:center; gap:3px;
+  font:11px var(--mf); color:var(--t2);
+}
+.nz-row-h-ctrl input {
+  width:48px; padding:2px 4px; border:1px solid var(--bd); border-radius:5px;
+  background:var(--bg2); color:var(--t1); font:11px var(--mf); outline:none;
+  text-align:center;
+}
+.nz-row-h-ctrl input:focus { border-color:var(--ac); }
 #nzPercentBtn.active {
   background:var(--ac) !important; color:#fff !important;
 }

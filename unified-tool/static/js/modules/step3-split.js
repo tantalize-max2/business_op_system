@@ -290,14 +290,17 @@ function getWorkingMapping() {
 
 // 控制分局列表/拆分组/添加按钮的显示/隐藏
 // 分局人员配置头部和拆分列选择器始终可见
-// 两层控制：
+// 三层控制：
 //   - splitMappingReady（应用模板/加载配置）→ 显示分局列表、拆分组
+//   - 有分局数据（手动添加等）→ 也显示分局列表、拆分组
 //   - 有文件上传 → 显示添加按钮（无需模板）
 function updSplitLayoutVisibility() {
   const hasMapping = S.splitMappingReady;
+  const map = getWorkingMapping();
+  const hasBureaus = map && Object.keys(map).length > 0;
   const hasFile = S.files.length > 0;
-  const showBureau = hasMapping;
-  const showAdd = hasMapping || hasFile;
+  const showBureau = hasMapping || hasBureaus;
+  const showAdd = hasMapping || hasBureaus || hasFile;
   document.getElementById('splitEmptyHint').style.display = showAdd ? 'none' : '';
   document.getElementById('bureauList').style.display = showBureau ? '' : 'none';
   document.getElementById('splitGroupsSection').style.display = showBureau ? '' : 'none';
@@ -444,11 +447,10 @@ document.getElementById('addBureauBtn').addEventListener('click', async () => {
   map[name] = [];
   document.getElementById('newBureauName').value = '';
   await saveMapping();
-  // 如果分局列表之前隐藏（未激活模板），现在有数据后显示它
-  if (!S.splitMappingReady) {
-    document.getElementById('bureauList').style.display = '';
-  }
+  // 更新布局可见性和拆分组管理
+  updSplitLayoutVisibility();
   renderMapping();
+  renderSplitGroups();
   document.querySelectorAll('.bureau-card').forEach(c => c.classList.add('open'));
   ntf(`已添加分局「${name}」`);
 });
