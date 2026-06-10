@@ -109,8 +109,14 @@ def main():
         x_pos = ratio + max_rate * 0.015
         # Rate + count
         rate_text = f'{ratio:.2f}%'
-        if count is not None and count > 0:
-            rate_text += f'  ({int(count)}个)'
+        count = row.get('count', 0)
+        if count is None:
+            count = 0
+        try:
+            count = int(count)
+        except (ValueError, TypeError):
+            count = 0
+        rate_text += f'  ({count}个)'
         ax.text(x_pos, i + 0.05, rate_text, va='center', ha='left', fontsize=10, fontweight='bold', color='#333333')
         # Amount/target
         amt_text = f'{amount:.1f}/{target:.0f}万'

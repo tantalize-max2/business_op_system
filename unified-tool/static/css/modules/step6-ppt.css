@@ -290,6 +290,33 @@
   border-radius: 12px;
   font-size: 12px;
 }
+.ppt-preview-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bd);
+}
+.ppt-preview-topbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ac);
+}
+.ppt-preview-close {
+  background: var(--bg3);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-size: 12px;
+  color: var(--t2);
+  cursor: pointer;
+  transition: all .15s;
+}
+.ppt-preview-close:hover {
+  background: var(--bd);
+  color: var(--t1);
+}
 .ppt-preview-panel h3 {
   margin: 0 0 12px;
   font-size: 14px;

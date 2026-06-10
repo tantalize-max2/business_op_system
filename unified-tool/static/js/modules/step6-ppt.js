@@ -188,40 +188,12 @@ async function doGenerate() {
     const info = {};
     res.headers.forEach((v, k) => { info[k] = v; });
 
-    // 图表调试信息（响应头值是 URL 编码的中文）
-    const indRange = decodeURIComponent(info['x-ind-range'] || '');
-    const indPreview = decodeURIComponent(info['x-ind-preview'] || '');
-    const indChartOk = decodeURIComponent(info['x-ind-chart-ok'] || '') === 'True';
-    const commRange = decodeURIComponent(info['x-comm-range'] || '');
-    const commPreview = decodeURIComponent(info['x-comm-preview'] || '');
-    const commChartOk = decodeURIComponent(info['x-comm-chart-ok'] || '') === 'True';
-
-    let debugHtml = '';
-    if (indRange || commRange) {
-      debugHtml = `<div class="ppt-chart-debug">
-        <div class="ppt-chart-debug-title">图表数据校验</div>
-        <div class="ppt-chart-debug-row">
-          <span class="ppt-chart-debug-label">行业图表:</span>
-          <span class="ppt-chart-debug-status ${indChartOk ? 'ok' : 'fail'}">${indChartOk ? '生成成功' : '生成失败'}</span>
-          <span class="ppt-chart-debug-range">(${indRange})</span>
-        </div>
-        <div class="ppt-chart-debug-data">${esc(indPreview)}</div>
-        <div class="ppt-chart-debug-row">
-          <span class="ppt-chart-debug-label">商业图表:</span>
-          <span class="ppt-chart-debug-status ${commChartOk ? 'ok' : 'fail'}">${commChartOk ? '生成成功' : '生成失败'}</span>
-          <span class="ppt-chart-debug-range">(${commRange})</span>
-        </div>
-        <div class="ppt-chart-debug-data">${esc(commPreview)}</div>
-      </div>`;
-    }
-
     if (resultArea) {
       resultArea.innerHTML = `
         <div class="ppt-result ppt-result-success">
           <div class="ppt-result-icon"><svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-download"/></svg></div>
           <div class="ppt-result-title" style="color:var(--ok)">PPT通报生成成功</div>
           <div class="ppt-result-desc">文件已就绪，点击下方按钮下载</div>
-          ${debugHtml}
           <div style="margin-top:18px">
             <button class="btn btn-primary" id="pptDownloadBtn2" onclick="doDownload()" style="padding:10px 36px;">
               <svg class="icon" aria-hidden="true"><use xlink:href="#icon-download"/></svg>
@@ -457,6 +429,7 @@ async function doPreviewData() {
 
     // 构建预览表格
     let html = '<div class="ppt-preview-panel">';
+    html += '<div class="ppt-preview-topbar"><span class="ppt-preview-topbar-title">数据校准预览</span><button class="ppt-preview-close" onclick="document.getElementById(\'pptPreviewArea\').style.display=\'none\'">收起</button></div>';
 
     // ===== 数据映射编辑区 =====
     html += '<div class="ppt-dm-section">';

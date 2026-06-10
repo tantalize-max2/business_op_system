@@ -452,6 +452,13 @@ def _generate_biz_chart(eff_data, output_path, title_prefix, date_str, year='202
         name = str(item[0] or '').strip()
         amt = float(item[1] or 0)
         tgt = float(item[2] or 0)
+        # 第4列作为数量（如果有的话）
+        cnt = 0
+        if len(item) > 3 and item[3] is not None:
+            try:
+                cnt = int(float(item[3]))
+            except (ValueError, TypeError):
+                cnt = 0
         if not name or tgt <= 0:
             continue
         # 跳过合计行
@@ -461,7 +468,7 @@ def _generate_biz_chart(eff_data, output_path, title_prefix, date_str, year='202
             'name': name,
             'amount': round(amt, 2),
             'target': round(tgt, 2),
-            'count': 0
+            'count': cnt
         })
     
     if not chart_items:
