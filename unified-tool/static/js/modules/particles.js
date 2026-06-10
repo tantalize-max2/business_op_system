@@ -38,7 +38,7 @@
   function buildConfig(color) {
     return {
       particles: {
-        number: { value: 80, density: { enable: true, value_area: 900 } },
+        number: { value: 50, density: { enable: true, value_area: 900 } },
         color: { value: color },
         shape: { type: 'circle', stroke: { width: 0, color: '#000000' } },
         opacity: {
@@ -85,17 +85,35 @@
   }
 
   // 初始化粒子
+  var MAX_PARTICLES = 50;
+
   function init() {
     var container = document.getElementById('particles-js');
     if (!container) return;
     if (typeof particlesJS === 'undefined') return;
     var color = COLOR_PRESETS[currentColorIdx].color;
     particlesJS('particles-js', buildConfig(color));
+    // 限制粒子总数不超过 MAX_PARTICLES
+    capParticles();
     buildColorPicker();
     bindControls();
     applyOpacity();
     updateToggleUI();
     console.log('[particles] initialized with color:', color);
+  }
+
+  // 封装 push 方法防止超过上限
+  function capParticles() {
+    if (window.pJSDom && window.pJSDom.length) {
+      var pjs = window.pJSDom[0].pJS;
+      if (pjs && pjs.fn && pjs.fn.modes && pjs.fn.modes.push) {
+        var origPush = pjs.fn.modes.push;
+        pjs.fn.modes.push = function () {
+          if (pjs.particles.array.length >= MAX_PARTICLES) return;
+          origPush.apply(pjs, arguments);
+        };
+      }
+    }
   }
 
   // 切换颜色：销毁旧实例，用新颜色重建
@@ -108,6 +126,7 @@
     }
     var color = COLOR_PRESETS[idx].color;
     particlesJS('particles-js', buildConfig(color));
+    capParticles();
     var dots = document.querySelectorAll('.pc-dot');
     dots.forEach(function (d) { d.classList.remove('active'); });
     var target = document.querySelector('.pc-dot[data-idx="' + idx + '"]');

@@ -134,11 +134,11 @@ body {
 }
 /* 开启壁纸时，内容区域半透明让壁纸透出 */
 body.has-wallpaper .sidebar {
-  background: rgba(var(--bg0-rgb, 255,255,255), .82) !important;
+  background: rgba(var(--bg0-rgb, 255,255,255), var(--wp-overlay-alpha, .82)) !important;
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
 body.has-wallpaper .main-content {
-  background: rgba(var(--bg0-rgb, 255,255,255), .75) !important;
+  background: rgba(var(--bg0-rgb, 255,255,255), var(--wp-overlay-alpha, .75)) !important;
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 
@@ -155,6 +155,20 @@ body.has-wallpaper .main-content {
   animation: wp-spin .8s linear infinite;
 }
 @keyframes wp-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* 壁纸透明度滑块 */
+.wp-opacity {
+  width: 60px; height: 4px; -webkit-appearance: none; appearance: none;
+  background: var(--bd); border-radius: 2px; outline: none;
+  cursor: pointer; flex-shrink: 0; margin-left: 4px;
+}
+.wp-opacity::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--ac); cursor: pointer;
+}
+.wp-opacity::-moz-range-thumb {
+  width: 12px; height: 12px; border: none;
+  border-radius: 50%; background: var(--ac); cursor: pointer;
+}
 ::-webkit-scrollbar { width:6px; height:6px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:var(--bd); border-radius:3px; }

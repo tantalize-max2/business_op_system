@@ -14,6 +14,8 @@ const NZ = {
   selectedRange: null,    // {r1,c1,r2,c2} 拖选范围（2+格时有效）
   cellEdits: {},          // 'sheetIdx!row!col' -> newValue 编辑缓存
   cellFormats: {},        // 'sheetIdx!row!col' -> {bold,italic,align,fontSize,fontName} 格式缓存
+  _stickyDecimal: 2,    // 用户上次设置的小数位（粘性，切换单元格不重置）
+  _stickyPercent: false, // 用户上次设置的百分比状态（粘性）
   previewMode: false,     // 是否为预览模式（显示计算值）
 };
 
@@ -1361,12 +1363,11 @@ function nzUpdateEditBar() {
   }
   input.value = val;
   
-  // 同步小数位和百分比状态
-  const fmt = NZ.cellFormats[editKey] || {};
+  // 小数位和百分比使用粘性状态，切换单元格不重置
   const decSel = document.getElementById('nzDecimalSel');
   const pctBtn = document.getElementById('nzPercentBtn');
-  if (decSel) decSel.value = fmt.decimal != null ? fmt.decimal : 2;
-  if (pctBtn) pctBtn.classList.toggle('active', !!fmt.percent);
+  if (decSel) decSel.value = NZ._stickyDecimal;
+  if (pctBtn) pctBtn.classList.toggle('active', NZ._stickyPercent);
 }
 
 // ---- 单元格编辑 ----
@@ -1836,17 +1837,56 @@ document.getElementById('nzAlignRightBtn').addEventListener('click', () => nzSet
 document.getElementById('nzFontName').addEventListener('change', e => nzSetFmt('fontName', e.target.value || ''));
 document.getElementById('nzFontSize').addEventListener('change', e => nzSetFmt('fontSize', e.target.value ? parseInt(e.target.value) : ''));
 
-// 小数位数
+// 小数位数（单格或范围批量设置，粘性状态）
 document.getElementById('nzDecimalSel').addEventListener('change', e => {
-  nzSetFmt('decimal', parseInt(e.target.value));
+  const decimalVal = parseInt(e.target.value);
+  NZ._stickyDecimal = decimalVal;
+  if (NZ.selectedRange) {
+    // 批量设置选中范围内所有格的小数位
+    const { r1, c1, r2, c2 } = NZ.selectedRange;
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const editKey = `${NZ.activeSheet}!${r}!${c}`;
+        if (!NZ.cellFormats[editKey]) NZ.cellFormats[editKey] = {};
+        NZ.cellFormats[editKey].decimal = decimalVal;
+      }
+    }
+    // 同步百分比状态也批量应用
+    const pctBtn = document.getElementById('nzPercentBtn');
+    if (pctBtn && pctBtn.classList.contains('active')) {
+      for (let r = r1; r <= r2; r++) {
+        for (let c = c1; c <= c2; c++) {
+          NZ.cellFormats[`${NZ.activeSheet}!${r}!${c}`].percent = true;
+        }
+      }
+    }
+  } else {
+    nzSetFmt('decimal', decimalVal);
+  }
   // 更新预览
   if (NZ.previewMode) nzRenderTable();
 });
-// 百分比
+// 百分比（单格或范围批量设置，粘性状态）
 document.getElementById('nzPercentBtn').addEventListener('click', () => {
-  const fmt = nzGetCurrentFmt();
-  const newVal = !fmt.percent;
-  nzSetFmt('percent', newVal);
+  const newVal = !document.getElementById('nzPercentBtn').classList.contains('active');
+  NZ._stickyPercent = newVal;
+  if (NZ.selectedRange) {
+    // 批量设置选中范围内所有格的百分比格式
+    const { r1, c1, r2, c2 } = NZ.selectedRange;
+    for (let r = r1; r <= r2; r++) {
+      for (let c = c1; c <= c2; c++) {
+        const editKey = `${NZ.activeSheet}!${r}!${c}`;
+        if (!NZ.cellFormats[editKey]) NZ.cellFormats[editKey] = {};
+        if (newVal) {
+          NZ.cellFormats[editKey].percent = true;
+        } else {
+          delete NZ.cellFormats[editKey].percent;
+        }
+      }
+    }
+  } else {
+    nzSetFmt('percent', newVal);
+  }
   document.getElementById('nzPercentBtn').classList.toggle('active', newVal);
   // 更新预览
   if (NZ.previewMode) nzRenderTable();
