@@ -627,6 +627,8 @@ async function doSplit() {
     if (!res.ok) { ntf(data.error, 'error'); overlay.style.display = 'none'; return; }
 
     S.splitResult = data;
+    // 将拆分结果存到文件对象（多文件各自独立）
+    f._splitResult = data;
     // 计算拆分后匹配的行索引集合（用于L2统计时排除未匹配行）
     const splitColName = getSplitCol();
     const workingMap = getWorkingMapping();
@@ -641,6 +643,9 @@ async function doSplit() {
           }
         }
       });
+      f._splitMatchedRows = matchedSet;
+      f._splitColName = splitColName;
+      // 同时更新全局状态（兼容单文件场景）
       S.splitMatchedRows = matchedSet;
       S.splitFileId = f.id;
       // 持久化拆分状态（用于刷新后恢复）

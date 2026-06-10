@@ -53,6 +53,10 @@ function restoreSplitState(fileObj) {
     }
   });
   if (matchedSet.size > 0) {
+    // 存到文件对象（多文件独立）
+    fileObj._splitMatchedRows = matchedSet;
+    fileObj._splitColName = S.splitColName;
+    // 同步全局状态（设为最后恢复的文件）
     S.splitMatchedRows = matchedSet;
     S.splitFileId = fileObj.id;
     ntf('已自动恢复拆分过滤状态');

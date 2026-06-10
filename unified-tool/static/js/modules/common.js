@@ -249,12 +249,20 @@ function capitalize(s) {
 }
 
 // 辅助：将过滤后数据按splitMatchedRows（索引集合）排除未匹配行
+// 优先从文件对象读取（多文件各自独立），兼容旧的全局 S 状态
 function filterBySplitMatch(l1Data, file) {
-  if (!S.splitMatchedRows || S.splitFileId !== file.id || S.splitMatchedRows.size === 0) return l1Data;
+  const matchedRows = file._splitMatchedRows || (S.splitMatchedRows && S.splitFileId === file.id ? S.splitMatchedRows : null);
+  if (!matchedRows || matchedRows.size === 0) return l1Data;
   return l1Data.filter(r => {
     const idx = file.raw.indexOf(r);
-    return idx >= 0 && S.splitMatchedRows.has(idx);
+    return idx >= 0 && matchedRows.has(idx);
   });
+}
+
+// 辅助：获取指定文件的拆分匹配数据（优先文件对象，兼容全局状态）
+function getSplitMatchForFile(file) {
+  if (!file) return null;
+  return file._splitMatchedRows || (S.splitMatchedRows && S.splitFileId === file.id ? S.splitMatchedRows : null);
 }
 
 // 辅助：完全清除拆分状态（内存 + 持久化记录）
@@ -273,7 +281,8 @@ function updSbStats() {
   const fd = getFilteredData();
   document.getElementById('sAll').textContent = f.raw.length;
   // 如果在二级统计页面且有拆分数据，显示拆分后的数量
-  if (S.currentStep === 'filter2' && S.splitMatchedRows && S.splitFileId === S.activeFileId && S.splitMatchedRows.size > 0) {
+  const splitRows = getSplitMatchForFile(f);
+  if (S.currentStep === 'filter2' && splitRows && splitRows.size > 0) {
     document.getElementById('sFil').textContent = filterBySplitMatch(fd, f).length;
   } else {
     document.getElementById('sFil').textContent = fd.length;

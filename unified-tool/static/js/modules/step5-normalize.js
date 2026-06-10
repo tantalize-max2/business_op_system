@@ -384,7 +384,8 @@ function nzComputeStats() {
     const fileIdx = fi + 1;
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
-    if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
+    const splitRows = getSplitMatchForFile(file);
+    if (splitRows && splitRows.size > 0) {
       l1Data = filterBySplitMatch(l1Data, file);
     }
     const ctxCache = {};

@@ -5,7 +5,7 @@ function updateL2DataInfo(totalRows, filteredRows) {
   if (!el) return;
   if (!totalRows) { el.style.display = 'none'; return; }
   el.style.display = 'inline-flex';
-  const splitNote = (S.splitMatchedRows && S.splitFileId) ? ' (已拆分过滤)' : '';
+  const splitNote = getSplitMatchForFile(getActiveFile()) ? ' (已拆分过滤)' : '';
   el.innerHTML = `<span class="ldi-label">当前数据</span><span class="ldi-val">${filteredRows}</span><span class="ldi-unit">条</span><span class="ldi-total">/ 共${totalRows}条${splitNote}</span>`;
 }
 
@@ -912,7 +912,8 @@ function calcAllStats() {
     if (!file.raw.length) return;
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
-    if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
+    const splitRows = getSplitMatchForFile(file);
+    if (splitRows && splitRows.size > 0) {
       l1Data = filterBySplitMatch(l1Data, file);
     }
     const ctxCache = {};
@@ -1203,7 +1204,7 @@ function calcAllStats() {
     const secColor = SEC_COLORS[fi % SEC_COLORS.length];
     let scOpts = '<option value="">-- 无 --</option>';
     file.hdr.forEach(c => { scOpts += `<option value="${esc(c)}"${c === sumCol ? ' selected' : ''}>${esc(c)}</option>`; });
-    html += `<div class="rv-section"><div class="rv-section-hdr" data-toggle-rv><span class="sec-dot" style="background:${secColor}"></span>${esc(file.name)}<span class="sec-info">${file.raw.length}行 / ${file.hdr.length}列 / ${file.grps.filter(g => g.level !== 1).length}分组</span><span class="rv-toggle-arrow">&#9660;</span><div class="rv-sum-sel"><label>求和列</label><select data-fid="${file.id}" class="rv-sc">${scOpts}</select></div></div><div class="rv-section-body">`;
+    html += `<div class="rv-section"><div class="rv-section-hdr" data-toggle-rv><span class="sec-dot" style="background:${secColor}"></span>${esc(file.name)}<span class="sec-info">${l1Data.length}行 / ${file.hdr.length}列 / ${file.grps.filter(g => g.level !== 1).length}分组</span><span class="rv-toggle-arrow">&#9660;</span><div class="rv-sum-sel"><label>求和列</label><select data-fid="${file.id}" class="rv-sc">${scOpts}</select></div></div><div class="rv-section-body">`;
 
     // 表格头部
     function tableHead() {
@@ -1343,8 +1344,9 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   S.files.forEach(file => {
     const sumCol = file.sumCol || '';
     let l1Data = getFilteredData_forFile(file);
-    // 如果已执行拆分且该文件是拆分文件，排除未匹配行
-    if (S.splitMatchedRows && S.splitFileId === file.id && S.splitMatchedRows.size > 0) {
+    // 如果已执行拆分，排除未匹配行
+    const splitRows = getSplitMatchForFile(file);
+    if (splitRows && splitRows.size > 0) {
       l1Data = filterBySplitMatch(l1Data, file);
     }
     const ctxCache = {};
