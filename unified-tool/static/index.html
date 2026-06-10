@@ -475,7 +475,6 @@
       <button class="btn btn-ghost btn-sm" id="pptSaveBtn">保存模板</button>
       <button class="btn btn-ghost btn-sm" id="pptDeleteBtn">删除</button>
       <button class="btn btn-ghost btn-sm" id="pptDownloadTplBtn" style="display:none">下载模板</button>
-      <button class="btn btn-outline btn-sm" id="pptPreviewBtn">校准数据</button>
       <div class="tb-spacer"></div>
       <button class="btn btn-warn btn-sm" id="pptGenerateBtn">生成PPT</button>
     </div>
@@ -496,31 +495,15 @@
 
       <!-- 数据来源 -->
       <div>
-        <div class="ppt-col-title">数据来源</div>
-        <div class="ppt-source-tabs">
-          <div class="ppt-source-tab active" data-source="upload">手动上传</div>
-          <div class="ppt-source-tab" data-source="nz">从标准化导入</div>
+        <div class="ppt-col-title">数据文件</div>
+        <div class="ppt-upload-zone" id="pptDataZone">
+          <div class="ppt-upload-icon"><svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-file-excel"/></svg></div>
+          <div class="ppt-upload-text">点击选择或拖拽 .xlsx 文件</div>
+          <div class="ppt-upload-hint">包含通报数据的Excel文件</div>
+          <div class="ppt-upload-filename" id="pptDataFilename"></div>
         </div>
-        <!-- 手动上传区 -->
-        <div id="pptDataUploadWrap">
-          <div class="ppt-upload-zone" id="pptDataZone">
-            <div class="ppt-upload-icon"><svg class="icon icon-xl" aria-hidden="true"><use xlink:href="#icon-file-excel"/></svg></div>
-            <div class="ppt-upload-text">点击选择或拖拽 .xlsx 文件</div>
-            <div class="ppt-upload-hint">包含通报数据的Excel文件</div>
-            <div class="ppt-upload-filename" id="pptDataFilename"></div>
-          </div>
-          <input type="file" id="pptDataInput" accept=".xlsx,.xls" style="display:none">
-        </div>
-        <!-- 标准化导入区 -->
-        <div id="pptNzImport" style="display:none">
-          <div class="ppt-nz-import" id="pptNzInfo">
-            <div class="ppt-nz-empty">检查中...</div>
-          </div>
-        </div>
+        <input type="file" id="pptDataInput" accept=".xlsx,.xls" style="display:none">
       </div>
-
-      <!-- 数据校准预览 -->
-      <div id="pptPreviewArea" style="grid-column:1/-1;display:none"></div>
 
       <!-- 生成结果 -->
       <div id="pptResultArea" style="grid-column:1/-1;display:none"></div>

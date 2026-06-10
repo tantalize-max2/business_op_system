@@ -150,10 +150,10 @@ def fmt_comma(v):
 
 
 def fmt_ca(s):
-    """格式化数量(金额)字符串：如果数量和金额都为0，只输出'0'"""
+    """格式化数量(金额)字符串：如果数量和金额都为0，只输出'0'；去除内部多余空格"""
     if s is None:
         return ''
-    s_str = str(s).strip()
+    s_str = str(s).strip().replace(' ', '')
     if not s_str:
         return ''
     c, a = parse_ca(s_str)
@@ -194,7 +194,7 @@ def get_bottom3(data):
 def parse_ca(s):
     if s is None or str(s).strip() in ('0', ''):
         return (0, 0.0)
-    s = str(s).strip().replace('，', ',')
+    s = str(s).strip().replace('，', ',').replace(' ', '')
     m = re.match(r'^(\d+)[\(（]([\d,.]+)[\)）]$', s)
     if m:
         return (int(m.group(1)), float(m.group(2).replace(',', '')))
@@ -364,31 +364,31 @@ def set_shape_multiline(shape, lines, font_size=None, font_color_line1=None, fon
             run.text = ''
 
 
-def _apply_cell_font(run, font_color=None):
-    """统一设置单元格run字体：微软雅黑 加粗 10号 黑色，可选颜色覆盖"""
+def _apply_cell_font(run, font_color=None, font_size=None):
+    """统一设置单元格run字体：微软雅黑 加粗，可选颜色和字号覆盖"""
     run.font.name = '微软雅黑'
-    run.font.size = Pt(10)
+    run.font.size = Pt(font_size or 10)
     run.font.bold = True
     run.font.color.rgb = RGBColor(*font_color) if font_color else RGBColor(0x00, 0x00, 0x00)
 
 
-def set_cell_text(cell, text, font_color=None):
+def set_cell_text(cell, text, font_color=None, font_size=None):
     p = cell.text_frame.paragraphs[0] if cell.text_frame.paragraphs else None
     if p:
         if p.runs:
             run = p.runs[0]
             run.text = str(text)
-            _apply_cell_font(run, font_color)
+            _apply_cell_font(run, font_color, font_size)
             for run in p.runs[1:]:
                 run.text = ''
         else:
             run = p.add_run()
             run.text = str(text)
-            _apply_cell_font(run, font_color)
+            _apply_cell_font(run, font_color, font_size)
     else:
         cell.text = str(text)
         if cell.text_frame.paragraphs and cell.text_frame.paragraphs[0].runs:
-            _apply_cell_font(cell.text_frame.paragraphs[0].runs[0], font_color)
+            _apply_cell_font(cell.text_frame.paragraphs[0].runs[0], font_color, font_size)
 
 
 def replace_picture(slide, shape_name, img_path):
@@ -514,6 +514,7 @@ def _generate_biz_chart(eff_data, output_path, title_prefix, date_str, year='202
 DEFAULT_DATA_MAP = {
     'date_cell': 'B30',          # 截止日期
     'period_cell': 'B31',        # 周期（如 1月1日—5月22日）
+    'crm_date_cell': 'C30',      # 商机创建时间（如 2026.2.4-2026.6.25）
     'B27_cell': 'B27',           # 行业储备说明
     'B28_cell': 'B28',           # 商业储备说明
     'J27_cell': 'J27',           # 行业交付说明1
@@ -575,6 +576,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
     # 解析单元格引用
     date_col, date_row = _parse_cell_ref(dm['date_cell'])
     period_col, period_row = _parse_cell_ref(dm['period_cell'])
+    crm_col, crm_row = _parse_cell_ref(dm['crm_date_cell'])
     b27_col, b27_row = _parse_cell_ref(dm['B27_cell'])
     b28_col, b28_row = _parse_cell_ref(dm['B28_cell'])
     j27_col, j27_row = _parse_cell_ref(dm['J27_cell'])
@@ -614,7 +616,13 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
         YEAR_FULL = _year_match.group(1) if _year_match else '2026'
         YEAR_SHORT = YEAR_FULL[2:]  # "26"
 
-        CRM_DATE_FULL = f'{YEAR_FULL}.{PERIOD_CRM}'.replace('-', f'-{YEAR_FULL}.')
+        # 商机创建时间：优先从C30读取，否则从周期派生
+        CRM_DATE_C30 = str(cell_val(ws, crm_col, crm_row)).strip()
+        if CRM_DATE_C30 and CRM_DATE_C30 != 'None':
+            CRM_DATE_FULL = CRM_DATE_C30
+        else:
+            PERIOD_CRM = period_to_crm(PERIOD_STR)
+            CRM_DATE_FULL = f'{YEAR_FULL}.{PERIOD_CRM}'.replace('-', f'-{YEAR_FULL}.')
 
         B27_TEXT = str(cell_val(ws, b27_col, b27_row)).strip().replace('\n', '')
         B28_TEXT = str(cell_val(ws, b28_col, b28_row)).strip().replace('\n', '')
@@ -737,7 +745,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
     # ====== Slide 1: 日期 ======
     for shape in prs.slides[0].shapes:
         if shape.name == 'date':
-            set_shape_single_text(shape, DATE_STR, **TITLE_FONT)
+            set_shape_single_text(shape, DATE_STR, font_name='微软雅黑', font_size=18, font_bold=True)
 
     # ====== Slide 3: 行业储备 ======
     slide3 = prs.slides[2]
@@ -916,12 +924,14 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
                         color = ind_count_colors.get(i)
                     elif c == 3:
                         color = ind_amount_colors.get(i)
+                    # 黑色11号，彩色14号
+                    fs = 14 if color else 11
                     if c == 3:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v), font_color=color)
+                        set_cell_text(tbl.cell(r, c), fmt_num(v), font_color=color, font_size=fs)
                     elif c == 2:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0), font_color=color)
+                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0), font_color=color, font_size=fs)
                     else:
-                        set_cell_text(tbl.cell(r, c), str(v) if v else '', font_color=color)
+                        set_cell_text(tbl.cell(r, c), str(v) if v else '', font_color=color, font_size=fs)
         elif shape.name == '文本框 3':
             set_shape_single_text(shape, AI27_TEXT)
 
@@ -944,12 +954,14 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
                         color = comm_count_colors.get(i)
                     elif c == 3:
                         color = comm_amount_colors.get(i)
+                    # 黑色11号，彩色14号
+                    fs = 14 if color else 11
                     if c == 3:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v), font_color=color)
+                        set_cell_text(tbl.cell(r, c), fmt_num(v), font_color=color, font_size=fs)
                     elif c == 2:
-                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0), font_color=color)
+                        set_cell_text(tbl.cell(r, c), fmt_num(v, 0), font_color=color, font_size=fs)
                     else:
-                        set_cell_text(tbl.cell(r, c), str(v) if v else '', font_color=color)
+                        set_cell_text(tbl.cell(r, c), str(v) if v else '', font_color=color, font_size=fs)
         elif shape.name == '文本框 5':
             set_shape_single_text(shape, AI28_TEXT)
 

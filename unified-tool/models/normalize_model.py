@@ -213,7 +213,7 @@ def _nz_resolve_metric(entry, col, metric, sum_col, ac_col, ac_val, fd):
         c = entry.get('count', 0)
         if s is not None and c > 0:
             try:
-                return {'ok': True, 'value': float(s) / c}
+                return {'ok': True, 'value': round(float(s) / c, 2)}
             except:
                 pass
         return {'ok': True, 'value': 0}
@@ -492,6 +492,9 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
                     try:
                         num_result = eval(safe_expr)
                         if isinstance(num_result, (int, float)) and str(num_result) != 'nan':
+                            # 非整数默认保留2位小数
+                            if isinstance(num_result, float) and not num_result == int(num_result):
+                                num_result = round(num_result, 2)
                             cell.value = num_result
                             fill_count += 1
                         else:
@@ -505,6 +508,8 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
                     result = nz_resolve_formula_str(cell_str, stats_data)
                     if result['ok']:
                         val = result['value']
+                        if isinstance(val, float) and not val == int(val):
+                            val = round(val, 2)
                         cell.value = val
                         fill_count += 1
                     else:
