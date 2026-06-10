@@ -132,7 +132,7 @@ body {
   opacity: 0;
   transition: opacity .6s ease;
 }
-/* 开启壁纸时，内容区域半透明让壁纸透出 */
+/* 开启壁纸时，内容区域半透明让壁纸透出（最低0.7保证文字清晰） */
 body.has-wallpaper .sidebar {
   background: rgba(var(--bg0-rgb, 255,255,255), var(--wp-overlay-alpha, .82)) !important;
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);

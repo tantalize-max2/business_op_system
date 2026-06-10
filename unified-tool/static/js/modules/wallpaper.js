@@ -50,7 +50,7 @@
   var currentWallpaper = null;
   var wallpaperOn = false;
   var loading = false;
-  var wallpaperOpacity = 20; // 壁纸透明度 0(不透明)-100(全透明)，默认20对应原始效果
+  var wallpaperOpacity = 80; // 壁纸透明度 0(不显示)-100(最明显)，默认80
 
   // 恢复保存的壁纸
   try {
@@ -59,16 +59,20 @@
     if (savedWp) currentWallpaper = savedWp;
     if (savedOn === 'true') wallpaperOn = true;
     var savedOpacity = localStorage.getItem('ba-wallpaper-opacity');
-    if (savedOpacity != null) wallpaperOpacity = Math.max(0, Math.min(100, parseInt(savedOpacity) || 20));
+    if (savedOpacity != null) wallpaperOpacity = Math.max(0, Math.min(100, parseInt(savedOpacity) || 80));
   } catch (e) {}
 
-  // ====== 更新内容遮罩透明度 ======
-  function updateOverlayAlpha() {
-    // slider 0→壁纸不透明(全遮), 100→壁纸全透明(全显)
-    // 遮罩 alpha：0→1.0(全遮), 100→0.1(全显)
-    var alpha = 1.0 - wallpaperOpacity * 0.009;
-    alpha = Math.min(1, Math.max(0.1, alpha));
-    document.documentElement.style.setProperty('--wp-overlay-alpha', alpha);
+  // ====== 更新壁纸可见度（壁纸bg opacity + 内容遮罩联动） ======
+  function updateWallpaperVisibility() {
+    var bg = document.getElementById('wallpaperBg');
+    // 壁纸bg opacity: 滑块值直接映射 (0→0, 100→1)
+    var bgOpacity = wallpaperOpacity / 100;
+    if (bg) bg.style.opacity = String(bgOpacity);
+    // 内容遮罩 alpha: 从1.0(不透)到0.7(最低保文字)，跟随壁纸减弱
+    // value=0→alpha=1.0(全遮), value=100→alpha=0.7(壁纸透出但文字清晰)
+    var overlayAlpha = 1.0 - wallpaperOpacity * 0.003;
+    overlayAlpha = Math.min(1, Math.max(0.7, overlayAlpha));
+    document.documentElement.style.setProperty('--wp-overlay-alpha', overlayAlpha);
   }
 
   // ====== 应用壁纸 ======
@@ -82,8 +86,7 @@
     var bg = document.getElementById('wallpaperBg');
     if (!bg) return;
     bg.style.backgroundImage = 'url(' + url + ')';
-    bg.style.opacity = '1';
-    updateOverlayAlpha();
+    updateWallpaperVisibility();
     document.body.classList.add('has-wallpaper');
     updateToggleUI();
   }
@@ -205,21 +208,20 @@
       var bg = document.getElementById('wallpaperBg');
       if (bg) {
         bg.style.backgroundImage = 'url(' + currentWallpaper + ')';
-        bg.style.opacity = '1';
         document.body.classList.add('has-wallpaper');
       }
-      updateOverlayAlpha();
+      updateWallpaperVisibility();
     }
     updateToggleUI();
 
-    // 透明度滑块（控制内容遮罩，值越大壁纸越不明显）
+    // 透明度滑块（值越大壁纸越明显）
     var opacitySlider = document.getElementById('wpOpacity');
     if (opacitySlider) {
       opacitySlider.value = wallpaperOpacity;
       opacitySlider.addEventListener('input', function () {
         wallpaperOpacity = parseInt(this.value);
         try { localStorage.setItem('ba-wallpaper-opacity', wallpaperOpacity); } catch (e) {}
-        updateOverlayAlpha();
+        updateWallpaperVisibility();
       });
       // 阻止滑块拖动时触发壁纸切换
       opacitySlider.addEventListener('click', function (e) { e.stopPropagation(); });
