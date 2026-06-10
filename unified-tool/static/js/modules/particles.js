@@ -85,7 +85,8 @@
   }
 
   // 初始化粒子
-  var MAX_PARTICLES = 50;
+  // 限制粒子总数不超过 MAX_PARTICLES
+  var MAX_PARTICLES = 100;
 
   function init() {
     var container = document.getElementById('particles-js');
@@ -95,6 +96,7 @@
     particlesJS('particles-js', buildConfig(color));
     // 限制粒子总数不超过 MAX_PARTICLES
     capParticles();
+    startCulling();
     buildColorPicker();
     bindControls();
     applyOpacity();
@@ -116,6 +118,22 @@
     }
   }
 
+  // 周期性淘汰：每2秒检查一次，超过上限则移除最早的粒子
+  var cullTimer = null;
+  function startCulling() {
+    if (cullTimer) clearInterval(cullTimer);
+    cullTimer = setInterval(function () {
+      if (!window.pJSDom || !window.pJSDom.length) return;
+      var pjs = window.pJSDom[0].pJS;
+      if (!pjs || !pjs.particles || !pjs.particles.array) return;
+      var arr = pjs.particles.array;
+      // 超过上限时，从头部移除（最早添加的粒子）
+      while (arr.length > MAX_PARTICLES) {
+        arr.shift();
+      }
+    }, 2000);
+  }
+
   // 切换颜色：销毁旧实例，用新颜色重建
   function switchColor(idx) {
     currentColorIdx = idx;
@@ -127,6 +145,7 @@
     var color = COLOR_PRESETS[idx].color;
     particlesJS('particles-js', buildConfig(color));
     capParticles();
+    startCulling();
     var dots = document.querySelectorAll('.pc-dot');
     dots.forEach(function (d) { d.classList.remove('active'); });
     var target = document.querySelector('.pc-dot[data-idx="' + idx + '"]');

@@ -88,8 +88,9 @@ def nz_fill_template():
     def cleanup():
         try:
             os.unlink(tmp_in)
-            os.unlink(tmp_out)
         except:
             pass
+        # 注意：不删除 tmp_out，供PPT通报模块通过 get_last_nz_output() 读取
+        # 旧文件会在下次标准化输出时被替代（新路径写入 last_nz_output.json）
 
     return response

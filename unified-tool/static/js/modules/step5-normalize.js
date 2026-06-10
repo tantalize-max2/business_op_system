@@ -1023,7 +1023,8 @@ function nzEnterRangePick(funcName) {
   
   // 记住当前输入框内容作为基础
   const input = document.getElementById('nzCellInput');
-  const curVal = input.value.trim();
+  const curVal = input.value;
+  const pos = input.selectionStart != null ? input.selectionStart : curVal.length;
   
   // 更新按钮高亮
   document.getElementById('nzFuncSumBtn')?.classList.toggle('active', funcName === 'SUM');
@@ -1036,22 +1037,21 @@ function nzEnterRangePick(funcName) {
     hint.style.display = '';
   }
   
-  // 设置输入框 — 智能拼接公式
+  // 在光标位置插入函数起始
+  const insertText = '=' + funcName + '(';
+  let baseInput;
   if (curVal.startsWith('=')) {
-    // 已有公式，检查是否已包含 SUM/AVG
-    if (/\b(SUM|AVG)\s*\(/i.test(curVal) && /[,(]\s*$/.test(curVal)) {
-      // 已在函数参数输入中，保持不变
-      nzDragState = { baseInput: curVal, funcName };
-    } else {
-      // 追加函数，如已有 =A1+ 变成 =A1+SUM(
-      input.value = curVal + (curVal.endsWith('+') || curVal.endsWith('-') || curVal.endsWith('*') || curVal.endsWith('/') ? '' : '+') + funcName + '(';
-      nzDragState = { baseInput: input.value, funcName };
-    }
+    // 已有公式，在光标位置插入
+    const before = curVal.substring(0, pos);
+    const after = curVal.substring(input.selectionEnd != null ? input.selectionEnd : pos);
+    baseInput = before + insertText;
+    input.value = baseInput + after;
   } else {
-    // 空值或纯文本，直接开始新公式
-    input.value = '=' + funcName + '(';
-    nzDragState = { baseInput: input.value, funcName };
+    // 空值或纯文本，在光标位置直接插入新公式
+    baseInput = curVal.substring(0, pos) + insertText;
+    input.value = baseInput + curVal.substring(input.selectionEnd != null ? input.selectionEnd : pos);
   }
+  nzDragState = { baseInput, funcName };
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
 }
@@ -1685,15 +1685,13 @@ document.getElementById('nzQiInsertBtn').addEventListener('click', () => {
   if (!p) { ntf('请选择分组信息', 'warn'); return; }
   const formula = nzBuildFormula(p);
   const input = document.getElementById('nzCellInput');
-  // 追加而非替换：如果当前内容非空且不是纯公式，在光标位置插入
+  // 始终在光标位置插入公式，不替换已有内容
   const curVal = input.value;
-  if (curVal && !NZ_FORMULA_RE.test(curVal.trim())) {
-    // 在光标位置插入公式
-    const pos = input.selectionStart || curVal.length;
-    input.value = curVal.substring(0, pos) + formula + curVal.substring(input.selectionEnd || pos);
-  } else {
-    input.value = formula;
-  }
+  const pos = input.selectionStart != null ? input.selectionStart : curVal.length;
+  const endPos = input.selectionEnd != null ? input.selectionEnd : pos;
+  input.value = curVal.substring(0, pos) + formula + curVal.substring(endPos);
+  const newPos = pos + formula.length;
+  input.setSelectionRange(newPos, newPos);
   nzApplyCellEdit();
   ntf('公式已插入');
 });
@@ -1919,12 +1917,18 @@ document.getElementById('nzRabSumBtn').addEventListener('click', () => {
   if (!NZ.selectedRange || !NZ.selectedCell) return;
   const addr = nzRangeAddr(NZ.selectedRange);
   const formula = `=SUM(${addr})`;
-  // 写入锚点格（先选中的目标格）
+  const input = document.getElementById('nzCellInput');
+  const curVal = input.value;
+  // 在光标位置插入公式
+  const pos = input.selectionStart != null ? input.selectionStart : curVal.length;
+  const endPos = input.selectionEnd != null ? input.selectionEnd : pos;
+  input.value = curVal.substring(0, pos) + formula + curVal.substring(endPos);
+  const newPos = pos + formula.length;
+  // 写入锚点格
   const { row, col } = NZ.selectedCell;
   const editKey = `${NZ.activeSheet}!${row}!${col}`;
-  NZ.cellEdits[editKey] = formula;
-  const input = document.getElementById('nzCellInput');
-  input.value = formula;
+  NZ.cellEdits[editKey] = input.value;
+  input.setSelectionRange(newPos, newPos);
   nzClearRangeSelection();
   nzRenderTable();
   ntf('已插入求和公式');
@@ -1934,12 +1938,18 @@ document.getElementById('nzRabAvgBtn').addEventListener('click', () => {
   if (!NZ.selectedRange || !NZ.selectedCell) return;
   const addr = nzRangeAddr(NZ.selectedRange);
   const formula = `=AVG(${addr})`;
+  const input = document.getElementById('nzCellInput');
+  const curVal = input.value;
+  // 在光标位置插入公式
+  const pos = input.selectionStart != null ? input.selectionStart : curVal.length;
+  const endPos = input.selectionEnd != null ? input.selectionEnd : pos;
+  input.value = curVal.substring(0, pos) + formula + curVal.substring(endPos);
+  const newPos = pos + formula.length;
   // 写入锚点格
   const { row, col } = NZ.selectedCell;
   const editKey = `${NZ.activeSheet}!${row}!${col}`;
-  NZ.cellEdits[editKey] = formula;
-  const input = document.getElementById('nzCellInput');
-  input.value = formula;
+  NZ.cellEdits[editKey] = input.value;
+  input.setSelectionRange(newPos, newPos);
   nzClearRangeSelection();
   nzRenderTable();
   ntf('已插入均值公式');
