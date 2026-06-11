@@ -513,6 +513,7 @@ function showBureauTemplateDialog(templates) {
     const data = await res.json();
     if (data.error) { ntf(data.error, 'error'); return; }
     ntf(`模板「${name}」已保存`);
+    S._lastSavedSplitGroups = S.splitGroups ? JSON.parse(JSON.stringify(S.splitGroups)) : null;
     overlay.remove();
     // 刷新模板列表
     document.getElementById('btnBureauTemplate').click();
@@ -544,6 +545,7 @@ function showBureauTemplateDialog(templates) {
         renderSplitGroups();
         renderMapping();
         saveMapping();
+        S._lastSavedSplitGroups = S.splitGroups ? JSON.parse(JSON.stringify(S.splitGroups)) : null;
         updSplitLayoutVisibility();
         ntf(`已应用模板「${name}」`);
         overlay.remove();

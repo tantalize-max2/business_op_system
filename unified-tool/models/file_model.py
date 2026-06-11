@@ -45,12 +45,14 @@ def list_bureau_templates():
     return templates
 
 
-def save_bureau_template(name, mapping, saved_at):
+def save_bureau_template(name, mapping, saved_at, split_groups=None):
     template_data = {
         'name': name,
         'mapping': mapping,
         'savedAt': saved_at
     }
+    if split_groups:
+        template_data['splitGroups'] = split_groups
     fpath = template_path(name)
     with open(fpath, 'w', encoding='utf-8') as f:
         json.dump(template_data, f, ensure_ascii=False, indent=2)

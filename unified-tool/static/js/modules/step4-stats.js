@@ -1408,17 +1408,112 @@ function saveGlobalConfig() {
   if (!f) { ntf('无活跃文件', 'error'); return; }
   const cfg = buildConfigData();
   const sig = hdrSignature(f.hdr);
-  // 弹出命名对话框
-  showConfigNameDialog(name => {
-    if (!name) return;
-    fetch('/api/configs', {
+  // 检测分局拆分是否有变动：对比当前 splitGroups 与后端保存的当前状态
+  checkSplitGroupsChanged(changed => {
+    // 弹出命名对话框
+    showConfigNameDialog(name => {
+      if (!name) return;
+      if (changed) {
+        // 分局拆分有变动，询问是否同时保存为新模板
+        askSaveSplitTemplate(name, () => doSaveConfig(name, cfg, sig));
+      } else {
+        doSaveConfig(name, cfg, sig);
+      }
+    });
+  });
+}
+
+function doSaveConfig(name, cfg, sig) {
+  fetch('/api/configs', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, cfg, sig, savedAt: Date.now() })
+  }).then(r => r.json()).then(data => {
+    if (data.error) { ntf(data.error, 'error'); return; }
+    // 记住保存时的 splitGroups 快照，用于下次变动检测
+    S._lastSavedSplitGroups = S.splitGroups ? JSON.parse(JSON.stringify(S.splitGroups)) : null;
+    ntf('配置已保存');
+  }).catch(() => ntf('保存失败', 'error'));
+}
+
+/**
+ * 检测分局拆分是否有变动
+ * 对比当前 S.splitGroups 与上次保存配置时的快照（或后端当前值）
+ */
+function checkSplitGroupsChanged(callback) {
+  const current = S.splitGroups;
+  const last = S._lastSavedSplitGroups;
+  // 如果有快照，直接对比
+  if (last !== undefined) {
+    callback(!deepEqualSplitGroups(current, last));
+    return;
+  }
+  // 无快照时从后端获取当前值对比
+  fetch('/api/split-groups').then(r => r.json()).then(serverGroups => {
+    S._lastSavedSplitGroups = serverGroups;
+    callback(!deepEqualSplitGroups(current, serverGroups));
+  }).catch(() => callback(false));
+}
+
+function deepEqualSplitGroups(a, b) {
+  if (a === b) return true;
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  const ak = Object.keys(a).sort(), bk = Object.keys(b).sort();
+  if (ak.length !== bk.length) return false;
+  for (let i = 0; i < ak.length; i++) {
+    if (ak[i] !== bk[i]) return false;
+    const av = (a[ak[i]] || []).slice().sort();
+    const bv = (b[bk[i]] || []).slice().sort();
+    if (av.length !== bv.length || av.some((v, i) => v !== bv[i])) return false;
+  }
+  return true;
+}
+
+/**
+ * 询问用户是否将当前分局拆分保存为新模板
+ */
+function askSaveSplitTemplate(configName, onContinue) {
+  const overlay = document.createElement('div');
+  overlay.className = 'glass-overlay';
+  const dlg = document.createElement('div');
+  dlg.className = 'glass-dialog';
+  dlg.innerHTML = `
+    <div class="glass-dlg-head">
+      <span class="glass-dlg-title">分局拆分已变动</span>
+      <span class="glass-dlg-close" data-close>&times;</span>
+    </div>
+    <div class="glass-dlg-body" style="line-height:1.7">
+      检测到分局拆分配置与上次保存时不同。<br>
+      是否将当前分局拆分保存为新模板？<br>
+      <span style="font-size:11px;color:var(--t3)">选择"跳过"仅保存过滤配置，不影响分局拆分模板。</span>
+    </div>
+    <div class="glass-dlg-foot">
+      <button class="btn btn-ghost btn-sm" id="sgSkipBtn">跳过</button>
+      <button class="btn btn-primary btn-sm" id="sgSaveBtn">保存模板</button>
+    </div>`;
+  overlay.appendChild(dlg);
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', e => { if (e.target === overlay) { close(); onContinue(); } });
+  dlg.querySelector('[data-close]').addEventListener('click', () => { close(); onContinue(); });
+  dlg.querySelector('#sgSkipBtn').addEventListener('click', () => { close(); onContinue(); });
+  dlg.querySelector('#sgSaveBtn').addEventListener('click', () => {
+    close();
+    // 调用分局模板保存逻辑
+    const map = getWorkingMapping();
+    if (!map || !Object.keys(map).length) { ntf('当前映射为空，跳过模板保存', 'warn'); onContinue(); return; }
+    const templateName = `${configName}_拆分模板`;
+    fetch('/api/bureau-templates', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ name, cfg, sig, savedAt: Date.now() })
+      body: JSON.stringify({ name: templateName, mapping: map, splitGroups: S.splitGroups || null, savedAt: Date.now() })
     }).then(r => r.json()).then(data => {
-      if (data.error) { ntf(data.error, 'error'); return; }
-      ntf('配置已保存');
-    }).catch(() => ntf('保存失败', 'error'));
+      if (data.error) { ntf(data.error, 'error'); } else {
+        ntf(`分局拆分模板「${templateName}」已保存`);
+      }
+      onContinue();
+    }).catch(() => { ntf('模板保存失败', 'error'); onContinue(); });
   });
 }
 
@@ -1435,7 +1530,7 @@ function showConfigNameDialog(callback) {
     <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
       <label style="font-size:12px;color:var(--t3)">配置名称</label>
       <input id="cfgNameInput" value="${esc(defaultName)}" style="background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;color:var(--t1);font:13px var(--sf);outline:none;width:100%">
-      ${hasMapping ? '<div style="font-size:10px;color:var(--cy);font-family:var(--mf)">包含分局映射 (' + Object.keys(S.mappingData).length + '个分局)</div>' : ''}
+      ${hasMapping ? '<div style="font-size:10px;color:var(--cy);font-family:var(--mf)">快照分局映射 (' + Object.keys(S.mappingData).length + '个分局)，加载配置时不会覆盖当前分局拆分</div>' : ''}
     </div>
     <div class="fd-foot"><span></span><div class="fd-btns">
       <button class="btn btn-ghost btn-xs" id="cfgNameCancel">取消</button>
@@ -1625,22 +1720,22 @@ function applyConfig(cfg) {
       });
     }
   });
-  // 恢复分局映射排序
+  // 恢复分局映射和拆分组配置（跟着配置一起切换）
   if (cfg.mappingData && typeof cfg.mappingData === 'object') {
     S.mappingData = cfg.mappingData;
     S.splitMappingReady = true;
     saveMapping();
     renderMapping();
   }
-  // 恢复拆分组配置
   if (cfg.splitGroups && Object.keys(cfg.splitGroups).length) {
     S.splitGroups = cfg.splitGroups;
     saveSplitGroups();
     renderSplitGroups();
   } else if (cfg.mappingData) {
-    // 配置无拆分组但有映射数据，重置为基于新映射自动生成
     S.splitGroups = null;
   }
+  // 更新快照，用于保存时的变动检测
+  S._lastSavedSplitGroups = S.splitGroups ? JSON.parse(JSON.stringify(S.splitGroups)) : null;
   initActiveFile();
   popDepGrp();
   if (cleanedCount > 0) {

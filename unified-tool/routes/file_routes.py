@@ -58,7 +58,8 @@ def save_bureau_template_api():
     if not saved_at:
         from datetime import datetime
         saved_at = datetime.now().timestamp() * 1000
-    save_bureau_template(name, mapping, saved_at)
+    split_groups = data.get('splitGroups')
+    save_bureau_template(name, mapping, saved_at, split_groups=split_groups)
     return jsonify({'message': '模板已保存', 'name': name})
 
 
