@@ -299,3 +299,28 @@ body.has-wallpaper .main-content {
 [data-theme="dark"] .wave-footer-img { opacity: .75; }
 /* 护眼主题 */
 [data-theme="eyecare"] .wave-footer-img { opacity: .8; }
+
+/* ================================================================
+   CLOUD HEADER（顶部云彩动态装饰）
+   ================================================================ */
+.cloud-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: auto;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 99999;
+  line-height: 0;
+}
+.cloud-header-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  opacity: .7;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.7) 0%, transparent 60%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.7) 0%, transparent 60%);
+}
+[data-theme="dark"] .cloud-header-img { opacity: .5; }
+[data-theme="eyecare"] .cloud-header-img { opacity: .6; }
