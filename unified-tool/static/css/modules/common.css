@@ -272,3 +272,30 @@ body.has-wallpaper .main-content {
   display: flex; justify-content: flex-end; gap: 8px;
   padding: 10px 18px 14px;
 }
+
+/* ================================================================
+   WAVE FOOTER（底部海浪动态装饰）
+   ================================================================ */
+.wave-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: auto;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 99999;
+  line-height: 0;
+}
+.wave-footer-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  opacity: .85;
+  mask-image: linear-gradient(to top, rgba(0,0,0,.8) 0%, rgba(0,0,0,.5) 50%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,.8) 0%, rgba(0,0,0,.5) 50%, transparent 100%);
+}
+/* 暗色主题 */
+[data-theme="dark"] .wave-footer-img { opacity: .75; }
+/* 护眼主题 */
+[data-theme="eyecare"] .wave-footer-img { opacity: .8; }

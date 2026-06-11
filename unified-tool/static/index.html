@@ -23,8 +23,7 @@
 <!-- ============ WALLPAPER ============ -->
 <div class="wallpaper-bg" id="wallpaperBg"></div>
 
-<!-- ============ PARTICLES ============ -->
-<div id="particles-js"></div>
+<!-- particles removed -->
 
 <!-- ============ SIDEBAR ============ -->
 <aside class="sidebar" id="sidebar">
@@ -68,13 +67,7 @@
       <svg class="icon" aria-hidden="true" id="themeIconSvg"><use xlink:href="#icon-sun"/></svg>
       <span id="themeLabel">白天</span>
     </div>
-    <div class="particle-bar" id="particleBar">
-      <div class="pb-toggle" id="pbToggle" title="开关粒子特效">
-        <svg class="icon" aria-hidden="true"><use xlink:href="#icon-eye"/></svg>
-      </div>
-      <div class="particle-colors" id="particleColors" title="粒子颜色"></div>
-      <input type="range" class="pb-opacity" id="pbOpacity" min="0" max="100" value="60" title="粒子可见度">
-    </div>
+    <!-- particles removed -->
     <div class="sb-stats" id="sbStats" style="display:none">
       <div class="sb-stat"><span class="sb-sv" id="sAll">0</span><span class="sb-sl">总行</span></div>
       <div class="sb-stat"><span class="sb-sv" id="sFil">0</span><span class="sb-sl">筛选</span></div>
@@ -832,6 +825,11 @@
     </div>
   </section>
 
+  <!-- ====== WAVE FOOTER ====== -->
+  <div class="wave-footer" id="waveFooter">
+    <img src="img/wave.gif" alt="wave" class="wave-footer-img" draggable="false">
+  </div>
+
 </main>
 
 <!-- ============ FILTER DROPDOWN ============ -->
@@ -982,8 +980,7 @@
 <!-- ============ SCRIPTS ============ -->
 <script src="js/iconfont.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/particles.js/2.0.0/particles.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js'"></script>
-<script src="js/modules/particles.js"></script>
+<!-- particles removed -->
 <script src="js/modules/wallpaper.js"></script>
 <script src="js/modules/common.js"></script>
 <script src="js/modules/step1-upload.js"></script>
