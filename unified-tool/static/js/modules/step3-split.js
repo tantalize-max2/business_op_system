@@ -25,7 +25,13 @@ function getDefaultSplitGroups() {
 }
 
 function initSplitGroups() {
-  // 初始化：如果从未设置过拆分组，从后端加载默认值
+  // 未加载模板/配置时，不加载旧的拆分组——保持空白全新状态
+  if (!S.splitMappingReady) {
+    S.splitGroups = null;
+    renderSplitGroups();
+    return;
+  }
+  // 已加载模板/配置：如果从未设置过拆分组，从后端加载
   if (S.splitGroups === null) {
     loadSplitGroupsFromServer();
   } else {
@@ -307,8 +313,10 @@ function updSplitLayoutVisibility() {
   document.getElementById('addBureauRow').style.display = showAdd ? '' : 'none';
 }
 
-async function loadMapping() {
+async function loadMapping(force) {
   const res = await fetch('/api/mapping');
+  // 如果在请求期间模板/配置已被激活，不再覆盖（强制加载除外）
+  if (!force && S.splitMappingReady) return;
   S.mappingData = await res.json();
   renderMapping();
   updSplitLayoutVisibility();
@@ -458,7 +466,10 @@ document.getElementById('addBureauBtn').addEventListener('click', async () => {
 document.getElementById('resetMapping').addEventListener('click', async () => {
   glassConfirm('确定恢复为默认映射？', async () => {
     await fetch('/api/reset-mapping', {method: 'POST'});
-    await loadMapping();
+    S.splitMappingReady = true;
+    S._localMapping = null;
+    S.activeTemplateName = null;
+    await loadMapping(true);
     ntf('已恢复默认映射');
   }, { title: '恢复默认映射' });
 });
@@ -513,6 +524,9 @@ function showBureauTemplateDialog(templates) {
     const data = await res.json();
     if (data.error) { ntf(data.error, 'error'); return; }
     ntf(`模板「${name}」已保存`);
+    S.activeTemplateName = name;   // 当前映射已关联到该模板
+    S.splitMappingReady = true;
+    S._localMapping = null;
     S._lastSavedSplitGroups = S.splitGroups ? JSON.parse(JSON.stringify(S.splitGroups)) : null;
     overlay.remove();
     // 刷新模板列表
@@ -535,6 +549,7 @@ function showBureauTemplateDialog(templates) {
         S.mappingData = data.mapping;
         S.splitMappingReady = true;
         S._localMapping = null; // 清空临时映射
+        S.activeTemplateName = name; // 跟踪激活的模板
         // 恢复拆分组：模板自带则使用，否则基于新 mappingData 重新生成
         if (data.splitGroups && Object.keys(data.splitGroups).length) {
           S.splitGroups = data.splitGroups;
@@ -562,6 +577,16 @@ function showBureauTemplateDialog(templates) {
       glassConfirm(`确定删除模板「${name}」？`, async () => {
         await fetch(`/api/bureau-templates/${encodeURIComponent(name)}`, {method: 'DELETE'});
         item.remove();
+        // 如果删除的是当前激活的模板，重置映射状态
+        if (S.activeTemplateName === name) {
+          S.splitMappingReady = false;
+          S._localMapping = null;
+          S.activeTemplateName = null;
+          renderMapping();
+          updSplitLayoutVisibility();
+          renderSplitGroups();
+          debouncedSave();
+        }
         ntf(`模板「${name}」已删除`);
         if (!dlg.querySelectorAll('.bt-item').length) {
           dlg.querySelector('#btList').innerHTML = '<div style="color:var(--t3);font-size:12px;text-align:center;padding:20px">暂无保存的模板</div>';
@@ -776,7 +801,6 @@ function initActiveFile() {
 document.getElementById('btnBackUpload').addEventListener('click', () => switchStep('upload'));
 document.getElementById('goSplit').addEventListener('click', () => {
   switchStep('split');
-  loadMapping();
   populateSplitColSel();
   updSplitActiveFile();
 });

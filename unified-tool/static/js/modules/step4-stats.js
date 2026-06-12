@@ -1724,6 +1724,8 @@ function applyConfig(cfg) {
   if (cfg.mappingData && typeof cfg.mappingData === 'object') {
     S.mappingData = cfg.mappingData;
     S.splitMappingReady = true;
+    S.activeTemplateName = null;   // 配置不是命名模板
+    S._localMapping = null;        // 清空临时映射
     saveMapping();
     renderMapping();
   }

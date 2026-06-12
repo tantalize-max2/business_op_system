@@ -33,6 +33,8 @@ function toggleTheme() {
 // ========== 刷新持久化 ==========
 function saveState() {
   // 保存mappingData、splitGroups和拆分状态（用于刷新后恢复）
+  // 注意：splitMappingReady/_localMapping/activeTemplateName 仅在内存中保持，
+  // 不持久化到 localStorage——刷新网页即回到全新空白状态
   try {
     const hasSplit = S.splitMatchedRows && S.splitMatchedRows.size > 0;
     localStorage.setItem('ba-state', JSON.stringify({
@@ -79,7 +81,8 @@ const S = {
   splitFileName: null,     // 执行拆分时的文件名（用于刷新后恢复拆分状态）
   splitColName: null,      // 执行拆分时的拆分列名（用于刷新后恢复拆分状态）
   splitMappingReady: false, // 是否已通过应用模板或加载配置激活分局映射（控制拆分区域显示）
-  _localMapping: null       // 未激活模板时的临时映射（添加分局不污染默认 mappingData）
+  _localMapping: null,      // 未激活模板时的临时映射（添加分局不污染默认 mappingData）
+  activeTemplateName: null  // 当前激活的模板名称（null表示配置加载或无模板）
 };
 
 const CM = {
@@ -213,7 +216,14 @@ function switchStep(step) {
   }
   // 进入分局拆分时加载最新mapping数据
   if (step === 'split') {
-    loadMapping();
+    if (S.splitMappingReady || (S._localMapping && Object.keys(S._localMapping).length > 0)) {
+      // 状态已在内存中（从 localStorage 恢复或之前已加载），仅刷新 UI
+      renderMapping();
+      updSplitLayoutVisibility();
+    } else {
+      // 首次访问或无映射状态，从服务器加载
+      loadMapping();
+    }
     populateSplitColSel();
     updSplitActiveFile();
     initSplitGroups();

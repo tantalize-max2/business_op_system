@@ -222,6 +222,7 @@ applyThemeUI(document.documentElement.getAttribute('data-theme') || 'dark');
 // 拆分状态在文件上传时按文件名匹配恢复
 (function restoreState() {
   // 读取持久化的状态
+  // 注意：分局拆分状态（splitMappingReady等）不跨刷新恢复，每次刷新都是全新状态
   try {
     const saved = JSON.parse(localStorage.getItem('ba-state') || '{}');
     // 恢复拆分状态（splitFileName/splitColName），供文件上传时恢复
