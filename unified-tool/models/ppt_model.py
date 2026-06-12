@@ -411,10 +411,20 @@ def period_to_crm(period):
 
 def update_crm_date(shape, period_str, crm_date_full):
     """更新CRM日期：用正则匹配所有日期模式确保与标题时间一致
-    
+
     period_str: 如 "1月1日—5月22日"
     crm_date_full: 如 "2026.1.1-2026.5.22"
+
+    支持替换的模板占位符：
+    - 20xx.1.1-20xx.5.22  → 用当年年份 + B31周期数据替换
+    - 2025.1.1-2025.5.22  → 用当年数据覆盖旧年份
+    - 1月1日—5月22日       → 用B31周期数据替换
+    - 残留的 20xx          → 替换为当年年份
     """
+    # 从 crm_date_full 提取年份，用于替换 20xx 占位符
+    _ym = re.match(r'(\d{4})', crm_date_full)
+    _year = _ym.group(1) if _ym else '2026'
+
     for para in shape.text_frame.paragraphs:
         full_text = para.text
         if not full_text:
@@ -422,8 +432,14 @@ def update_crm_date(shape, period_str, crm_date_full):
         new_text = full_text
         # 替换中文日期: X月X日—X月X日 或 X月X日-X月X日
         new_text = re.sub(r'\d+月\d+日[—\-]\d+月\d+日', period_str, new_text)
-        # 替换完整CRM日期: XXXX.X.X-XXXX.X.XX (匹配任意年份)
+        # 替换20xx占位符日期: 20xx.x.x-20xx.x.xx（x为字母占位符）
+        new_text = re.sub(r'20xx\.[xX\d]+\.[xX\d]+[\-—]20xx\.[xX\d]+\.[xX\d]+', crm_date_full, new_text)
+        # 替换真实年份+字母占位符: 2026.x.x-2026.x.xx（年份是真实数字，日期x是占位符）
+        new_text = re.sub(r'\d{4}\.[xX\d]+\.[xX\d]+[\-—]\d{4}\.[xX\d]+\.[xX\d]+', crm_date_full, new_text)
+        # 替换完整CRM日期: XXXX.X.X-XXXX.X.XX (纯数字，匹配任意年份)
         new_text = re.sub(r'\d{4}\.\d+\.\d+-\d{4}\.\d+\.\d+', crm_date_full, new_text)
+        # 替换残留的 20xx 占位符为当年年份
+        new_text = new_text.replace('20xx', _year)
         if new_text != full_text and para.runs:
             para.runs[0].text = new_text
             for run in para.runs[1:]:
@@ -964,6 +980,17 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
                         set_cell_text(tbl.cell(r, c), str(v) if v else '', font_color=color, font_size=fs)
         elif shape.name == '文本框 5':
             set_shape_single_text(shape, AI28_TEXT)
+
+    # 4.5 全量扫描所有 slide，按内容替换 CRM 日期（不依赖固定 shape 名称）
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
+            for para in shape.text_frame.paragraphs:
+                txt = para.text
+                if txt and ('商机创建时间' in txt or 'CRM取数口径' in txt or '20xx' in txt or re.search(r'\d{4}\.[xX\d]+\.[xX\d]+', txt)):
+                    update_crm_date(shape, PERIOD_STR, CRM_DATE_FULL)
+                    break  # 一个 shape 只需替换一次
 
     # 5. 保存输出
     try:

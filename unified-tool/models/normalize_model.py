@@ -4,6 +4,7 @@ import re
 import json
 import tempfile
 from datetime import datetime
+import math
 import base64
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment
@@ -191,7 +192,8 @@ def _nz_resolve_metric(entry, col, metric, sum_col, ac_col, ac_val, fd):
     if metric == '占比':
         pct = entry.get('pct', '0')
         try:
-            return {'ok': True, 'value': float(pct)}
+            pv = float(pct)
+            return {'ok': True, 'value': _precise_round(pv), 'is_percent': True}
         except:
             return {'ok': False, 'value': '占比解析失败'}
     if metric == '求和':
@@ -305,11 +307,7 @@ def _resolve_cell_refs_in_expr(expr_str, ws_obj, stats_data, visited=None):
         num = _resolve_cell_to_float(val, ws_obj, stats_data, visited)
         if num is None:
             return 'NaN'
-        try:
-            int_val = int(num)
-            return str(int_val) if num == int_val else str(num)
-        except (ValueError, OverflowError):
-            return str(num)
+        return _fmt_num(num)
 
     return _cell_ref_pattern.sub(replace_ref, expr_str)
 
@@ -354,6 +352,52 @@ def _resolve_range_values(range_str, ws_obj, stats_data=None, visited=None):
     return values
 
 
+def _precise_sum(vals):
+    """使用 math.fsum 消除浮点数累加精度误差，再 round 到合理精度"""
+    result = math.fsum(vals)
+    return _precise_round(result)
+
+
+def _precise_round(value, max_decimals=10):
+    """智能舍入：去除浮点尾数，保留有意义的位数（最多 max_decimals 位），最少保留 2 位。
+    例如 5.029999999999999 -> 5.03,  1.0 -> 1.0,  0.123456 -> 0.123456"""
+    if not isinstance(value, (int, float)) or math.isnan(value) or math.isinf(value):
+        return value
+    if isinstance(value, int):
+        return float(value)
+    # 先用高精度 round 去掉浮点尾噪声
+    rounded = round(value, max_decimals)
+    # 如果已经接近整数，保留整数
+    if rounded == int(rounded):
+        return float(int(rounded))
+    # 尝试从2位开始找最少能准确表示的位数
+    for d in range(2, max_decimals + 1):
+        candidate = round(value, d)
+        if round(candidate, max_decimals) == round(value, max_decimals):
+            return candidate
+    return rounded
+
+
+def _fmt_num(value, decimal=None):
+    """将数值格式化为字符串，控制小数位数。
+    decimal=None 时自动保留合理精度（最少2位）。
+    用于混合文本中替换公式后的数字显示。"""
+    if not isinstance(value, (int, float)):
+        return str(value)
+    if math.isnan(value) or math.isinf(value):
+        return str(value)
+    if decimal is not None:
+        rounded = round(value, decimal)
+        if decimal == 0:
+            return str(int(rounded))
+        return str(rounded)
+    # 自动精度
+    v = _precise_round(value)
+    if v == int(v):
+        return str(int(v))
+    return str(v)
+
+
 def _resolve_funcs(expr_str, ws_obj, stats_data=None, visited=None):
     if visited is None:
         visited = set()
@@ -365,9 +409,9 @@ def _resolve_funcs(expr_str, ws_obj, stats_data=None, visited=None):
         if not vals:
             return 'NaN'
         if fn == 'SUM':
-            return str(sum(vals))
+            return str(_precise_sum(vals))
         elif fn == 'AVG':
-            return str(sum(vals) / len(vals))
+            return str(_precise_round(_precise_sum(vals) / len(vals)))
         return 'NaN'
 
     return _func_pattern.sub(replace_func, expr_str)
@@ -378,7 +422,7 @@ def _resolve_formulas_in_expr(expr, stats_data):
     def replace_fn(match):
         result = nz_resolve_formula_str(match.group(0), stats_data)
         if result['ok']:
-            return str(result['value'])
+            return _fmt_num(result['value'])
         all_ok[0] = False
         return 'NaN'
     resolved = _formula_pattern.sub(replace_fn, expr)
@@ -390,7 +434,7 @@ def _resolve_formulas_in_text(text, stats_data):
     def replace_fn(match):
         result = nz_resolve_formula_str(match.group(0), stats_data)
         if result['ok']:
-            return str(result['value'])
+            return _fmt_num(result['value'])
         any_fail[0] = True
         return match.group(0)
     resolved = _formula_pattern.sub(replace_fn, text)
@@ -439,27 +483,30 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
         ws = wb.worksheets[si]
         cell = ws.cell(row=r + 1, column=c + 1)
         if fmt.get('bold') or fmt.get('italic') or fmt.get('fontSize') or fmt.get('fontName'):
-            cell.font = Font(
-                bold=fmt.get('bold', False),
-                italic=fmt.get('italic', False),
-                size=fmt.get('fontSize'),
-                name=fmt.get('fontName')
+            cell.font = cell.font.copy(
+                bold=fmt.get('bold', cell.font.bold),
+                italic=fmt.get('italic', cell.font.italic),
+                size=fmt.get('fontSize', cell.font.size),
+                name=fmt.get('fontName', cell.font.name)
             )
         if fmt.get('align'):
             align_map = {'left': 'left', 'center': 'center', 'right': 'right'}
-            cell.alignment = Alignment(horizontal=align_map.get(fmt['align'], 'left'))
+            cell.alignment = cell.alignment.copy(horizontal=align_map.get(fmt['align'], cell.alignment.horizontal))
 
     fill_count = 0
     fail_count = 0
 
-    for ws in wb.worksheets:
+    # 追踪写入了百分比值（占比指标）的单元格，用于后续格式适配
+    percent_value_cells = set()
+
+    for ws_idx, ws in enumerate(wb.worksheets):
         for row in ws.iter_rows():
             for cell in row:
                 if cell.value is None:
                     continue
                 cell_str = str(cell.value).strip()
 
-                has_formula = _formula_pattern.search(cell_str) or cell_str.startswith('=')
+                has_formula = _formula_pattern.search(cell_str) or cell_str.startswith('=') or re.search(r'=(?:SUM|AVG)\s*\(', cell_str, re.IGNORECASE)
                 if not has_formula:
                     continue
 
@@ -492,9 +539,9 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
                     try:
                         num_result = eval(safe_expr)
                         if isinstance(num_result, (int, float)) and str(num_result) != 'nan':
-                            # 非整数默认保留2位小数
+                            # 非整数用智能精度（保留有意义的位数）
                             if isinstance(num_result, float) and not num_result == int(num_result):
-                                num_result = round(num_result, 2)
+                                num_result = _precise_round(num_result)
                             cell.value = num_result
                             fill_count += 1
                         else:
@@ -509,15 +556,55 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
                     if result['ok']:
                         val = result['value']
                         if isinstance(val, float) and not val == int(val):
-                            val = round(val, 2)
+                            val = _precise_round(val)
                         cell.value = val
+                        if result.get('is_percent'):
+                            percent_value_cells.add((ws_idx, cell.row, cell.column))
                         fill_count += 1
                     else:
                         cell.value = str(result['value'])
                         fail_count += 1
 
                 else:
+                    # 混合文本：先解析 {{...}}，再解析 =SUM()/=AVG() 和单元格引用
                     final_val, ok = _resolve_formulas_in_text(cell_str, stats_data)
+
+                    # 如果文本中包含 =SUM( 或 =AVG( 等 Excel 函数，也需要解析
+                    if re.search(r'=(SUM|AVG)\s*\(', final_val, re.IGNORECASE) or re.search(r'=[A-Z]+\d+', final_val):
+                        # 查找该单元格前端传来的 decimal 设置（用于控制小数位数）
+                        _cell_key = (ws_idx, cell.row - 1, cell.column - 1)
+                        _cell_fmt = {}
+                        for fmt_item in cell_formats:
+                            _fk = (fmt_item.get('sheet', 0), fmt_item.get('row', 0), fmt_item.get('col', 0))
+                            if _fk == _cell_key:
+                                _cell_fmt = fmt_item.get('fmt', {})
+                                break
+                        _cell_decimal = _cell_fmt.get('decimal', None)
+
+                        # 逐段解析：将 =SUM(...) 和单元格引用替换为计算值
+                        visited = set()
+                        self_col = get_column_letter(cell.column)
+                        self_row = str(cell.row)
+                        visited.add(f"{self_col}{self_row}")
+                        final_val = _resolve_funcs(final_val, ws, stats_data, visited)
+                        final_val = _resolve_cell_refs_in_expr(final_val, ws, stats_data, visited)
+                        # 尝试计算纯数学表达式部分（但保留混合文本中的非公式部分）
+                        def _eval_formula_part(m):
+                            """替换单个 =SUM(...)/=AVG(...) 为计算结果"""
+                            expr_str = m.group(0)[1:]  # 去掉开头的 =
+                            try:
+                                safe = re.sub(r'[^0-9+\-*/().eE\s]', '', expr_str)
+                                result = eval(safe)
+                                if isinstance(result, float) and not result == int(result):
+                                    d = _cell_decimal if _cell_decimal is not None else 2
+                                    rounded = round(result, d)
+                                    return str(int(rounded)) if d == 0 else str(rounded)
+                                return str(int(result)) if isinstance(result, float) else str(result)
+                            except:
+                                return m.group(0)
+                        # 替换所有 =SUM(...)  =AVG(...) 为计算值
+                        final_val = re.sub(r'=(?:SUM|AVG)\s*\([^)]*\)', _eval_formula_part, final_val, flags=re.IGNORECASE)
+
                     cell.value = final_val
                     if not ok:
                         fail_count += 1
@@ -538,6 +625,7 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
                 fmt = fmt_lookup.get(key, {})
                 decimal = fmt.get('decimal', None)
                 isPercent = fmt.get('percent', False)
+                # 仅在用户显式修改了 decimal/percent 时才处理，否则保留模板原始格式
                 if decimal is None and not isPercent:
                     continue
                 try:
@@ -545,18 +633,40 @@ def fill_template(template_bytes, stats_data, cell_edits, cell_formats):
                 except (ValueError, TypeError):
                     continue
                 if isPercent:
-                    v = v * 100
-                d = decimal if decimal is not None else 2
-                factor = 10 ** d
-                rounded = round(v * factor) / factor
-                if isPercent:
-                    cell.value = f"{rounded:.{d}f}%"
-                else:
-                    cell.value = round(v, d) if d > 0 else int(rounded)
-                if isPercent:
+                    # 百分比格式：值是比率形式（如 0.8323 表示 83.23%）
+                    # 在百分比空间做 round（与前端 nzFormatValue 一致），再转回比率
+                    # 例：v=0.8322995, d=2 → pct=83.23 → ratio=0.8323 → 格式 0.00% → "83.23%"
+                    d = decimal if decimal is not None else 2
+                    factor = 10 ** d
+                    pct_rounded = round(v * 100 * factor) / factor
+                    ratio = pct_rounded / 100
+                    cell.value = int(ratio) if d == 0 else ratio
                     cell.number_format = '0%' if d == 0 else f'0.{"0" * d}%'
-                elif d > 0:
-                    cell.number_format = f'0.{"0" * d}'
+                elif decimal is not None:
+                    factor = 10 ** decimal
+                    rounded = round(v * factor) / factor
+                    cell.value = int(rounded) if decimal == 0 else rounded
+                    cell.number_format = '0' if decimal == 0 else f'0.{"0" * decimal}'
+
+    # ---- 后处理：自动适配模板原生百分比格式 ----
+    # 对于公式解析写入百分比的单元格，如果用户未在前端设置 isPercent，
+    # 但模板单元格本身有 Excel 原生百分比格式（如 0.00%），
+    # 值已是比率形式（如 0.8205），原生 % 格式自动 ×100 显示为 "82.05%"，无需额外转换。
+    # 跳过已被格式循环处理过的单元格。
+    for (ws_i, r, c) in percent_value_cells:
+        fmt_key = (ws_i, r - 1, c - 1)
+        if fmt_key in fmt_lookup and fmt_lookup[fmt_key].get('percent'):
+            continue  # 已由格式循环处理
+        ws = wb.worksheets[ws_i]
+        cell = ws.cell(row=r, column=c)
+        fmt = cell.number_format or ''
+        # 如果模板没有原生 % 格式，但写入了百分比值，补充设置原生格式
+        if not ('%' in fmt and '"%"' not in fmt):
+            try:
+                float(cell.value)  # 确认是数值
+                cell.number_format = '0.00%'
+            except (ValueError, TypeError):
+                pass
 
     try:
         wb.save(tmp_out.name)

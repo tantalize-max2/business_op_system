@@ -44,7 +44,9 @@ function nzIsExpression(val) { return String(val).startsWith('='); }
 
 /**
  * 格式化数值：按 decimal 精度四舍五入 + 百分比
- * @param {number} value - 原始数值
+ * 百分比模式：值 * 100 后保留 decimal 位小数并追加 % 号
+ * 例：0.8205 + {percent:true, decimal:2} → "82.05%"
+ * @param {number} value - 原始数值（比率形式）
  * @param {object} fmt - 格式对象 { decimal: 2, percent: false }
  * @returns {string} 格式化后的字符串
  */
@@ -2109,9 +2111,14 @@ document.getElementById('nzSaveBtn').addEventListener('click', async () => {
   if (!name) return; // 用户取消
 
   NZ.currentTemplate = name;
-  // 导出为base64
-  const wbOut = XLSX.write(NZ.wb, { type: 'array', bookType: 'xlsx' });
-  const b64 = arrayBufferToBase64(wbOut);
+  // 使用原始文件数据保存，保留完整 Excel 格式（不用 SheetJS 重新生成）
+  let b64;
+  if (NZ.rawBuffer) {
+    b64 = arrayBufferToBase64(NZ.rawBuffer);
+  } else {
+    ntf('原始模板文件不可用，请重新上传', 'error');
+    return;
+  }
 
   try {
     const res = await fetch('/api/nz-templates', {
@@ -2175,15 +2182,18 @@ document.getElementById('nzDeleteBtn').addEventListener('click', async () => {
 // ---- 下载模板 ----
 document.getElementById('nzDownloadBtn').addEventListener('click', () => {
   if (!NZ.wb) { ntf('请先上传模板', 'warn'); return; }
-  nzApplyEditsToWorkbook();
-  const wbOut = XLSX.write(NZ.wb, { type: 'array', bookType: 'xlsx' });
-  const blob = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = (NZ.currentTemplate || '模板') + '.xlsx';
-  a.click();
-  URL.revokeObjectURL(url);
+  // 使用原始文件数据下载，保留完整 Excel 格式（不用 SheetJS 重新生成）
+  if (NZ.rawBuffer) {
+    const blob = new Blob([NZ.rawBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (NZ.currentTemplate || '模板') + '.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+  } else {
+    ntf('原始模板文件不可用，请重新上传', 'error');
+  }
 });
 
 // ---- 填充并下载 ----
