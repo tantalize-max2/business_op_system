@@ -62,12 +62,12 @@ nano .env
 
 ```env
 FLASK_DEBUG=0
-MAIL_USERNAME=wangy592@chinatelecom.cn
+MAIL_USERNAME=wangy592@chinatelecom.cn  
 MAIL_PASSWORD=你的邮箱密码
 MAIL_ACCOUNT=wangy592
 MAIL_PHONE=你的手机号
 ```
-
+# 需要替换自己的邮箱MAIL_USERNAME和MAIL_PHONE
 ## 四、构建并启动
 
 ```bash
