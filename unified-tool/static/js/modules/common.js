@@ -252,10 +252,45 @@ function switchStep(step) {
       }
     }
   }
+  // 手机端：切换步骤后自动关闭抽屉
+  closeSidebarDrawer();
 }
 function capitalize(s) {
   const map = {upload:'Upload', filter1:'Filter1', split:'Split', filter2:'Filter2', normalize:'Normalize', ppt:'Ppt', kdocs:'Kdocs', email:'Email'};
   return map[s] || s;
+}
+
+// ========== 手机端侧边栏抽屉 ==========
+function openSidebarDrawer() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebarOverlay');
+  if (sb) sb.classList.add('open');
+  if (ov) ov.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebarDrawer() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebarOverlay');
+  if (sb) sb.classList.remove('open');
+  if (ov) ov.classList.remove('show');
+  document.body.style.overflow = '';
+}
+function toggleSidebarDrawer() {
+  const sb = document.getElementById('sidebar');
+  if (sb && sb.classList.contains('open')) closeSidebarDrawer();
+  else openSidebarDrawer();
+}
+// 绑定汉堡按钮和遮罩点击（DOMContentLoaded 后执行）
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bindMobileDrawer);
+} else {
+  bindMobileDrawer();
+}
+function bindMobileDrawer() {
+  const btn = document.getElementById('mobileMenuBtn');
+  const ov = document.getElementById('sidebarOverlay');
+  if (btn) btn.addEventListener('click', toggleSidebarDrawer);
+  if (ov) ov.addEventListener('click', closeSidebarDrawer);
 }
 
 // 辅助：将过滤后数据按splitMatchedRows（索引集合）排除未匹配行

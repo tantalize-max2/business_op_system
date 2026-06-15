@@ -1,0 +1,536 @@
+/* ================================================================
+   responsive.css — 响应式布局适配
+   断点：≤1024px（平板）、≤768px（手机）
+   放在所有 CSS 最后加载，覆盖桌面端固定布局
+   ================================================================ */
+
+/* ================================================================
+   一、平板适配（≤1024px）
+   ================================================================ */
+@media (max-width: 1024px) {
+  /* 装饰元素：右侧樱花和海浪在小屏干扰内容，隐藏 */
+  .blossom-right { display: none; }
+  .wave-footer { display: none; }
+
+  /* 内容区 padding 缩小 */
+  .step-panel { padding: 28px 24px !important; }
+
+  /* 标准化工作区：侧面板缩小 */
+  .nz-side-panel { width: 240px; min-width: 240px; }
+
+  /* 拆分布局 gap 缩小 */
+  .split-layout { gap: 14px; }
+
+  /* 分组颜色选择器等表单区域 gap 缩小 */
+  .l2-form { gap: 6px !important; }
+}
+
+/* ================================================================
+   二、手机适配（≤768px）—— 核心重构
+   ================================================================ */
+@media (max-width: 768px) {
+
+  /* ---------- 2.1 汉堡菜单按钮 ---------- */
+  .mobile-menu-btn {
+    display: flex;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 1002;
+    width: 42px;
+    height: 42px;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-bd);
+    border-radius: 12px;
+    box-shadow: var(--sh2);
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .mobile-menu-btn:active { transform: scale(.92); }
+  .mobile-menu-btn svg { width: 22px; height: 22px; color: var(--t1); }
+  .mobile-menu-btn .icon-bar {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--t1);
+    border-radius: 2px;
+    position: relative;
+  }
+  .mobile-menu-btn .icon-bar::before,
+  .mobile-menu-btn .icon-bar::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 20px;
+    height: 2px;
+    background: var(--t1);
+    border-radius: 2px;
+    transition: transform .25s, top .25s;
+  }
+  .mobile-menu-btn .icon-bar::before { top: -6px; }
+  .mobile-menu-btn .icon-bar::after { top: 6px; }
+  /* 打开时变 X */
+  .sidebar.open ~ .mobile-menu-btn .icon-bar { background: transparent; }
+  .sidebar.open ~ .mobile-menu-btn .icon-bar::before { top: 0; transform: rotate(45deg); }
+  .sidebar.open ~ .mobile-menu-btn .icon-bar::after { top: 0; transform: rotate(-45deg); }
+
+  /* ---------- 2.2 侧边栏 → 滑出抽屉 ---------- */
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 260px;
+    max-width: 80vw;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform .28s cubic-bezier(.4, 0, .2, 1);
+    z-index: 1001;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, .15);
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  /* 抽屉遮罩 */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .4);
+    z-index: 1000;
+    animation: glassFadeIn .2s ease;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .sidebar-overlay.show { display: block; }
+
+  /* ---------- 2.3 装饰元素全部隐藏 ---------- */
+  .cloud-header,
+  .wave-footer,
+  .blossom-right,
+  .sb-blossom { display: none !important; }
+
+  /* ---------- 2.4 主内容区全宽 + 顶部留汉堡空间 ---------- */
+  .main-content {
+    width: 100%;
+    height: 100vh;
+  }
+  .step-panel {
+    padding: 14px 12px !important;
+    padding-top: 58px !important;
+    min-height: 100vh;
+  }
+  #stepFilter1 { height: 100vh; }
+
+  /* ---------- 2.5 标题与文字缩小 ---------- */
+  .step-header { margin-bottom: 16px; }
+  .step-title { font-size: 18px !important; letter-spacing: -.3px; }
+  .step-desc { font-size: 12px; line-height: 1.5; }
+
+  /* ---------- 2.6 工具栏：允许横向滚动 ---------- */
+  .toolbar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px 0;
+    gap: 6px;
+    scrollbar-width: thin;
+  }
+  .toolbar::-webkit-scrollbar { height: 3px; }
+  .tb-sep { flex-shrink: 0; }
+  .toolbar .btn,
+  .toolbar select,
+  .toolbar label,
+  .toolbar .skip-rows-label { flex-shrink: 0; }
+
+  /* 保存配置栏也滚动 */
+  .save-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+  }
+
+  /* ---------- 2.7 上传区缩小 ---------- */
+  .upload-zone { padding: 36px 16px; border-radius: 14px; }
+  .upload-zone .up-text { font-size: 14px; }
+  .upload-zone .up-hint { font-size: 11px; }
+  .file-card { padding: 12px 14px; gap: 10px; }
+  .file-card-icon { font-size: 22px; }
+
+  /* ---------- 2.8 表格横向滚动 ---------- */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .data-table { font-size: 11px; }
+  .data-table th { font-size: 10px; padding: 6px 8px; }
+  .data-table td { padding: 5px 8px; max-width: 160px; }
+
+  /* ---------- 2.9 按钮缩小 ---------- */
+  .btn { padding: 7px 14px; font-size: 12px; }
+  .btn-sm { padding: 5px 11px; font-size: 11px; }
+  .btn-xs { padding: 3px 7px; font-size: 10px; }
+  .step-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .step-actions .btn { font-size: 11px; padding: 7px 14px; }
+
+  /* ---------- 2.10 拆分布局：双列 → 单列 ---------- */
+  .split-layout {
+    flex-direction: column !important;
+    gap: 16px;
+  }
+  .split-mapping { width: 100% !important; }
+  .split-results { width: 100% !important; }
+  .split-bottom {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* 拆分组 */
+  .sg-list { gap: 8px; }
+  .sg-card { padding: 10px; }
+
+  /* 分局卡片 */
+  .bureau-card { padding: 10px; }
+  .bureau-card-header { flex-wrap: wrap; gap: 6px; }
+  .bureau-tags { gap: 4px; }
+
+  /* 拆分统计 */
+  .split-stats { gap: 8px; }
+  .split-stat { padding: 8px 10px; min-width: 70px; }
+  .split-files-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  /* ---------- 2.11 二级统计 / 分组 ---------- */
+  .l2-section { margin-bottom: 14px; }
+  .l2-toggle h3 { font-size: 14px; }
+  .l2-form {
+    flex-direction: column !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+  .l2-form .f {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .l2-form .f label { font-size: 11px; }
+  .l2-form .f select,
+  .l2-form .f input {
+    width: 100%;
+    font-size: 12px;
+  }
+  .l2-form .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .gcolors { justify-content: flex-start; }
+
+  /* 分组卡片 */
+  .grp-cards { gap: 10px; }
+  .gc-card { padding: 10px; }
+  .gc-l1-header { padding: 8px 4px; }
+  .gc-l1-header h4 { font-size: 13px; }
+  .gc-sub-list { gap: 6px; }
+  .gc-values { gap: 4px; }
+  .gc-val {
+    font-size: 11px;
+    padding: 2px 7px;
+  }
+
+  /* 统计结果 */
+  .rv-section-hdr { padding: 10px 12px; flex-wrap: wrap; }
+  .rv-section-hdr h3 { font-size: 14px; }
+  .rv-acc-hdr { padding: 8px 10px; }
+  .rv-acc-hdr .rv-acc-name { font-size: 12px; }
+  .rv-table {
+    font-size: 11px;
+  }
+  .rv-table th, .rv-table td { padding: 4px 6px; }
+
+  /* ---------- 2.12 数据标准化 ---------- */
+  .nz-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding: 6px 0;
+  }
+  .nz-format-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 4px;
+  }
+  .nz-workspace {
+    flex-direction: column !important;
+    height: auto !important;
+    gap: 10px;
+  }
+  .nz-main { min-height: 300px; }
+  .nz-side-panel {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .nz-table { font-size: 11px; }
+  .nz-table th, .nz-table td { padding: 3px 5px; max-width: 120px; }
+
+  /* 编辑栏 */
+  .nz-edit-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px;
+  }
+  .nz-edit-bar > * { flex-shrink: 0; }
+  .nz-cell-input,
+  #nzCellInput {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .nz-cell-ref { font-size: 11px; }
+  .nz-func-btns { display: flex; gap: 4px; }
+  .nz-decimal-ctrl { display: flex; align-items: center; gap: 4px; }
+  .nz-decimal-ctrl select { width: 40px; font-size: 11px; padding: 2px; }
+
+  /* Sheet 标签滚动 */
+  .nz-sheet-tabs { overflow-x: auto; }
+  .nz-sheet-tab { padding: 8px 12px; font-size: 11px; }
+
+  /* 快速插入面板 */
+  .nz-qi-row { gap: 6px; }
+  .nz-qi-row label { font-size: 11px; min-width: 50px; }
+  .nz-qi-row select { font-size: 11px; padding: 4px 6px; }
+
+  /* 空提示 */
+  .nz-empty { padding: 20px 16px; }
+  .nz-empty-text { font-size: 14px; }
+  .nz-empty-hint { font-size: 11px; }
+
+  /* ---------- 2.13 PPT 通报 ---------- */
+  .ppt-config {
+    grid-template-columns: 1fr !important;
+    gap: 14px;
+  }
+  .ppt-upload-zone { padding: 24px 14px; }
+  .ppt-upload-text { font-size: 13px; }
+  .ppt-upload-hint { font-size: 11px; }
+  .ppt-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+  }
+
+  /* ---------- 2.14 在线推送 ---------- */
+  .kd-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding: 6px 0;
+  }
+  .kd-cat-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+  .kd-cat-tag { flex-shrink: 0; }
+  .kd-card { padding: 12px; }
+  .kd-card-header { flex-wrap: wrap; gap: 8px; }
+  .kd-card-info { width: 100%; }
+  .kd-card-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+  .kd-card-actions .btn { flex: 1; min-width: 70px; justify-content: center; }
+
+  /* 批量推送 */
+  .kd-batch-folder .kd-folder-row { flex-wrap: wrap; gap: 6px; }
+  .kd-folder-row input { width: 100%; flex: 1 1 100%; }
+  .kd-folder-row .btn { flex-shrink: 0; }
+  .kd-match-row { flex-wrap: wrap; gap: 6px; }
+
+  /* ---------- 2.15 邮件 ---------- */
+  .em-sub-nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 0 4px;
+  }
+  .em-sub-item { flex-shrink: 0; padding: 8px 10px; font-size: 12px; }
+  .em-compose-row { flex-wrap: wrap; gap: 8px; }
+  .em-tpl-sel { width: 100%; }
+  .em-tpl-sel select { width: 100%; }
+
+  /* 富文本工具栏 */
+  .em-rich-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 2px;
+    padding: 6px 4px;
+  }
+  .em-tb-btn { flex-shrink: 0; }
+  .em-tb-sep { flex-shrink: 0; }
+  .em-rich-body { min-height: 180px; font-size: 14px; }
+
+  /* 联系人表格 */
+  .em-table { font-size: 12px; }
+  .em-table th, .em-table td { padding: 6px 8px; }
+
+  /* 登录步骤条 */
+  .em-steps { gap: 2px; }
+  .em-step-text { font-size: 9px; }
+  .em-step-num { width: 24px; height: 24px; font-size: 11px; }
+  .em-step-line { width: 16px; }
+
+  /* ---------- 2.16 模态框全宽 ---------- */
+  .glass-dialog {
+    width: 92vw !important;
+    max-width: 92vw !important;
+  }
+  .nz-modal-box,
+  .kd-modal-box,
+  .ppt-modal-box,
+  .em-modal-box {
+    width: 94vw !important;
+    max-width: 94vw !important;
+    left: 3vw !important;
+    transform: none !important;
+  }
+  .kd-modal-box-lg,
+  .em-modal-box[style*="580"],
+  .em-modal-box[style*="600"] {
+    width: 94vw !important;
+    max-width: 94vw !important;
+  }
+  .nz-modal-box {
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+  }
+  .ppt-modal-box,
+  .em-modal-box {
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+  }
+  .kd-modal-box {
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+  }
+
+  /* 模态框内容滚动 */
+  .nz-mb-body,
+  .kd-mb-body,
+  .em-mb-body {
+    max-height: 60vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ---------- 2.17 过滤下拉适配 ---------- */
+  .fd-dropdown {
+    max-width: 94vw !important;
+    left: 3vw !important;
+    right: 3vw !important;
+    width: auto !important;
+  }
+  .fd-value-list { max-height: 40vh; }
+
+  /* 列管理弹出 */
+  .cm-popup {
+    max-width: 94vw !important;
+    left: 3vw !important;
+    right: 3vw !important;
+  }
+
+  /* ---------- 2.18 预处理结果 ---------- */
+  .preprocess-result { padding: 10px; }
+  .pp-stats { gap: 8px; flex-wrap: wrap; }
+  .pp-stat { font-size: 12px; padding: 4px 8px; }
+
+  /* ---------- 2.19 Toast ---------- */
+  .toast {
+    max-width: 90vw !important;
+    font-size: 12px;
+    left: 5vw !important;
+    right: 5vw !important;
+    text-align: center;
+  }
+
+  /* ---------- 2.20 通用 flex 收缩 ---------- */
+  .card { border-radius: 12px; }
+  .card-body { padding: 12px; }
+  .card-head { padding: 12px; flex-wrap: wrap; gap: 8px; }
+
+  /* 文件标签横向滚动 */
+  .file-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+  .ftab { flex-shrink: 0; }
+
+  /* L2 文件标签 */
+  .l2-file-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+
+  /* 分组编辑弹窗 */
+  .gc-edit-pop {
+    min-width: unset !important;
+    width: 92vw;
+    max-width: 92vw !important;
+    left: 4vw !important;
+  }
+}
+
+/* ================================================================
+   三、超小屏（≤380px）额外收紧
+   ================================================================ */
+@media (max-width: 380px) {
+  .step-panel { padding: 12px 8px !important; padding-top: 54px !important; }
+  .step-title { font-size: 16px !important; }
+  .btn { padding: 6px 10px; font-size: 11px; }
+  .btn-sm { padding: 4px 9px; font-size: 10px; }
+  .sidebar { width: 220px; }
+  .sb-item { padding: 11px 16px; font-size: 12px; }
+  .sb-logo { padding: 16px 14px; }
+  .sb-logo-icon { width: 32px; height: 32px; font-size: 12px; }
+  .sb-logo-text { font-size: 14px; }
+}
+
+/* ================================================================
+   四、横屏手机（高度 ≤500px 且宽度 > 500px）
+   ================================================================ */
+@media (max-height: 500px) and (min-width: 568px) {
+  .step-panel { padding-top: 14px !important; min-height: auto; }
+  .step-header { margin-bottom: 10px; }
+  .mobile-menu-btn { top: 6px; left: 6px; width: 38px; height: 38px; }
+}
+
+/* ================================================================
+   五、桌面端（>768px）—— 隐藏汉堡菜单和遮罩
+   ================================================================ */
+@media (min-width: 769px) {
+  .mobile-menu-btn { display: none; }
+  .sidebar-overlay { display: none !important; }
+  .sidebar { transform: none !important; }
+}
