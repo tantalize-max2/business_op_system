@@ -4,10 +4,11 @@
 功能：分局拆分（基于过滤后数据）、格式保持、文件下载
 """
 
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 import os
 from config import ensure_dirs
+from middleware.auth import require_token, is_auth_enabled
 from routes.file_routes import file_bp
 from routes.filter_routes import filter_bp
 from routes.stats_routes import stats_bp
@@ -19,7 +20,20 @@ from routes.email_routes import email_bp
 ensure_dirs()
 
 app = Flask(__name__, static_folder='static', static_url_path='')
-CORS(app)
+
+# CORS 来源限制：未配置 CORS_ORIGINS 时默认放开（适合本地开发）；
+# 生产部署时通过环境变量限定允许的前端地址（逗号分隔）。
+_cors_origins_env = os.environ.get('CORS_ORIGINS', '').strip()
+if _cors_origins_env:
+    CORS(app, origins=[o.strip() for o in _cors_origins_env.split(',') if o.strip()])
+else:
+    CORS(app)
+
+# API Token 认证：仅当设置了环境变量 API_TOKEN 时启用，校验所有 /api/ 请求
+@app.before_request
+def _auth_check():
+    if request.path.startswith('/api/'):
+        return require_token()
 
 app.register_blueprint(file_bp)
 app.register_blueprint(filter_bp)
@@ -31,4 +45,6 @@ app.register_blueprint(email_bp)
 
 if __name__ == '__main__':
     debug = os.environ.get('FLASK_DEBUG', '1') == '1'
+    if is_auth_enabled():
+        print('[安全] API Token 认证已启用')
     app.run(host='0.0.0.0', port=9527, debug=debug)

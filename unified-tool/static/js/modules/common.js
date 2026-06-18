@@ -30,6 +30,26 @@ function toggleTheme() {
   applyThemeUI(next);
 }
 
+// ========== API Token 注入（配合后端 API_TOKEN 环境变量） ==========
+// 拦截所有 fetch 请求，自动从 localStorage 读取 token 并注入 X-API-Token 头。
+// 后端未设置 API_TOKEN 时此 header 会被忽略，不影响本地开发。
+(function setupFetchToken() {
+  const _origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    init = init || {};
+    const token = localStorage.getItem('api-token');
+    if (token) {
+      init.headers = init.headers || {};
+      if (init.headers instanceof Headers) {
+        if (!init.headers.has('X-API-Token')) init.headers.set('X-API-Token', token);
+      } else if (typeof init.headers === 'object' && !init.headers['X-API-Token']) {
+        init.headers['X-API-Token'] = token;
+      }
+    }
+    return _origFetch.call(this, input, init);
+  };
+})();
+
 // ========== 刷新持久化 ==========
 function saveState() {
   // 保存mappingData、splitGroups和拆分状态（用于刷新后恢复）

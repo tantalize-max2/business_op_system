@@ -32,6 +32,7 @@ Thumbs.db
 temp/
 airscript_code.js
 push_to_kdocs.py
+项目复现提示词.md
 
 # Config data
 unified-tool/data/configs/

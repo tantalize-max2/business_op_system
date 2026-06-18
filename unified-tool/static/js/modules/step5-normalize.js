@@ -1,6 +1,81 @@
 // ========== step5-normalize.js — 步骤5：数据标准化 ==========
 
 // ================================================================
+// 安全算术表达式求值（递归下降解析器）
+// 仅支持数字与 + - * / () 及一元正负号、科学计数法。
+// 不使用 eval / new Function，从语法层面杜绝代码注入。
+// ================================================================
+function nzSafeArith(expr) {
+  const s = String(expr).replace(/\s+/g, '');
+  if (!s) return NaN;
+  let i = 0;
+
+  function peek() { return s[i]; }
+
+  function parseExpr() { // 加减（低优先级）
+    let val = parseTerm();
+    while (peek() === '+' || peek() === '-') {
+      const op = s[i++];
+      const rhs = parseTerm();
+      val = op === '+' ? val + rhs : val - rhs;
+    }
+    return val;
+  }
+
+  function parseTerm() { // 乘除（高优先级）
+    let val = parseFactor();
+    while (peek() === '*' || peek() === '/') {
+      const op = s[i++];
+      const rhs = parseFactor();
+      val = op === '*' ? val * rhs : val / rhs;
+    }
+    return val;
+  }
+
+  function parseFactor() { // 括号 / 一元正负 / 数字
+    if (peek() === '(') {
+      i++;
+      const val = parseExpr();
+      if (peek() !== ')') throw new Error('括号不匹配');
+      i++;
+      return val;
+    }
+    if (peek() === '-') { i++; return -parseFactor(); }
+    if (peek() === '+') { i++; return parseFactor(); }
+    return parseNumber();
+  }
+
+  function parseNumber() {
+    let num = '';
+    while (i < s.length) {
+      const ch = s[i];
+      if (/[0-9.]/.test(ch)) {
+        num += ch; i++;
+      } else if (/[eE]/.test(ch) && num && !/[eE]$/.test(num)) {
+        // 科学计数法指数标记
+        num += ch; i++;
+        if (s[i] === '+' || s[i] === '-') { num += s[i]; i++; }
+      } else {
+        break;
+      }
+    }
+    if (!num) throw new Error('非数字');
+    const n = parseFloat(num);
+    if (isNaN(n)) throw new Error('无效数字');
+    return n;
+  }
+
+  try {
+    const result = parseExpr();
+    // 必须完整消费整个表达式，否则视为非法
+    if (i !== s.length) return NaN;
+    return result;
+  } catch (e) {
+    return NaN;
+  }
+}
+
+// ================================================================
 // STEP 5: 数据标准化 (Normalize)
 // ================================================================
 
@@ -230,15 +305,11 @@ function nzEvalExpression(cellVal, sheetIdx, visitedRefs) {
   // 4. 安全计算算术表达式（支持括号优先级）
   const safeExpr = refResult.resolved.replace(/[^0-9+\-*/().eE\s]/g, '');
   if (!safeExpr.trim()) return { ok: false, value: '计算错误' };
-  try {
-    const numResult = Function('"use strict"; return (' + safeExpr + ')')();
-    if (typeof numResult === 'number' && isFinite(numResult)) {
-      return { ok: true, value: numResult };
-    }
-    return { ok: false, value: '计算错误' };
-  } catch (e) {
-    return { ok: false, value: '表达式错误' };
+  const numResult = nzSafeArith(safeExpr);
+  if (typeof numResult === 'number' && isFinite(numResult)) {
+    return { ok: true, value: numResult };
   }
+  return { ok: false, value: '计算错误' };
 }
 
 function nzParseFormula(str) {

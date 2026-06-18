@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '6aeffa2b-e146-4f3b-8824-37e11e1f07ba'
-  PropagateID: '6aeffa2b-e146-4f3b-8824-37e11e1f07ba'
-  ReservedCode1: 'f1ea8db0-5a76-4aef-bb24-50dfd3c728ef'
-  ReservedCode2: 'f1ea8db0-5a76-4aef-bb24-50dfd3c728ef'
+  ProduceID: 'eb1a6056-f122-456c-9013-7cc34a5e25a0'
+  PropagateID: 'eb1a6056-f122-456c-9013-7cc34a5e25a0'
+  ReservedCode1: '6fa6180c-65f8-44da-b448-25fa6d7b568d'
+  ReservedCode2: '6fa6180c-65f8-44da-b448-25fa6d7b568d'
 ---
 
 # 远程 Ubuntu Docker 部署指南
@@ -64,10 +64,24 @@ nano .env
 FLASK_DEBUG=0
 MAIL_USERNAME=wangy592@chinatelecom.cn  
 MAIL_PASSWORD=你的邮箱密码
+MAIL_AUTH_CODE=你的SMTP授权码
 MAIL_ACCOUNT=wangy592
 MAIL_PHONE=你的手机号
+
+# 安全配置（生产环境强烈建议设置）
+# API 认证 Token：设置后所有 /api/ 请求需携带此值
+# 前端在浏览器控制台执行 localStorage['api-token']='你的token' 即可生效
+API_TOKEN=自定义一串随机字符串
+
+# CORS 来源限制（逗号分隔），限制可访问的前端地址
+CORS_ORIGINS=http://你的服务器IP:5557
 ```
-# 需要替换自己的邮箱MAIL_USERNAME和MAIL_PHONE
+> 需要替换自己的邮箱 MAIL_USERNAME、MAIL_AUTH_CODE 和 MAIL_PHONE
+
+### 安全说明
+- **SMTP 授权码**已改为仅从环境变量 `MAIL_AUTH_CODE` 读取，不再硬编码在代码中。
+- **API Token**：留空时不启用（适合本地开发）；生产环境设置后可防止接口被未授权调用。前端通过 localStorage 配合：在浏览器控制台执行 `localStorage.setItem('api-token', '你的token')` 后刷新页面。
+- **CORS 来源**：生产环境务必限定允许的前端地址。
 ## 四、构建并启动
 
 ```bash

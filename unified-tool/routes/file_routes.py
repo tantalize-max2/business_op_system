@@ -9,6 +9,16 @@ from models.file_model import load_mapping, save_mapping, list_bureau_templates,
 file_bp = Blueprint('file', __name__)
 
 
+def _safe_join(base_dir, user_path):
+    """将用户输入的相对路径拼接到 base_dir，并校验结果未逃逸出 base_dir。
+    返回安全绝对路径；若检测到路径遍历则返回 None。"""
+    base_abs = os.path.realpath(base_dir)
+    target = os.path.realpath(os.path.join(base_abs, user_path))
+    if target == base_abs or target.startswith(base_abs + os.sep):
+        return target
+    return None
+
+
 @file_bp.route('/')
 def index():
     return send_from_directory('static', 'index.html')
@@ -103,18 +113,23 @@ def save_split_groups_api():
 
 @file_bp.route('/api/download/<path:filename>')
 def download_file(filename):
-    return send_file(os.path.join(OUTPUT_DIR, filename), as_attachment=True)
+    safe_path = _safe_join(OUTPUT_DIR, filename)
+    if not safe_path or not os.path.isfile(safe_path):
+        return jsonify({'error': '文件不存在'}), 404
+    return send_file(safe_path, as_attachment=True)
 
 
 @file_bp.route('/api/download-folder/<path:folder>')
 def download_folder(folder):
-    folder_path = os.path.join(OUTPUT_DIR, folder)
-    if not os.path.isdir(folder_path):
+    folder_path = _safe_join(OUTPUT_DIR, folder)
+    if not folder_path or not os.path.isdir(folder_path):
         return jsonify({'error': '文件夹不存在'}), 404
-    zip_name = f"{folder}.zip"
+    zip_name = f"{os.path.basename(folder_path)}.zip"
     zip_path = os.path.join(OUTPUT_DIR, zip_name)
     if not os.path.exists(zip_path):
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for f in os.listdir(folder_path):
-                zf.write(os.path.join(folder_path, f), f)
+                full = os.path.join(folder_path, f)
+                if os.path.isfile(full):
+                    zf.write(full, f)
     return send_file(zip_path, as_attachment=True)
