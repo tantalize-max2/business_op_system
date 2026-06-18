@@ -12,13 +12,21 @@ const TaskProgress = {
 
   init() {
     if (this._socket) return;
+    // socket.io 库未加载（如 CDN 失败）或连接失败时，降级为模拟进度模式
+    if (typeof io === 'undefined') {
+      console.warn('[WS] SocketIO 库未加载，进度条使用模拟模式');
+      this._connected = false;
+      return;
+    }
     try {
-      this._socket = io({ transports: ['websocket', 'polling'] });
+      this._socket = io({ transports: ['websocket', 'polling'], reconnectionAttempts: 2 });
       this._socket.on('connect', () => { this._connected = true; console.log('[WS] 进度推送已连接'); });
+      this._socket.on('connect_error', () => { this._connected = false; });
       this._socket.on('disconnect', () => { this._connected = false; });
       this._socket.on('task_progress', (data) => this._onProgress(data));
     } catch (e) {
-      console.warn('[WS] SocketIO 未加载，进度推送不可用', e);
+      console.warn('[WS] SocketIO 连接失败，进度条使用模拟模式', e);
+      this._connected = false;
     }
   },
 
@@ -78,7 +86,7 @@ const TaskProgress = {
     }
   },
 
-  /** 手动显示进度遮罩（任务开始前调用） */
+  /** 手动显示进度遮罩（任务开始前调用）。WebSocket 不可用时启动模拟进度。 */
   show(task) {
     this._ensureOverlay();
     const titleMap = { split: '分局拆分', ppt: 'PPT通报生成' };
@@ -86,12 +94,24 @@ const TaskProgress = {
     if (titleEl) titleEl.textContent = (titleMap[task] || task) + '...';
     this._bar.style.width = '0%';
     this._pct.textContent = '0%';
-    this._text.textContent = '准备中...';
+    this._text.textContent = this._connected ? '准备中...' : '正在处理，请稍候...';
     this._overlay.style.display = '';
+
+    // WebSocket 未连接时启动模拟进度（从 0 慢速递增到 90%，完成任务后由 hide 收尾）
+    if (!this._connected) {
+      this._simPercent = 0;
+      clearInterval(this._simTimer);
+      this._simTimer = setInterval(() => {
+        this._simPercent = Math.min(90, this._simPercent + Math.random() * 8 + 2);
+        this._bar.style.width = this._simPercent + '%';
+        this._pct.textContent = Math.round(this._simPercent) + '%';
+      }, 600);
+    }
   },
 
   /** 手动隐藏 */
   hide() {
+    clearInterval(this._simTimer);
     if (this._overlay) this._overlay.style.display = 'none';
   },
 };
