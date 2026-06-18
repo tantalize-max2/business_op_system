@@ -617,7 +617,8 @@ async function doSplit() {
   if (!splitCol) { ntf('请选择拆分列', 'error'); return; }
 
   const overlay = document.getElementById('progressOverlay');
-  overlay.style.display = 'flex';
+  overlay.style.display = 'none'; // 不再用静态遮罩，改用 WebSocket 进度条
+  TaskProgress.show('split'); // 显示 WebSocket 进度遮罩
 
   try {
     // 用当前raw数据（可能已被一级过滤编辑修改过）构建新的xlsx文件
@@ -653,7 +654,7 @@ async function doSplit() {
       })
     });
     const data = await res.json();
-    if (!res.ok) { ntf(data.error, 'error'); overlay.style.display = 'none'; return; }
+    if (!res.ok) { ntf(data.error, 'error'); TaskProgress.hide(); return; }
 
     S.splitResult = data;
     // 将拆分结果存到文件对象（多文件各自独立）
@@ -687,7 +688,7 @@ async function doSplit() {
   } catch (err) {
     ntf('拆分失败: ' + err.message, 'error');
   } finally {
-    overlay.style.display = 'none';
+    TaskProgress.hide(); // WebSocket 进度条由 done 事件自动隐藏，这里兜底
   }
 }
 

@@ -10,6 +10,7 @@
 
 模板持久化（CRUD）与上次标准化输出状态存取由 models/ppt_model.py 负责。
 """
+from services.progress_service import emit_progress
 import os
 import re
 import sys
@@ -529,6 +530,7 @@ def preview_data_regions(data_bytes, data_map=None):
 
 def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
     """根据模板 PPT 和数据 Excel 生成通报 PPT。"""
+    emit_progress('ppt', 5, '正在初始化...')
     dm = dict(DEFAULT_DATA_MAP)
     if data_map:
         dm.update(data_map)
@@ -554,6 +556,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
     tmp_out = tempfile.NamedTemporaryFile(suffix='.pptx', delete=False)
     tmp_out.close()
 
+    emit_progress('ppt', 10, '正在读取数据文件...')
     try:
         wb = load_workbook(tmp_data.name, data_only=True)
         ws = wb.active
@@ -622,6 +625,8 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
             except OSError: pass
         return {'ok': False, 'error': f'解析数据失败: {str(e)}'}
 
+    emit_progress('ppt', 25, '正在生成图表...')
+
     # 生成图表
     chart_dir = os.path.join(PPT_DATA_DIR, 'charts')
     os.makedirs(chart_dir, exist_ok=True)
@@ -635,8 +640,11 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
 
     date_suffix = PERIOD_STR.split('—')[-1] if '—' in PERIOD_STR else PERIOD_STR.split('-')[-1] if '-' in PERIOD_STR else PERIOD_STR
 
+    emit_progress('ppt', 40, '正在生成行业有效商机图表...')
     ind_chart_ok = _generate_biz_chart(industry_effective, industry_chart_path, '行业各分局', date_suffix, year=YEAR_FULL)
+    emit_progress('ppt', 50, '正在生成商业有效商机图表...')
     comm_chart_ok = _generate_biz_chart(commercial_effective, commercial_chart_path, '商业各分局', date_suffix, year=YEAR_FULL)
+    emit_progress('ppt', 60, '图表生成完成，正在加载PPT模板...')
 
     def _eff_data_debug(eff_data, max_n=5):
         items = []
@@ -689,6 +697,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
             except OSError: pass
         return {'ok': False, 'error': f'模板缺少关键元素：{", ".join(missing)}。请使用正确的商机通报模板(含表格、图表占位等)。'}
 
+    emit_progress('ppt', 75, '正在填充PPT内容...')
     _fill_all_slides(prs, DATE_STR, PERIOD_STR, CRM_DATE_FULL, YEAR_FULL, YEAR_SHORT,
                      B27_TEXT, B28_TEXT, J27_TEXT, J28_TEXT, AI27_TEXT, AI28_TEXT,
                      industry_reserve, commercial_reserve,
@@ -697,6 +706,7 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
                      industry_delivered, commercial_delivered,
                      industry_chart_path, commercial_chart_path)
 
+    emit_progress('ppt', 90, '正在保存PPT文件...')
     try:
         prs.save(tmp_out.name)
     except Exception as e:
@@ -709,6 +719,8 @@ def generate_ppt(template_bytes, data_bytes, custom_texts=None, data_map=None):
     except OSError: pass
     try: os.unlink(tmp_data.name)
     except OSError: pass
+
+    emit_progress('ppt', 100, 'PPT通报生成完成', done=True)
 
     ind_below30_count, _ = count_below30(industry_effective)
     comm_below30_count, _ = count_below30(commercial_effective)

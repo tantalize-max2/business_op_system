@@ -1335,6 +1335,11 @@ function calcAllStats() {
     if (file) { file.sumCol = e.target.value; calcAllStats(); }
   }));
   document.getElementById('exportBtn').style.display = S.files.length ? 'inline-flex' : 'none';
+
+  // 渲染 ECharts 图表区
+  if (typeof StatsCharts !== 'undefined') {
+    setTimeout(() => StatsCharts.render(), 100);
+  }
 }
 
 // ========== 导出 Excel ==========

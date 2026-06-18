@@ -13,12 +13,59 @@ normalize_bp = Blueprint('normalize', __name__)
 
 @normalize_bp.route('/api/nz-templates', methods=['GET'])
 def list_nz_templates_api():
+    """获取所有标准化模板列表
+    ---
+    tags:
+      - 标准化
+    responses:
+      200:
+        description: 模板列表
+        schema:
+          type: object
+          properties:
+            templates:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: {type: string, description: "模板名称"}
+                  savedAt: {type: number, description: "保存时间戳(毫秒)"}
+    """
     templates = list_nz_templates()
     return jsonify({'templates': templates})
 
 
 @normalize_bp.route('/api/nz-templates', methods=['POST'])
 def save_nz_template_api():
+    """保存一个新的标准化模板（Excel 模板文件）
+    ---
+    tags:
+      - 标准化
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required: [name, fileData]
+          properties:
+            name: {type: string, description: "模板名称（唯一）"}
+            fileData:
+              type: string
+              description: 模板文件（xlsx）的 base64 编码
+    responses:
+      200:
+        description: 保存成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+            name: {type: string, description: "实际保存的模板名称"}
+      400:
+        description: 参数错误（名称/数据为空、重名等）
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = request.json or {}
     name = (data.get('name') or '').strip()
     file_data = data.get('fileData', '')
@@ -34,6 +81,26 @@ def save_nz_template_api():
 
 @normalize_bp.route('/api/nz-templates/<path:name>', methods=['GET'])
 def get_nz_template_api(name):
+    """根据名称获取单个标准化模板的完整内容
+    ---
+    tags:
+      - 标准化
+    parameters:
+      - name: name
+        in: path
+        type: string
+        required: true
+        description: 模板名称
+    responses:
+      200:
+        description: 模板详情（包含 base64 编码的模板文件及配置）
+        schema:
+          type: object
+      404:
+        description: 模板不存在
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = get_nz_template(name)
     if data is None:
         return jsonify({'error': '模板不存在'}), 404
@@ -46,6 +113,28 @@ def get_nz_template_api(name):
 
 @normalize_bp.route('/api/nz-templates/<path:name>', methods=['DELETE'])
 def delete_nz_template_api(name):
+    """删除指定名称的标准化模板
+    ---
+    tags:
+      - 标准化
+    parameters:
+      - name: name
+        in: path
+        type: string
+        required: true
+        description: 模板名称
+    responses:
+      200:
+        description: 删除成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+      404:
+        description: 模板不存在
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if not delete_nz_template(name):
         return jsonify({'error': '模板不存在'}), 404
     return jsonify({'message': '模板已删除'})
@@ -53,6 +142,50 @@ def delete_nz_template_api(name):
 
 @normalize_bp.route('/api/nz-fill', methods=['POST'])
 def nz_fill_template():
+    """使用统计数据填充标准化 Excel 模板，返回生成的 xlsx 文件
+    ---
+    tags:
+      - 标准化
+    consumes:
+      - application/json
+    produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required: [templateData]
+          properties:
+            templateData:
+              type: string
+              description: 模板文件（xlsx）的 base64 编码
+            statsData:
+              type: object
+              description: 统计数据对象，按字段写入对应单元格
+            cellEdits:
+              type: array
+              description: 单元格手动编辑项
+              items: {type: object}
+            cellFormats:
+              type: array
+              description: 单元格格式调整项
+              items: {type: object}
+    responses:
+      200:
+        description: 填充成功，返回 xlsx 文件
+        schema:
+          type: file
+      400:
+        description: 参数错误（缺少模板 / base64 解码失败）
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      500:
+        description: 模板填充内部错误
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = request.json or {}
     template_b64 = data.get('templateData', '')
     stats_data = data.get('statsData', {})

@@ -21,11 +21,34 @@ def _safe_join(base_dir, user_path):
 
 @file_bp.route('/')
 def index():
+    """返回前端单页应用入口（index.html）
+    ---
+    tags:
+      - 文件管理
+    responses:
+      200:
+        description: HTML 页面
+        schema:
+          type: file
+    """
     return send_from_directory('static', 'index.html')
 
 
 @file_bp.route('/api/mapping', methods=['GET'])
 def get_mapping():
+    """获取当前表头映射配置（用于列名匹配）
+    ---
+    tags:
+      - 文件管理
+    responses:
+      200:
+        description: 映射配置
+        schema:
+          type: object
+          description: 字段名 → 标准字段名 的映射字典
+          additionalProperties:
+            type: string
+    """
     data = load_mapping()
     return current_app.response_class(
         response=json.dumps(data, ensure_ascii=False),
@@ -36,6 +59,31 @@ def get_mapping():
 
 @file_bp.route('/api/mapping', methods=['POST'])
 def save_mapping_api():
+    """保存表头映射配置
+    ---
+    tags:
+      - 文件管理
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          description: 字段名 → 标准字段名 的映射字典
+          additionalProperties:
+            type: string
+    responses:
+      200:
+        description: 保存成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+      400:
+        description: 无效的映射数据
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     mapping = request.json
     if not mapping or not isinstance(mapping, dict):
         return jsonify({'error': '无效的映射数据'}), 400
@@ -45,18 +93,80 @@ def save_mapping_api():
 
 @file_bp.route('/api/reset-mapping', methods=['POST'])
 def reset_mapping():
+    """重置表头映射为系统默认配置
+    ---
+    tags:
+      - 文件管理
+    responses:
+      200:
+        description: 重置成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+    """
     save_mapping(DEFAULT_MAPPING.copy())
     return jsonify({'message': '已重置为默认映射'})
 
 
 @file_bp.route('/api/bureau-templates', methods=['GET'])
 def list_bureau_templates_api():
+    """获取所有分局拆分模板列表（含映射与拆分组）
+    ---
+    tags:
+      - 文件管理
+    responses:
+      200:
+        description: 模板列表
+        schema:
+          type: array
+          items:
+            type: object
+            properties:
+              name: {type: string, description: "模板名称"}
+              savedAt: {type: number, description: "保存时间戳(毫秒)"}
+    """
     templates = list_bureau_templates()
     return jsonify(templates)
 
 
 @file_bp.route('/api/bureau-templates', methods=['POST'])
 def save_bureau_template_api():
+    """保存一个分局拆分模板（含映射与拆分组）
+    ---
+    tags:
+      - 文件管理
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required: [name, mapping]
+          properties:
+            name: {type: string, description: "模板名称（唯一）"}
+            mapping:
+              type: object
+              description: 表头映射字典
+              additionalProperties:
+                type: string
+            splitGroups:
+              type: object
+              description: 自定义拆分组配置，键为组名，值为分局列表
+            savedAt: {type: number, description: "保存时间戳(毫秒)，不传则使用当前时间"}
+    responses:
+      200:
+        description: 保存成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+            name: {type: string}
+      400:
+        description: 参数错误（名称/映射为空）
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = request.json or {}
     name = (data.get('name') or '').strip()
     if not name:
@@ -75,6 +185,31 @@ def save_bureau_template_api():
 
 @file_bp.route('/api/bureau-templates/<path:name>', methods=['GET'])
 def get_bureau_template_api(name):
+    """根据名称获取分局拆分模板详情
+    ---
+    tags:
+      - 文件管理
+    parameters:
+      - name: name
+        in: path
+        type: string
+        required: true
+        description: 模板名称
+    responses:
+      200:
+        description: 模板详情
+        schema:
+          type: object
+          properties:
+            name: {type: string}
+            mapping: {type: object, additionalProperties: {type: string}}
+            splitGroups: {type: object}
+            savedAt: {type: number}
+      404:
+        description: 模板不存在
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = get_bureau_template(name)
     if data is None:
         return jsonify({'error': '模板不存在'}), 404
@@ -87,6 +222,28 @@ def get_bureau_template_api(name):
 
 @file_bp.route('/api/bureau-templates/<path:name>', methods=['DELETE'])
 def delete_bureau_template_api(name):
+    """删除指定名称的分局拆分模板
+    ---
+    tags:
+      - 文件管理
+    parameters:
+      - name: name
+        in: path
+        type: string
+        required: true
+        description: 模板名称
+    responses:
+      200:
+        description: 删除成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+      404:
+        description: 模板不存在
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     if not delete_bureau_template(name):
         return jsonify({'error': '模板不存在'}), 404
     return jsonify({'message': '模板已删除'})
@@ -94,16 +251,31 @@ def delete_bureau_template_api(name):
 
 @file_bp.route('/api/split-groups', methods=['GET'])
 def get_split_groups():
-    data = load_split_groups()
-    return current_app.response_class(
-        response=json.dumps(data, ensure_ascii=False),
-        status=200,
-        mimetype='application/json'
-    )
-
-
-@file_bp.route('/api/split-groups', methods=['POST'])
-def save_split_groups_api():
+    """获取当前自定义拆分组配置
+    ---
+    tags:
+      - 文件管理
+    responses:
+      200:
+        description: 拆分组配置
+        schema:
+          type: object
+          description: 分组映射，键为组名，值为分局列表
+          additionalProperties:
+            type: array
+            items: {type: string}
+    responses:
+      200:
+        description: 保存成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+      400:
+        description: 无效的拆分组数据
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     groups = request.json
     if not groups or not isinstance(groups, dict):
         return jsonify({'error': '无效的拆分组数据'}), 400
@@ -113,6 +285,28 @@ def save_split_groups_api():
 
 @file_bp.route('/api/download/<path:filename>')
 def download_file(filename):
+    """下载 output 目录下的单个文件
+    ---
+    tags:
+      - 文件管理
+    parameters:
+      - name: filename
+        in: path
+        type: string
+        required: true
+        description: 文件相对路径（基于 output 目录，禁止路径遍历）
+    produces:
+      - application/octet-stream
+    responses:
+      200:
+        description: 文件流
+        schema:
+          type: file
+      404:
+        description: 文件不存在或路径越界
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     safe_path = _safe_join(OUTPUT_DIR, filename)
     if not safe_path or not os.path.isfile(safe_path):
         return jsonify({'error': '文件不存在'}), 404
@@ -121,6 +315,28 @@ def download_file(filename):
 
 @file_bp.route('/api/download-folder/<path:folder>')
 def download_folder(folder):
+    """将 output 目录下的指定文件夹打包为 zip 下载
+    ---
+    tags:
+      - 文件管理
+    parameters:
+      - name: folder
+        in: path
+        type: string
+        required: true
+        description: 文件夹相对路径（基于 output 目录，禁止路径遍历）
+    produces:
+      - application/zip
+    responses:
+      200:
+        description: ZIP 文件流
+        schema:
+          type: file
+      404:
+        description: 文件夹不存在或路径越界
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     folder_path = _safe_join(OUTPUT_DIR, folder)
     if not folder_path or not os.path.isdir(folder_path):
         return jsonify({'error': '文件夹不存在'}), 404

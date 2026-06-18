@@ -350,3 +350,30 @@ body.has-wallpaper .main-content {
 }
 [data-theme="dark"] .blossom-right-img { opacity: .6; }
 [data-theme="eyecare"] .blossom-right-img { opacity: .65; }
+
+/* ================================================================
+   WebSocket 进度条样式
+   ================================================================ */
+.ws-progress-header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+.ws-progress-title { font-size:15px; font-weight:600; color:var(--t1); }
+.ws-progress-bar-wrap { width:100%; height:8px; background:var(--bg2); border-radius:4px; overflow:hidden; margin-bottom:12px; }
+.ws-progress-bar { height:100%; background:linear-gradient(90deg, var(--brand), var(--brand-light)); border-radius:4px; transition:width .3s ease; }
+.ws-progress-info { display:flex; justify-content:space-between; align-items:center; }
+.ws-progress-text { font-size:13px; color:var(--t2); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:12px; }
+.ws-progress-pct { font-size:14px; font-weight:700; color:var(--brand); flex-shrink:0; }
+
+/* ================================================================
+   ECharts 统计图表区样式
+   ================================================================ */
+.chart-section { margin-top:24px; padding:20px; background:var(--glass); border:1px solid var(--glass-bd); border-radius:16px; }
+.chart-section-title { font-size:16px; font-weight:600; color:var(--t1); margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+.chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+@media (max-width: 900px) { .chart-grid { grid-template-columns:1fr; } }
+.chart-box { background:var(--bg); border-radius:12px; padding:16px; min-height:320px; }
+.chart-box-title { font-size:13px; font-weight:600; color:var(--t2); margin-bottom:8px; }
+.chart-canvas { width:100%; height:300px; }
+.chart-empty { display:flex; align-items:center; justify-content:center; height:300px; color:var(--t3); font-size:14px; }
+.chart-tabs { display:flex; gap:4px; margin-bottom:12px; }
+.chart-tab { padding:6px 14px; border-radius:8px; font-size:13px; cursor:pointer; background:transparent; color:var(--t2); border:1px solid transparent; transition:all .2s; }
+.chart-tab:hover { background:var(--bg2); }
+.chart-tab.active { background:var(--brand); color:#fff; }
