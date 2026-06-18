@@ -3,11 +3,11 @@ import os
 import json
 from flask import Blueprint, request, jsonify, send_file, current_app
 from config import OUTPUT_DIR, UPLOAD_DIR
-from models.push_model import (browse_local_fs, list_kdocs_cats_with_count, add_kdocs_cat,
-                                delete_kdocs_cat, list_kdocs_sheets, add_kdocs_sheet,
-                                update_kdocs_sheet, delete_kdocs_sheet, push_to_kdocs,
-                                push_to_kdocs_batch, get_airscript_code, save_airscript_code,
-                                scan_folder)
+from models.push_model import get_airscript_code, save_airscript_code
+from services.push_service import (browse_local_fs, list_kdocs_cats_with_count, add_kdocs_cat,
+                                    delete_kdocs_cat, list_kdocs_sheets, add_kdocs_sheet,
+                                    update_kdocs_sheet, delete_kdocs_sheet, push_to_kdocs,
+                                    push_to_kdocs_batch, scan_folder)
 
 push_bp = Blueprint('push', __name__)
 

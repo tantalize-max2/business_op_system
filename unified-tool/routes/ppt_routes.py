@@ -5,8 +5,9 @@ import base64
 from flask import Blueprint, request, jsonify, send_file, current_app
 from models.ppt_model import (
     list_ppt_templates, save_ppt_template, get_ppt_template,
-    delete_ppt_template, generate_ppt, get_last_nz_output, save_last_nz_output
+    delete_ppt_template, get_last_nz_output
 )
+from services.ppt_service import generate_ppt, preview_data_regions
 
 ppt_bp = Blueprint('ppt', __name__)
 
@@ -164,86 +165,8 @@ def ppt_data_preview_api():
     except Exception:
         return jsonify({'error': '数据文件解码失败'}), 400
 
-    import tempfile
-    tmp = tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False)
-    tmp.write(data_bytes)
-    tmp.close()
-
     try:
-        wb = _load_wb(tmp.name, data_only=True)
-        ws = wb.active
-    except Exception as e:
-        os.unlink(tmp.name)
-        return jsonify({'error': f'读取失败: {str(e)}'}), 500
-
-    try:
-        from models.ppt_model import (cell_val, read_range, excel_date_to_str, fmt_ca,
-                                       _parse_cell_ref, _parse_range_ref, DEFAULT_DATA_MAP)
-        dm = dict(DEFAULT_DATA_MAP)
-        if data.get('dataMap'):
-            dm.update(data['dataMap'])
-
-        date_c, date_r = _parse_cell_ref(dm['date_cell'])
-        period_c, period_r = _parse_cell_ref(dm['period_cell'])
-        b27_c, b27_r = _parse_cell_ref(dm['B27_cell'])
-        b28_c, b28_r = _parse_cell_ref(dm['B28_cell'])
-        j27_c, j27_r = _parse_cell_ref(dm['J27_cell'])
-        j28_c, j28_r = _parse_cell_ref(dm['J28_cell'])
-        ai27_c, ai27_r = _parse_cell_ref(dm['AI27_cell'])
-        ai28_c, ai28_r = _parse_cell_ref(dm['AI28_cell'])
-
-        preview = {
-            'date': str(cell_val(ws, date_c, date_r)),
-            'period': str(cell_val(ws, period_c, period_r)),
-            'B27': str(cell_val(ws, b27_c, b27_r))[:100],
-            'B28': str(cell_val(ws, b28_c, b28_r))[:100],
-            'J27': str(cell_val(ws, j27_c, j27_r))[:100],
-            'J28': str(cell_val(ws, j28_c, j28_r))[:100],
-            'AI27': str(cell_val(ws, ai27_c, ai27_r))[:100],
-            'AI28': str(cell_val(ws, ai28_c, ai28_r))[:100],
-        }
-
-        # 读取各区域的前几行（使用可配置的范围）
-        ir = _parse_range_ref(dm['industry_reserve'])
-        cr = _parse_range_ref(dm['commercial_reserve'])
-        ie = _parse_range_ref(dm['industry_effective'])
-        ce = _parse_range_ref(dm['commercial_effective'])
-        ip = _parse_range_ref(dm['industry_progress'])
-        cp = _parse_range_ref(dm['commercial_progress'])
-        idr = _parse_range_ref(dm['industry_delivered'])
-        cdr = _parse_range_ref(dm['commercial_delivered'])
-
-        ind_reserve = read_range(ws, ir[0], ir[1], ir[2], ir[3])
-        comm_reserve = read_range(ws, cr[0], cr[1], cr[2], cr[3])
-        ind_effective = read_range(ws, ie[0], ie[1], ie[2], ie[3])
-        comm_effective = read_range(ws, ce[0], ce[1], ce[2], ce[3])
-        ind_progress = read_range(ws, ip[0], ip[1], ip[2], ip[3])
-        comm_progress = read_range(ws, cp[0], cp[1], cp[2], cp[3])
-        ind_delivered = read_range(ws, idr[0], idr[1], idr[2], idr[3])
-        comm_delivered = read_range(ws, cdr[0], cdr[1], cdr[2], cdr[3])
-
-        def to_str_rows(rows):
-            return [[str(c) if c is not None else '' for c in r] for r in rows]
-
-        def sample_rows(rows, max_n=3):
-            return to_str_rows(rows[:max_n])
-
-        # 有效商机区域返回完整数据（用于图表校准），其他区域返回样本
-        preview['ranges'] = {
-            'industry_reserve': {'rows': len(ind_reserve), 'sample': sample_rows(ind_reserve)},
-            'commercial_reserve': {'rows': len(comm_reserve), 'sample': sample_rows(comm_reserve)},
-            'industry_effective': {'rows': len(ind_effective), 'sample': sample_rows(ind_effective), 'full': to_str_rows(ind_effective)},
-            'commercial_effective': {'rows': len(comm_effective), 'sample': sample_rows(comm_effective), 'full': to_str_rows(comm_effective)},
-            'industry_progress': {'rows': len(ind_progress), 'sample': sample_rows(ind_progress)},
-            'commercial_progress': {'rows': len(comm_progress), 'sample': sample_rows(comm_progress)},
-            'industry_delivered': {'rows': len(ind_delivered), 'sample': sample_rows(ind_delivered)},
-            'commercial_delivered': {'rows': len(comm_delivered), 'sample': sample_rows(comm_delivered)},
-        }
-
-        wb.close()
-        os.unlink(tmp.name)
+        preview = preview_data_regions(data_bytes, data.get('dataMap'))
         return jsonify(preview)
     except Exception as e:
-        wb.close()
-        os.unlink(tmp.name)
-        return jsonify({'error': f'解析失败: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500

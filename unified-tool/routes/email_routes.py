@@ -4,12 +4,13 @@ import json
 import time
 from flask import Blueprint, request, jsonify, send_from_directory
 from config import MAIL_CONFIG, EMAIL_DATA_DIR, EMAIL_UPLOAD_DIR
-from models.email_model import (get_login_state, get_contacts, add_contact, delete_contact,
-                                 update_contact, get_groups, check_login, upload_txt_var,
-                                 list_txt_vars, get_txt_var, delete_txt_var, save_uploaded_image,
-                                 get_templates, add_template, delete_template, update_template,
-                                 send_email, batch_send_email, start_login, submit_verify_code,
-                                 do_logout, cancel_login, load_login_creds)
+from services.email_service import (get_login_state, get_contacts, add_contact, delete_contact,
+                                     update_contact, get_groups, check_login, upload_txt_var,
+                                     list_txt_vars, get_txt_var, delete_txt_var_api,
+                                     save_uploaded_image, get_templates, add_template,
+                                     delete_template, update_template, send_email, batch_send_email,
+                                     start_login, submit_verify_code, do_logout, cancel_login,
+                                     load_login_creds_api)
 
 email_bp = Blueprint('email', __name__)
 
@@ -79,7 +80,7 @@ def email_get_txt_var(name):
 
 @email_bp.route('/api/email/txt-vars/<name>', methods=['DELETE'])
 def email_delete_txt_var(name):
-    delete_txt_var(name)
+    delete_txt_var_api(name)
     return jsonify({'success': True})
 
 
@@ -182,7 +183,7 @@ def email_start_login():
 
 @email_bp.route('/api/email/login/creds', methods=['GET'])
 def email_get_login_creds():
-    creds = load_login_creds()
+    creds = load_login_creds_api()
     phone = creds.get('phone', '')
     phone_display = phone[:3] + '****' + phone[-4:] if len(phone) >= 7 else phone
     return jsonify({'success': True, 'data': {

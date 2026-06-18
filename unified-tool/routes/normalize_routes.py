@@ -4,7 +4,8 @@ import json
 import base64
 from flask import Blueprint, request, jsonify, send_file, current_app
 from models.normalize_model import (list_nz_templates, save_nz_template, get_nz_template,
-                                     delete_nz_template, fill_template)
+                                     delete_nz_template)
+from services.normalize_service import fill_template
 from models.ppt_model import save_last_nz_output
 
 normalize_bp = Blueprint('normalize', __name__)

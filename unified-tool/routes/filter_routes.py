@@ -2,7 +2,7 @@
 import base64
 from flask import Blueprint, request, jsonify
 from models.file_model import load_mapping
-from models.filter_model import split_filtered_data
+from services.filter_service import split_filtered_data
 
 filter_bp = Blueprint('filter', __name__)
 
