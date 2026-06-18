@@ -9,10 +9,9 @@ const ModuleLoader = {
   _loading: new Map(),
 
   // 步骤名 → 需加载的脚本列表（按顺序加载，前一个加载完才加载下一个）
+// step1-4 已在 index.html 中静态加载（与上传/过滤/拆分/统计强耦合）
+// 此处仅配置 step5-step8 的懒加载（独立性强）
   _stepScripts: {
-    filter1:   ['js/modules/step2-filter.js'],
-    split:     ['js/modules/step3-split.js'],
-    filter2:   ['js/modules/step4-stats.js'],
     normalize: [
       'js/modules/step5/nz-core.js',
       'js/modules/step5/nz-ui.js',
@@ -29,8 +28,8 @@ const ModuleLoader = {
    * @returns {Promise<void>}
    */
   ensure(step) {
-    // 首屏已加载的步骤
-    if (step === 'upload') return Promise.resolve();
+    // 首屏已加载的步骤（step1-4 在 index.html 中静态引入）
+    if (['upload', 'filter1', 'split', 'filter2'].includes(step)) return Promise.resolve();
     // 已加载完成
     if (this._loaded.has(step)) return Promise.resolve();
     // 正在加载中，返回同一个 Promise（防止重复加载）
