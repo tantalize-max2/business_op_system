@@ -8,8 +8,8 @@ const PPT = {
   generating: false,
 };
 
-// ===== 初始化 =====
-document.addEventListener('DOMContentLoaded', () => {
+// ===== 初始化（懒加载兼容：DOM 已 ready 时立即执行）=====
+function _bindPptEvents() {
   // PPT模板上传
   const pptZone = document.getElementById('pptUploadZone');
   const pptInput = document.getElementById('pptFileInput');
@@ -65,7 +65,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // 模板选择
   const tplSel = document.getElementById('pptTemplateSel');
   if (tplSel) tplSel.addEventListener('change', onTemplateSelect);
-});
+}
+// 懒加载兼容：DOM 已 ready 时立即绑定事件
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _bindPptEvents);
+} else {
+  _bindPptEvents();
+}
 
 // ===== 文件处理 =====
 function handlePptFile(file) {

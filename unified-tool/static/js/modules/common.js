@@ -215,9 +215,16 @@ function getActiveFile() { return S.files.find(f => f.id === S.activeFileId) || 
 function getActiveHdr() { const f = getActiveFile(); return f ? f.hdr : []; }
 
 // ========== 步骤导航 ==========
+// 懒加载版：先立即切换 UI 面板，再异步加载该步骤的 JS 模块，加载完成后执行初始化。
+// 对已加载的步骤，ensure() 同步返回，体验无感知延迟。
+let _activeStep = 'upload'; // 防竞态：记录最后一次切换的目标步骤
+
 function switchStep(step) {
+  _activeStep = step;
   S.currentStep = step;
   debouncedSave();
+
+  // ---- 1. 立即执行 UI 面板切换（不依赖步骤 JS）----
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('step' + capitalize(step)).classList.add('active');
   document.querySelectorAll('.sb-item').forEach(n => n.classList.remove('active'));
@@ -230,18 +237,28 @@ function switchStep(step) {
   } else {
     document.getElementById('sbStats').style.display = 'none';
   }
-  // 进入二级统计时刷新L2数据（清理过时分组值、更新数据条数）
+
+  // ---- 2. 异步加载步骤模块，完成后执行初始化 ----
+  ModuleLoader.ensure(step).then(() => {
+    // 防竞态：如果用户在加载期间又切换到其他步骤，跳过本次初始化
+    if (_activeStep !== step) return;
+    _doStepInit(step);
+    closeSidebarDrawer();
+  });
+}
+
+/** 步骤初始化逻辑（在模块 JS 加载完成后执行） */
+function _doStepInit(step) {
+  // 进入二级统计时刷新L2数据
   if (step === 'filter2') {
     refreshL2Data();
   }
   // 进入分局拆分时加载最新mapping数据
   if (step === 'split') {
     if (S.splitMappingReady || (S._localMapping && Object.keys(S._localMapping).length > 0)) {
-      // 状态已在内存中（从 localStorage 恢复或之前已加载），仅刷新 UI
       renderMapping();
       updSplitLayoutVisibility();
     } else {
-      // 首次访问或无映射状态，从服务器加载
       loadMapping();
     }
     populateSplitColSel();
@@ -272,8 +289,6 @@ function switchStep(step) {
       }
     }
   }
-  // 手机端：切换步骤后自动关闭抽屉
-  closeSidebarDrawer();
 }
 function capitalize(s) {
   const map = {upload:'Upload', filter1:'Filter1', split:'Split', filter2:'Filter2', normalize:'Normalize', ppt:'Ppt', kdocs:'Kdocs', email:'Email'};

@@ -1006,13 +1006,9 @@
 <!-- particles removed -->
 <script src="js/modules/wallpaper.js"></script>
 <script src="js/modules/common.js"></script>
+<script src="js/modules/module-loader.js"></script>
+<!-- 首屏必需：上传步骤 -->
 <script src="js/modules/step1-upload.js"></script>
-<script src="js/modules/step2-filter.js"></script>
-<script src="js/modules/step3-split.js"></script>
-<script src="js/modules/step4-stats.js"></script>
-<script src="js/modules/step5-normalize.js"></script>
-<script src="js/modules/step6-ppt.js"></script>
-<script src="js/modules/step7-push.js"></script>
-<script src="js/modules/step8-email.js"></script>
+<!-- step2-step8 改为懒加载：首次切换到对应步骤时由 ModuleLoader 动态加载 -->
 </body>
 </html>

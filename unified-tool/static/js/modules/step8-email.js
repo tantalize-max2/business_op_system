@@ -1328,11 +1328,4 @@ const EmailTool = (() => {
     };
 })();
 
-document.addEventListener('DOMContentLoaded', () => {
-    const navEmail = document.getElementById('navEmail');
-    if (navEmail) {
-        navEmail.addEventListener('click', () => {
-            if (!navEmail._inited) { EmailTool.init(); navEmail._inited = true; }
-        });
-    }
-});
+// 注：原 DOMContentLoaded 中的 navEmail 点击初始化逻辑已由 common.js 的 _doStepInit('email') 统一处理
