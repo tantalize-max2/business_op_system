@@ -352,17 +352,6 @@ body.has-wallpaper .main-content {
 [data-theme="eyecare"] .blossom-right-img { opacity: .65; }
 
 /* ================================================================
-   WebSocket 进度条样式
-   ================================================================ */
-.ws-progress-header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
-.ws-progress-title { font-size:15px; font-weight:600; color:var(--t1); }
-.ws-progress-bar-wrap { width:100%; height:8px; background:var(--bg2); border-radius:4px; overflow:hidden; margin-bottom:12px; }
-.ws-progress-bar { height:100%; background:linear-gradient(90deg, var(--brand), var(--brand-light)); border-radius:4px; transition:width .3s ease; }
-.ws-progress-info { display:flex; justify-content:space-between; align-items:center; }
-.ws-progress-text { font-size:13px; color:var(--t2); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:12px; }
-.ws-progress-pct { font-size:14px; font-weight:700; color:var(--brand); flex-shrink:0; }
-
-/* ================================================================
    ECharts 统计图表区样式
    ================================================================ */
 .chart-section { margin-top:24px; padding:20px; background:var(--glass); border:1px solid var(--glass-bd); border-radius:16px; }

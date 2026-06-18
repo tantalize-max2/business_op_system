@@ -138,7 +138,6 @@ async function doGenerate() {
   }
 
   PPT.generating = true;
-  TaskProgress.show('ppt'); // 显示 WebSocket 进度遮罩
   const resultArea = document.getElementById('pptResultArea');
   if (resultArea) {
     resultArea.style.display = '';
@@ -199,7 +198,6 @@ async function doGenerate() {
     ntf(e.message, 'error');
   } finally {
     PPT.generating = false;
-    TaskProgress.hide(); // WebSocket 进度条由 done 事件自动隐藏，这里兜底
   }
 }
 

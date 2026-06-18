@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """拆分服务层 - 商机数据按分局拆分的核心业务逻辑
 
 从原 models/filter_model.py 迁移。本模块不含数据持久化（拆分结果直接写文件），
@@ -16,7 +16,6 @@ from config import (OUTPUT_DIR, DEFAULT_MAPPING, INDUSTRY_BUREAUS,
                     COMMERCIAL_BUREAUS, DEFAULT_SPLIT_GROUPS)
 from services.excel_service import clean_name, copy_sheet_with_format
 from models.file_model import load_mapping
-from services.progress_service import emit_progress
 
 
 def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, split_groups=None):
@@ -81,7 +80,6 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
     unmatched_managers = set()
     total_filtered = len(filtered_set)
 
-    emit_progress('split', 5, f'开始匹配 {total_filtered} 行数据...')
 
     for idx, index in enumerate(filtered_set):
         if index < 0 or index >= len(df):
@@ -107,20 +105,15 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
         # 每500行或最后一批发送一次进度
         if (idx + 1) % 500 == 0 or idx + 1 == total_filtered:
             pct = 5 + int(40 * (idx + 1) / total_filtered)
-            emit_progress('split', pct, f'已匹配 {idx + 1}/{total_filtered} 行（匹配 {matched_count}，未匹配 {unmatched_count}）')
-
-    emit_progress('split', 50, f'数据匹配完成：匹配 {matched_count} 行，未匹配 {unmatched_count} 行')
+        
 
     generated_files = _generate_bureau_files(bureau_rows, source_sheet, output_folder,
                                               current_date, header_row)
-
-    emit_progress('split', 65, f'已生成 {len(generated_files)} 个分局文件')
 
     # 生成汇总文件（所有分局合并）
     _generate_summary_file(bureau_rows, source_sheet, output_folder,
                            current_date, header_row, matched_count, generated_files)
 
-    emit_progress('split', 75, '汇总文件已生成')
 
     # 按拆分组生成分类汇总
     if split_groups is None:
@@ -129,14 +122,12 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
         _generate_category_summary(group_name, group_bureaus, bureau_rows, source_sheet,
                                     output_folder, current_date, header_row, generated_files)
 
-    emit_progress('split', 85, '分类汇总已生成')
 
     # 未匹配名单
     if unmatched_rows:
         _generate_unmatched_file(unmatched_rows, source_sheet, output_folder,
                                   current_date, header_row, unmatched_count, generated_files)
 
-    emit_progress('split', 90, '正在打包 ZIP...')
 
     # 打包 ZIP
     zip_name = f"分局拆分结果_{current_date}.zip"
@@ -147,8 +138,6 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
 
     source_wb.close()
     os.unlink(tmp_in.name)
-
-    emit_progress('split', 100, f'拆分完成：{len(generated_files)} 个文件', done=True)
 
     return {
         'ok': True,
