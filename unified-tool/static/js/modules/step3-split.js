@@ -620,14 +620,8 @@ async function doSplit() {
   overlay.style.display = '';
 
   try {
-    // 用当前raw数据（可能已被一级过滤编辑修改过）构建新的xlsx文件
-    const ws = XLSX.utils.json_to_sheet(f.raw);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-    const binStr = XLSX.write(wb, {type: 'binary', bookType: 'xlsx'});
-    const buf = new Uint8Array(binStr.length);
-    for (let i = 0; i < binStr.length; i++) buf[i] = binStr.charCodeAt(i) & 0xFF;
-    const currentFileData = buf.buffer;
+    // 直接使用上传时的原始文件，保留完整格式（列宽、行高、字体、颜色、边框等）
+    const currentFileData = f.rawFileData;
 
     // 计算一级过滤后数据的索引
     const filteredData = getFilteredData();
@@ -637,7 +631,7 @@ async function doSplit() {
       if (idx >= 0) filteredIndices.push(idx);
     });
 
-    // 将当前数据转base64
+    // 将原始文件转base64
     const b64 = arrayBufferToBase64(currentFileData);
 
     const res = await fetch('/api/split-filtered', {
@@ -649,7 +643,8 @@ async function doSplit() {
         filteredRowIndices: filteredIndices,
         mapping: getWorkingMapping(),
         splitColumn: splitCol,
-        splitGroups: S.splitGroups || null
+        splitGroups: S.splitGroups || null,
+        skipRows: f.skipRows || 0
       })
     });
     const data = await res.json();

@@ -64,6 +64,7 @@ def split_filtered():
     mapping = data.get('mapping') or load_mapping()
     split_column = data.get('splitColumn', '')
     split_groups = data.get('splitGroups')  # {组名: [分局列表]}
+    skip_rows = data.get('skipRows', 0)
 
     if not file_data_b64:
         return jsonify({'error': '缺少文件数据'}), 400
@@ -73,7 +74,7 @@ def split_filtered():
     except:
         return jsonify({'error': '文件数据解码失败'}), 400
 
-    result = split_filtered_data(raw_bytes, filtered_indices, mapping, split_column, split_groups)
+    result = split_filtered_data(raw_bytes, filtered_indices, mapping, split_column, split_groups, skip_rows)
 
     if not result['ok']:
         return jsonify({'error': result['error']}), 400

@@ -18,15 +18,16 @@ from services.excel_service import clean_name
 from models.file_model import load_mapping
 
 
-def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, split_groups=None):
+def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, split_groups=None, skip_rows=0):
     """按分局拆分过滤后的数据。
 
     Args:
-        file_bytes: 源 Excel 文件字节
-        filtered_indices: 已过滤的行索引列表（None 表示全部）
+        file_bytes: 源 Excel 文件字节（原始文件，保留完整格式）
+        filtered_indices: 已过滤的行索引列表（None 表示全部，基于跳过 skip_rows 后的数据）
         mapping: {分局名: [客户经理列表]}
         split_column: 拆分依据列名
         split_groups: {组名: [分局列表]}，None 时用默认拆分组
+        skip_rows: 跳过的标题行数（原始文件顶部非数据行）
 
     Returns:
         dict: 拆分结果，含 matched/unmatched/files/zip 等
@@ -58,9 +59,12 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
         os.unlink(tmp_in.name)
         return {'ok': False, 'error': f'读取文件出错: {str(e)}'}
 
-    # 用 pandas 读取数据进行匹配
+    # 用 pandas 读取数据进行匹配（跳过标题行）
     try:
-        df = pd.read_excel(tmp_in.name, sheet_name=source_sheet_title, dtype=str)
+        read_kwargs = {'sheet_name': source_sheet_title, 'dtype': str}
+        if skip_rows > 0:
+            read_kwargs['skiprows'] = skip_rows
+        df = pd.read_excel(tmp_in.name, **read_kwargs)
     except Exception as e:
         os.unlink(tmp_in.name)
         return {'ok': False, 'error': f'读取数据出错: {str(e)}'}
@@ -85,7 +89,7 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
     for index in sorted(filtered_set):
         if index < 0 or index >= len(df):
             continue
-        excel_row = index + 2  # pandas 0-based → Excel 1-based（含表头）
+        excel_row = index + 2 + skip_rows  # pandas 0-based → Excel 1-based（含表头 + 跳过的标题行）
 
         manager_name_raw = df.iloc[index][split_column]
         manager_name_clean = clean_name(manager_name_raw)
@@ -116,7 +120,8 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
         split_groups=split_groups if split_groups else DEFAULT_SPLIT_GROUPS,
         unmatched_rows=unmatched_rows,
         matched_count=matched_count,
-        unmatched_count=unmatched_count
+        unmatched_count=unmatched_count,
+        skip_rows=skip_rows
     )
 
     os.unlink(tmp_in.name)

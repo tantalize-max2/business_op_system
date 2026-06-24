@@ -30,7 +30,7 @@ def clean_name(name):
 
 def split_xlsx_fidelity(source_bytes, bureau_row_map, header_xml, max_col,
                         output_folder, current_date, split_groups,
-                        unmatched_rows, matched_count, unmatched_count):
+                        unmatched_rows, matched_count, unmatched_count, skip_rows=0):
     """直接操作 XML 实现格式 100% 保真的拆分。
 
     Args:
@@ -44,18 +44,28 @@ def split_xlsx_fidelity(source_bytes, bureau_row_map, header_xml, max_col,
         unmatched_rows: 未匹配行号列表
         matched_count: 匹配总数
         unmatched_count: 未匹配总数
+        skip_rows: 跳过的标题行数（表头上方非数据行）
 
     Returns:
         list: 生成的文件信息
     """
+    # 表头行号：skip_rows=0 时为行1，skip_rows>0 时为行 skip_rows+1
+    # 保留所有标题行（行1 ~ 行 skip_rows+1）
+    header_rows = list(range(1, skip_rows + 2))
     # 将源文件读入内存 zip
     source_zip = zipfile.ZipFile(io.BytesIO(source_bytes), 'r')
     source_files = {name: source_zip.read(name) for name in source_zip.namelist()}
     source_zip.close()
 
+    # 移除水印相关文件（图片、绘图层），只保留数据格式
+    source_files = _strip_watermark_files(source_files)
+
     # 提取 sheet XML 的非数据部分（前缀和后缀）
     sheet_xml_name = _find_sheet_xml_name(source_files)
     sheet_content = source_files[sheet_xml_name].decode('utf-8')
+
+    # 移除 sheet XML 中的水印/图片引用标签
+    sheet_content = _strip_watermark_tags(sheet_content)
 
     # 分离 sheet XML: 前缀 + sheetData + 后缀
     sd_start = sheet_content.find('<sheetData>')
@@ -73,8 +83,8 @@ def split_xlsx_fidelity(source_bytes, bureau_row_map, header_xml, max_col,
     for bureau_name, row_numbers in bureau_row_map.items():
         if not row_numbers:
             continue
-        # 构建新行列表：表头(行1) + 数据行
-        new_rows = [1] + row_numbers
+        # 构建新行列表：标题行(含表头) + 数据行
+        new_rows = header_rows + row_numbers
         new_sheet_xml = _build_sheet_xml(xml_prefix, xml_suffix, row_map, new_rows)
 
         safe_name = re.sub(r'[\/\\:*?"<>|]', '_', bureau_name)
@@ -96,7 +106,7 @@ def split_xlsx_fidelity(source_bytes, bureau_row_map, header_xml, max_col,
 
     summary_file = os.path.join(output_folder, f"汇总数据_{current_date}.xlsx")
     _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
-                            summary_rows_map, summary_file, xml_prefix, xml_suffix)
+                            summary_rows_map, summary_file, xml_prefix, xml_suffix, header_rows)
     generated_files.append({
         'bureau': '- 汇总文件 -',
         'rows': matched_count,
@@ -116,7 +126,7 @@ def split_xlsx_fidelity(source_bytes, bureau_row_map, header_xml, max_col,
             safe_cat = re.sub(r'[\/\\:*?"<>|]', '_', group_name)
             cat_file = os.path.join(output_folder, f"{safe_cat}_{current_date}.xlsx")
             _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
-                                    cat_rows_map, cat_file, xml_prefix, xml_suffix)
+                                    cat_rows_map, cat_file, xml_prefix, xml_suffix, header_rows)
             generated_files.append({
                 'bureau': f'- {group_name} -',
                 'rows': cat_total,
@@ -125,7 +135,7 @@ def split_xlsx_fidelity(source_bytes, bureau_row_map, header_xml, max_col,
 
     # ========== 生成未匹配名单 ==========
     if unmatched_rows:
-        new_rows = [1] + unmatched_rows
+        new_rows = header_rows + unmatched_rows
         new_sheet_xml = _build_sheet_xml(xml_prefix, xml_suffix, row_map, new_rows)
         unmatched_file = os.path.join(output_folder, f"未匹配名单_{current_date}.xlsx")
         _write_xlsx(source_files, sheet_xml_name, new_sheet_xml, unmatched_file)
@@ -228,7 +238,7 @@ def _write_xlsx(source_files, sheet_xml_name, new_sheet_xml, output_path):
 
 
 def _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
-                            rows_map, output_path, xml_prefix, xml_suffix):
+                            rows_map, output_path, xml_prefix, xml_suffix, header_rows=None):
     """写入多 sheet xlsx：每个分局一个 sheet。
 
     需要重写 workbook.xml（<sheets>）、workbook.xml.rels、[Content_Types].xml 来注册多个 sheet。
@@ -242,6 +252,10 @@ def _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
     sheet_content = source_files[sheet_xml_name].decode('utf-8')
     sd_start = sheet_content.find('<sheetData>')
     common_prefix = sheet_content[:sd_start + len('<sheetData>')]
+
+    # 表头行（默认行1）
+    if header_rows is None:
+        header_rows = [1]
 
     WS_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet'
     WS_CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'
@@ -274,7 +288,7 @@ def _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
         for name, data in source_files.items():
             if name == sheet_xml_name:
                 # 第一个分局写入 sheet1.xml
-                first_rows = [1] + rows_map[bureau_names[0]]
+                first_rows = header_rows + rows_map[bureau_names[0]]
                 new_xml = _build_sheet_xml(common_prefix, xml_suffix, row_map, first_rows)
                 zf.writestr(name, new_xml.encode('utf-8'))
             elif name == 'xl/workbook.xml':
@@ -302,7 +316,7 @@ def _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
 
         # 写第 2..N 个工作表文件
         for i in range(1, n):
-            new_rows = [1] + rows_map[bureau_names[i]]
+            new_rows = header_rows + rows_map[bureau_names[i]]
             new_xml = _build_sheet_xml(common_prefix, xml_suffix, row_map, new_rows)
             zf.writestr(f'xl/worksheets/sheet{i + 1}.xml', new_xml.encode('utf-8'))
             # 复制 sheet1 的 rels（图片/绘图等引用）
@@ -310,3 +324,46 @@ def _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
             if base_rels_name in source_files:
                 zf.writestr(f'xl/worksheets/_rels/sheet{i + 1}.xml.rels',
                             source_files[base_rels_name])
+
+
+def _strip_watermark_tags(sheet_xml):
+    """从 sheet XML 中移除水印/图片/绘图引用标签。
+
+    移除的标签：
+    - <picture r:id="..."/>  页面背景图片（最常见的背景水印）
+    - <drawing r:id="..."/>  绘图层（图片、形状、水印）
+    - <legacyDrawing r:id="..."/>  旧版绘图（批注等）
+    """
+    # <picture r:id="..."/>（自闭合，出现在 sheetData 之前）
+    sheet_xml = re.sub(r'<picture\s+r:id="[^"]*"\s*/>', '', sheet_xml)
+    # <drawing r:id="..."/>（自闭合，出现在 sheetData 之后）
+    sheet_xml = re.sub(r'<drawing\s+r:id="[^"]*"\s*/>', '', sheet_xml)
+    # <legacyDrawing r:id="..."/>
+    sheet_xml = re.sub(r'<legacyDrawing\s+r:id="[^"]*"\s*/>', '', sheet_xml)
+    return sheet_xml
+
+
+def _strip_watermark_files(source_files):
+    """移除水印相关的物理文件，并清理 sheet rels 中的引用。
+
+    跳过的文件：
+    - xl/drawings/  绘图层 XML
+    - xl/media/     图片文件
+    同时清理 worksheet rels 中指向 drawing/image 的关系。
+    """
+    cleaned = {}
+    for name, data in source_files.items():
+        # 跳过绘图层和媒体文件
+        if name.startswith('xl/drawings/') or name.startswith('xl/media/'):
+            continue
+        # 清理 worksheet rels 中的 drawing/image 关系
+        if name.startswith('xl/worksheets/_rels/') and name.endswith('.xml.rels'):
+            xml = data.decode('utf-8')
+            # 移除指向 drawing 或 image 的 Relationship
+            xml = re.sub(
+                r'<Relationship\b[^>]*?Target="drawings/[^"]*"[^>]*/>', '', xml)
+            xml = re.sub(
+                r'<Relationship\b[^>]*?Target="[^"]*image[^"]*"[^>]*/>', '', xml)
+            data = xml.encode('utf-8')
+        cleaned[name] = data
+    return cleaned
