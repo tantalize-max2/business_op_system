@@ -1,8 +1,11 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """拆分服务层 - 商机数据按分局拆分的核心业务逻辑
 
 从原 models/filter_model.py 迁移。本模块不含数据持久化（拆分结果直接写文件），
 纯粹负责：Excel 解析 → 按分局匹配 → 生成多个分局文件 + 汇总文件 → 打包 ZIP。
+
+格式保真策略：源工作簿只加载一次，所有输出文件通过在同一工作簿中创建新 sheet、
+临时移除原 sheet、保存、恢复原 sheet 的方式生成，确保完整继承 styles.xml。
 """
 import os
 import re
@@ -14,7 +17,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from config import (OUTPUT_DIR, DEFAULT_MAPPING, INDUSTRY_BUREAUS,
                     COMMERCIAL_BUREAUS, DEFAULT_SPLIT_GROUPS)
-from services.excel_service import clean_name, copy_sheet_with_format, create_workbook_from_source
+from services.excel_service import clean_name, copy_sheet_with_format
 from models.file_model import load_mapping
 
 
@@ -72,6 +75,8 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
         os.unlink(tmp_in.name)
         return {'ok': False, 'error': f'拆分列 "{split_column}" 不存在于数据中'}
 
+    source_sheet_title = source_sheet.title
+
     bureau_rows = {bureau: [] for bureau in mapping.keys()}
     unmatched_rows = []
     header_row = 1
@@ -79,7 +84,6 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
     unmatched_count = 0
     unmatched_managers = set()
     total_filtered = len(filtered_set)
-
 
     for idx, index in enumerate(filtered_set):
         if index < 0 or index >= len(df):
@@ -102,32 +106,47 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
             if manager_name_clean:
                 unmatched_managers.add(manager_name_clean)
 
-        # 每500行或最后一批发送一次进度
-        if (idx + 1) % 500 == 0 or idx + 1 == total_filtered:
-            pct = 5 + int(40 * (idx + 1) / total_filtered)
-        
+    generated_files = []
 
-    generated_files = _generate_bureau_files(bureau_rows, source_sheet, output_folder,
-                                              current_date, header_row)
+    # ========== 生成各分局文件 ==========
+    for bureau_name, row_indices in bureau_rows.items():
+        if row_indices:
+            _save_single_sheet(source_wb, source_sheet, source_sheet_title,
+                               [header_row] + row_indices, output_folder,
+                               bureau_name, current_date, generated_files,
+                               bureau_label=bureau_name, row_count=len(row_indices))
 
-    # 生成汇总文件（所有分局合并）
-    _generate_summary_file(bureau_rows, source_sheet, output_folder,
-                           current_date, header_row, matched_count, generated_files)
+    # ========== 生成汇总文件（多 sheet） ==========
+    _save_multi_sheet(source_wb, source_sheet, source_sheet_title,
+                      output_folder, '汇总数据', current_date,
+                      bureau_rows, header_row, generated_files,
+                      file_label='- 汇总文件 -', row_count=matched_count)
 
-
-    # 按拆分组生成分类汇总
+    # ========== 生成分类汇总 ==========
     if split_groups is None:
         split_groups = DEFAULT_SPLIT_GROUPS
     for group_name, group_bureaus in split_groups.items():
-        _generate_category_summary(group_name, group_bureaus, bureau_rows, source_sheet,
-                                    output_folder, current_date, header_row, generated_files)
+        cat_rows_map = {}
+        cat_total = 0
+        for bureau_name in group_bureaus:
+            ri = bureau_rows.get(bureau_name, [])
+            if ri:
+                cat_rows_map[bureau_name] = ri
+                cat_total += len(ri)
+        if cat_rows_map:
+            _save_multi_sheet(source_wb, source_sheet, source_sheet_title,
+                              output_folder, group_name, current_date,
+                              cat_rows_map, header_row, generated_files,
+                              file_label=f'- {group_name} -', row_count=cat_total)
 
-
-    # 未匹配名单
+    # ========== 生成未匹配名单 ==========
     if unmatched_rows:
-        _generate_unmatched_file(unmatched_rows, source_sheet, output_folder,
-                                  current_date, header_row, unmatched_count, generated_files)
+        _save_single_sheet(source_wb, source_sheet, source_sheet_title,
+                           [header_row] + unmatched_rows, output_folder,
+                           '未匹配名单', current_date, generated_files,
+                           bureau_label='- 未匹配名单 -', row_count=unmatched_count)
 
+    source_wb.close()
 
     # 打包 ZIP
     zip_name = f"分局拆分结果_{current_date}.zip"
@@ -136,7 +155,6 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
         for f in os.listdir(output_folder):
             zf.write(os.path.join(output_folder, f), f)
 
-    source_wb.close()
     os.unlink(tmp_in.name)
 
     return {
@@ -152,87 +170,66 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
     }
 
 
-def _generate_bureau_files(bureau_rows, source_sheet, output_folder, current_date, header_row):
-    """为每个分局生成单独的 Excel 文件。"""
-    generated_files = []
-    source_wb = source_sheet.parent
-    for bureau_name, row_indices in bureau_rows.items():
-        if row_indices:
-            target_wb, default_sheet = create_workbook_from_source(source_wb)
-            del target_wb[default_sheet.title]
-            target_sheet = target_wb.create_sheet(title='Sheet')
-            all_rows = [header_row] + row_indices
-            copy_sheet_with_format(source_sheet, target_sheet, all_rows)
-            safe_name = re.sub(r'[\/\\:*?"<>|]', '_', bureau_name)
-            output_file = os.path.join(output_folder, f"{safe_name}_{current_date}.xlsx")
-            target_wb.save(output_file)
-            generated_files.append({
-                'bureau': bureau_name,
-                'rows': len(row_indices),
-                'filename': f"{safe_name}_{current_date}.xlsx"
-            })
-    return generated_files
+def _save_single_sheet(source_wb, source_sheet, source_sheet_title, all_rows,
+                       output_folder, name_prefix, current_date, generated_files,
+                       bureau_label, row_count):
+    """在源工作簿中创建新 sheet、复制行、临时移除原 sheet、保存、恢复。
 
+    格式完全继承自源工作簿的 styles.xml / theme。
+    """
+    new_sheet = source_wb.create_sheet(title='Sheet')
+    copy_sheet_with_format(source_sheet, new_sheet, all_rows)
 
-def _generate_summary_file(bureau_rows, source_sheet, output_folder, current_date,
-                            header_row, matched_count, generated_files):
-    """生成所有分局合并的汇总文件。"""
-    summary_file = os.path.join(output_folder, f"汇总数据_{current_date}.xlsx")
-    source_wb = source_sheet.parent
-    summary_wb, default_sheet = create_workbook_from_source(source_wb)
-    del summary_wb[default_sheet.title]
-    for bureau_name, row_indices in bureau_rows.items():
-        sheet_name = bureau_name[:31]
-        target_sheet = summary_wb.create_sheet(title=sheet_name)
-        if row_indices:
-            all_rows = [header_row] + row_indices
-            copy_sheet_with_format(source_sheet, target_sheet, all_rows)
-    summary_wb.save(summary_file)
+    # 临时从工作簿移除源 sheet（保留对象引用以便恢复）
+    source_wb._sheets.remove(source_sheet)
+    try:
+        safe_name = re.sub(r'[\/\\:*?"<>|]', '_', name_prefix)
+        output_file = os.path.join(output_folder, f"{safe_name}_{current_date}.xlsx")
+        source_wb.save(output_file)
+    finally:
+        # 恢复源 sheet 到首位，移除临时 sheet
+        source_wb._sheets.remove(new_sheet)
+        source_wb._sheets.insert(0, source_sheet)
+
     generated_files.append({
-        'bureau': '- 汇总文件 -',
-        'rows': matched_count,
-        'filename': f"汇总数据_{current_date}.xlsx"
+        'bureau': bureau_label,
+        'rows': row_count,
+        'filename': f"{safe_name}_{current_date}.xlsx"
     })
 
 
-def _generate_category_summary(category_name, category_bureaus, bureau_rows, source_sheet,
-                                output_folder, current_date, header_row, generated_files):
-    """生成单个拆分组的分类汇总文件（多 sheet）。"""
-    source_wb = source_sheet.parent
-    cat_wb, default_sheet = create_workbook_from_source(source_wb)
-    del cat_wb[default_sheet.title]
-    cat_rows = 0
-    for bureau_name in category_bureaus:
-        row_indices = bureau_rows.get(bureau_name, [])
+def _save_multi_sheet(source_wb, source_sheet, source_sheet_title,
+                      output_folder, name_prefix, current_date,
+                      rows_map, header_row, generated_files,
+                      file_label, row_count):
+    """生成多 sheet 汇总文件。
+
+    在源工作簿中创建多个新 sheet，临时移除原 sheet，保存，恢复。
+    """
+    temp_sheets = []
+    for sheet_name, row_indices in rows_map.items():
         if row_indices:
-            sheet_name = bureau_name[:31]
-            target_sheet = cat_wb.create_sheet(title=sheet_name)
-            all_rows = [header_row] + row_indices
-            copy_sheet_with_format(source_sheet, target_sheet, all_rows)
-            cat_rows += len(row_indices)
-    if cat_rows:
-        safe_cat = re.sub(r'[\/\\:*?"<>|]', '_', category_name)
-        cat_file = os.path.join(output_folder, f"{safe_cat}_{current_date}.xlsx")
-        cat_wb.save(cat_file)
-        generated_files.append({
-            'bureau': f'- {category_name} -',
-            'rows': cat_rows,
-            'filename': f"{safe_cat}_{current_date}.xlsx"
-        })
+            new_sheet = source_wb.create_sheet(title=sheet_name[:31])
+            copy_sheet_with_format(source_sheet, new_sheet, [header_row] + row_indices)
+            temp_sheets.append(new_sheet)
 
+    if not temp_sheets:
+        return
 
-def _generate_unmatched_file(unmatched_rows, source_sheet, output_folder, current_date,
-                               header_row, unmatched_count, generated_files):
-    """生成未匹配名单文件。"""
-    source_wb = source_sheet.parent
-    unmatched_wb, _ = create_workbook_from_source(source_wb)
-    unmatched_sheet = unmatched_wb.active
-    all_rows = [header_row] + unmatched_rows
-    copy_sheet_with_format(source_sheet, unmatched_sheet, all_rows)
-    unmatched_file_path = os.path.join(output_folder, f"未匹配名单_{current_date}.xlsx")
-    unmatched_wb.save(unmatched_file_path)
+    # 临时移除源 sheet
+    source_wb._sheets.remove(source_sheet)
+    try:
+        safe_name = re.sub(r'[\/\\:*?"<>|]', '_', name_prefix)
+        output_file = os.path.join(output_folder, f"{safe_name}_{current_date}.xlsx")
+        source_wb.save(output_file)
+    finally:
+        # 移除所有临时 sheet，恢复源 sheet
+        for ts in temp_sheets:
+            source_wb._sheets.remove(ts)
+        source_wb._sheets.insert(0, source_sheet)
+
     generated_files.append({
-        'bureau': '- 未匹配名单 -',
-        'rows': unmatched_count,
-        'filename': f"未匹配名单_{current_date}.xlsx"
+        'bureau': file_label,
+        'rows': row_count,
+        'filename': f"{safe_name}_{current_date}.xlsx"
     })
