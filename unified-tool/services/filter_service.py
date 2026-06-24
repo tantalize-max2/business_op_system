@@ -11,10 +11,10 @@ import tempfile
 import zipfile
 from datetime import datetime
 import pandas as pd
-from openpyxl import load_workbook, Workbook
+from openpyxl import load_workbook
 from config import (OUTPUT_DIR, DEFAULT_MAPPING, INDUSTRY_BUREAUS,
                     COMMERCIAL_BUREAUS, DEFAULT_SPLIT_GROUPS)
-from services.excel_service import clean_name, copy_sheet_with_format
+from services.excel_service import clean_name, copy_sheet_with_format, create_workbook_from_source
 from models.file_model import load_mapping
 
 
@@ -155,10 +155,12 @@ def split_filtered_data(file_bytes, filtered_indices, mapping, split_column, spl
 def _generate_bureau_files(bureau_rows, source_sheet, output_folder, current_date, header_row):
     """为每个分局生成单独的 Excel 文件。"""
     generated_files = []
+    source_wb = source_sheet.parent
     for bureau_name, row_indices in bureau_rows.items():
         if row_indices:
-            target_wb = Workbook()
-            target_sheet = target_wb.active
+            target_wb, default_sheet = create_workbook_from_source(source_wb)
+            del target_wb[default_sheet.title]
+            target_sheet = target_wb.create_sheet(title='Sheet')
             all_rows = [header_row] + row_indices
             copy_sheet_with_format(source_sheet, target_sheet, all_rows)
             safe_name = re.sub(r'[\/\\:*?"<>|]', '_', bureau_name)
@@ -176,9 +178,9 @@ def _generate_summary_file(bureau_rows, source_sheet, output_folder, current_dat
                             header_row, matched_count, generated_files):
     """生成所有分局合并的汇总文件。"""
     summary_file = os.path.join(output_folder, f"汇总数据_{current_date}.xlsx")
-    summary_wb = Workbook()
-    if 'Sheet' in summary_wb.sheetnames:
-        del summary_wb['Sheet']
+    source_wb = source_sheet.parent
+    summary_wb, default_sheet = create_workbook_from_source(source_wb)
+    del summary_wb[default_sheet.title]
     for bureau_name, row_indices in bureau_rows.items():
         sheet_name = bureau_name[:31]
         target_sheet = summary_wb.create_sheet(title=sheet_name)
@@ -196,9 +198,9 @@ def _generate_summary_file(bureau_rows, source_sheet, output_folder, current_dat
 def _generate_category_summary(category_name, category_bureaus, bureau_rows, source_sheet,
                                 output_folder, current_date, header_row, generated_files):
     """生成单个拆分组的分类汇总文件（多 sheet）。"""
-    cat_wb = Workbook()
-    if 'Sheet' in cat_wb.sheetnames:
-        del cat_wb['Sheet']
+    source_wb = source_sheet.parent
+    cat_wb, default_sheet = create_workbook_from_source(source_wb)
+    del cat_wb[default_sheet.title]
     cat_rows = 0
     for bureau_name in category_bureaus:
         row_indices = bureau_rows.get(bureau_name, [])
@@ -222,7 +224,8 @@ def _generate_category_summary(category_name, category_bureaus, bureau_rows, sou
 def _generate_unmatched_file(unmatched_rows, source_sheet, output_folder, current_date,
                                header_row, unmatched_count, generated_files):
     """生成未匹配名单文件。"""
-    unmatched_wb = Workbook()
+    source_wb = source_sheet.parent
+    unmatched_wb, _ = create_workbook_from_source(source_wb)
     unmatched_sheet = unmatched_wb.active
     all_rows = [header_row] + unmatched_rows
     copy_sheet_with_format(source_sheet, unmatched_sheet, all_rows)
