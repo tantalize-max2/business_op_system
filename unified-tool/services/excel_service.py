@@ -58,21 +58,21 @@ def copy_sheet_with_format(source_sheet, target_sheet, row_indices):
     # 3. 合并单元格
     _copy_merged_cells(source_sheet, target_sheet, src_to_tgt)
 
-    # 4. 冻结窗格
+    # 4. 冻结窗格 - 按行号映射到新位置
     if source_sheet.freeze_panes:
+        from openpyxl.utils import range_boundaries
         fp = source_sheet.freeze_panes
         if isinstance(fp, str):
-            from openpyxl.utils import range_boundaries
-            _, freeze_row = range_boundaries(fp)[0], range_boundaries(fp)[1]
+            fp_col, fp_row = range_boundaries(fp)[0], range_boundaries(fp)[1]
         else:
-            freeze_row = fp.row
+            fp_col, fp_row = fp.col_idx, fp.row
         new_freeze_row = None
         for src_row in row_indices:
-            if src_row >= freeze_row:
+            if src_row >= fp_row:
                 new_freeze_row = src_to_tgt[src_row]
                 break
         if new_freeze_row is not None and new_freeze_row > 1:
-            target_sheet.freeze_panes = new_freeze_row
+            target_sheet.freeze_panes = f"{get_column_letter(fp_col)}{new_freeze_row}"
 
     # 5. 自动筛选
     if source_sheet.auto_filter and source_sheet.auto_filter.ref:
