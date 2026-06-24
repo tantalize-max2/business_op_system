@@ -548,11 +548,16 @@ def _blackbox_login_worker():
         from playwright.sync_api import sync_playwright
         login_state['message'] = '正在启动浏览器...'
         chrome_path = _find_chrome_path()
+        # 调试支持：设置环境变量 PW_HEADED=1 切换为有头模式（弹出可见浏览器窗口），
+        # 并放慢操作节奏，便于观察/调试邮箱登录与短信验证流程。默认保持无头模式。
+        _pw_headed = os.environ.get('PW_HEADED', '').strip().lower() in ('1', 'true', 'yes')
         launch_opts = {
-            'headless': True,
+            'headless': not _pw_headed,
             'args': ['--no-sandbox', '--disable-blink-features=AutomationControlled',
                      '--disable-gpu', '--disable-dev-shm-usage'],
         }
+        if _pw_headed:
+            launch_opts['slow_mo'] = 300
         if chrome_path:
             launch_opts['executable_path'] = chrome_path
         with sync_playwright() as p:

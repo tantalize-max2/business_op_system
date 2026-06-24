@@ -126,7 +126,14 @@ def main():
             ax.text(x_pos + max_rate * 0.005, i - 0.2, amt_text, va='center', ha='left', fontsize=8, color='#888888')
 
     ax.set_xlabel(args.xlabel, fontsize=12, fontweight='bold', labelpad=10)
-    ax.set_xlim(0, max_rate * 1.22)
+    # 确保考核线及其文字标签落在可视区域内。当所有完成率远低于考核线（如全部 <10%）
+    # 时，max_rate 很小，按 max_rate*1.22 设的 xlim 也会很小，此时考核线（如30%）及
+    # 其文字标签会被画到画布之外；bbox_inches='tight' 会把这些画布外的文字纳入裁剪框，
+    # 把输出图片撑成超宽扁条（如 8033×1530），塞入 PPT 占位后被横向压扁，表现为“图表
+    # 展示不完全”。故将 xlim 至少扩展到覆盖最高考核线。
+    _max_target = max(args.target_line) if args.target_line else 0
+    _x_right = max(max_rate * 1.22, _max_target * 1.05) if _max_target > 0 else max_rate * 1.22
+    ax.set_xlim(0, _x_right)
     ax.xaxis.grid(True, linestyle='-', alpha=0.15, color='#CCCCCC', zorder=0)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)

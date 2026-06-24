@@ -203,6 +203,17 @@ def _build_sheet_xml(xml_prefix, xml_suffix, row_map, row_numbers):
             parts.append(_renumber_row_xml(row_xml, src_row_num, new_idx, max_col))
 
     rows_xml = ''.join(parts)
+
+    # 更新 <dimension> 为实际数据范围。原始前缀里的 dimension 仍是源文件的完整范围
+    # （如 A1:AF1457），若不更新，拆分后的小文件在 WPS/Excel 中“已用区域”、
+    # Ctrl+End 跳转、滚动条与打印范围都会沿用原始大范围，表现为“格式/范围与原文件不同”。
+    written_rows = len(parts)
+    if written_rows > 0:
+        last_col_letter = get_column_letter(max_col)
+        new_dim = '<dimension ref="A1:%s%d"/>' % (last_col_letter, written_rows)
+        xml_prefix = re.sub(r'<dimension\s+ref="[^"]*"\s*/>',
+                            new_dim, xml_prefix, count=1)
+
     return xml_prefix + rows_xml + xml_suffix
 
 
@@ -220,97 +231,82 @@ def _write_multi_sheet_xlsx(source_files, sheet_xml_name, row_map,
                             rows_map, output_path, xml_prefix, xml_suffix):
     """写入多 sheet xlsx：每个分局一个 sheet。
 
-    需要修改 workbook.xml 和 Content_Types.xml 来注册多个 sheet。
+    需要重写 workbook.xml（<sheets>）、workbook.xml.rels、[Content_Types].xml 来注册多个 sheet。
+    关键：Relationship / Override 的属性值（Type / ContentType 是带 / 的 URL）里含 '/'，
+    不能用 [^/] 截断，否则会匹配不到、漏掉 styles/sharedStrings 等关系，或留下重复 Override，
+    导致 WPS/Excel 打开时报“内容有问题、需要修复”。
     """
-    # 先找到源文件的命名空间和前缀
-    sheet_content = source_files[sheet_xml_name].decode('utf-8')
+    bureau_names = list(rows_map.keys())
+    n = len(bureau_names)
 
-    # 解析前缀获取 sheetViews, sheetFormatPr, cols 等公共部分
+    sheet_content = source_files[sheet_xml_name].decode('utf-8')
     sd_start = sheet_content.find('<sheetData>')
     common_prefix = sheet_content[:sd_start + len('<sheetData>')]
 
-    # 推断最大列数
-    max_col = 32
+    WS_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet'
+    WS_CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'
+
+    # ---- 1. 重写 workbook.xml.rels ----
+    # 保留所有非 worksheet 关系（sharedStrings/styles/theme 等，维持其原始 rId），
+    # 工作表关系重新分配 rId（接在已用 rId 之后），避免 rId 冲突。
+    orig_rels = source_files.get('xl/_rels/workbook.xml.rels', b'').decode('utf-8')
+    # [^>]*? 可正确跨过含 '/' 的 URL，匹配到自闭合的 />
+    all_rel_xmls = re.findall(r'<Relationship\b[^>]*?/>', orig_rels)
+    non_ws_rels = [r for r in all_rel_xmls if '/worksheet' not in r]
+    used_nums = [int(m) for m in re.findall(r'Id="rId(\d+)"', ''.join(non_ws_rels))]
+    start = max(used_nums) + 1 if used_nums else 1
+    ws_rids = [f'rId{start + i}' for i in range(n)]
+    new_ws_rels = ''.join(
+        f'<Relationship Id="{ws_rids[i]}" Type="{WS_TYPE}" Target="worksheets/sheet{i + 1}.xml"/>'
+        for i in range(n))
+    ns_match = re.search(r'<Relationships\b[^>]*>', orig_rels)
+    rels_root = ns_match.group(0) if ns_match else '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    full_rels_xml = rels_root + ''.join(non_ws_rels) + new_ws_rels + '</Relationships>'
+
+    # ---- 2. 重写 workbook.xml 的 <sheets>（引用新的工作表 rId）----
+    new_sheet_tags = []
+    for i, bn in enumerate(bureau_names):
+        safe = re.sub(r'[\/\\:*?"<>|]', '_', bn)[:28]
+        new_sheet_tags.append(f'<sheet name="{safe}" sheetId="{i + 1}" state="visible" r:id="{ws_rids[i]}"/>')
+    new_sheets_block = '<sheets>' + ''.join(new_sheet_tags) + '</sheets>'
 
     with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        bureau_names = list(rows_map.keys())
-        sheet_idx = 1
-
         for name, data in source_files.items():
             if name == sheet_xml_name:
-                # 写第一个分局到 sheet1
-                first_bureau = bureau_names[0]
-                first_rows = [1] + rows_map[first_bureau]
+                # 第一个分局写入 sheet1.xml
+                first_rows = [1] + rows_map[bureau_names[0]]
                 new_xml = _build_sheet_xml(common_prefix, xml_suffix, row_map, first_rows)
                 zf.writestr(name, new_xml.encode('utf-8'))
             elif name == 'xl/workbook.xml':
-                # 修改 workbook.xml 添加多个 sheet
-                wb_xml = data.decode('utf-8')
-                new_sheets = []
-                for i, bn in enumerate(bureau_names, start=1):
-                    safe = re.sub(r'[\/\\:*?"<>|]', '_', bn)[:28]
-                    state = 'active' if i == 1 else 'visible'
-                    new_sheets.append(f'<sheet name="{safe}" sheetId="{i}" state="visible" r:id="rId{i}"/>')
-                # 替换 sheets 部分
-                sheets_pattern = re.compile(r'<sheets>.*?</sheets>', re.DOTALL)
-                new_sheets_xml = '<sheets>' + ''.join(new_sheets) + '</sheets>'
-                wb_xml = sheets_pattern.sub(new_sheets_xml, wb_xml)
+                wb_xml = re.sub(r'<sheets>.*?</sheets>', new_sheets_block,
+                                data.decode('utf-8'), count=1, flags=re.DOTALL)
                 zf.writestr(name, wb_xml.encode('utf-8'))
             elif name == 'xl/_rels/workbook.xml.rels':
-                # 修改 rels 添加多个 sheet 关系
-                rels_xml = data.decode('utf-8')
-                new_rels = []
-                for i in range(1, len(bureau_names) + 1):
-                    new_rels.append(
-                        f'<Relationship Id="rId{i}" '
-                        f'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" '
-                        f'Target="worksheets/sheet{i}.xml"/>'
-                    )
-                rels_pattern = re.compile(r'<Relationships[^>]*>|</Relationships>')
-                # 重建
-                ns_match = re.search(r'<Relationships[^>]*>', rels_xml)
-                ns = ns_match.group(0) if ns_match else '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-                # 保留非 sheet 的 relationship（如 styles, sharedStrings 等）
-                other_rels = re.findall(r'<Relationship[^/]*(?!worksheet)[^/]*/>', rels_xml)
-                # 简化：保留 id 不以 rId 开头数字的，或类型不是 worksheet 的
-                all_rels = re.findall(r'<Relationship[^/]*/>', rels_xml)
-                kept_rels = [r for r in all_rels if 'worksheet' not in r]
-
-                full_rels = ns + ''.join(new_rels) + ''.join(kept_rels) + '</Relationships>'
-                zf.writestr(name, full_rels.encode('utf-8'))
+                zf.writestr(name, full_rels_xml.encode('utf-8'))
             elif name.startswith('xl/worksheets/') and name.endswith('.xml') and name != sheet_xml_name:
-                # 跳过其他 sheet 文件
-                pass
-            elif name.startswith('xl/worksheets/_rels/'):
-                # 跳过 sheet rels
-                pass
+                pass  # 源里其他工作表（本例无），跳过
+            elif name.startswith('xl/worksheets/_rels/') and name != 'xl/worksheets/_rels/sheet1.xml.rels':
+                pass  # 跳过，下方统一复制 sheet1 的 rels
             elif name == '[Content_Types].xml':
-                # 修改 Content_Types 注册多个 sheet
                 ct_xml = data.decode('utf-8')
-                # 移除原有 sheet Override
-                ct_xml = re.sub(r'<Override PartName="/xl/worksheets/sheet\d+\.xml"[^/]*/>', '', ct_xml)
-                # 添加新的
-                overrides = ''
-                for i in range(1, len(bureau_names) + 1):
-                    overrides += (f'<Override PartName="/xl/worksheets/sheet{i}.xml" '
-                                  f'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>')
+                # 稳健移除原有 worksheet Override（属性顺序不限、ContentType 含 '/'）
+                ct_xml = re.sub(r'<Override\b[^>]*?/>',
+                                lambda m: '' if re.search(r'PartName="/xl/worksheets/sheet\d+\.xml"', m.group(0)) else m.group(0),
+                                ct_xml)
+                overrides = ''.join(f'<Override PartName="/xl/worksheets/sheet{i + 1}.xml" ContentType="{WS_CT}"/>'
+                                    for i in range(n))
                 ct_xml = ct_xml.replace('</Types>', overrides + '</Types>')
                 zf.writestr(name, ct_xml.encode('utf-8'))
             else:
                 zf.writestr(name, data)
 
-        # 写额外的 sheet 文件（第2个及以后的分局）
-        for i, bn in enumerate(bureau_names[1:], start=2):
-            bureau_rows = rows_map[bn]
-            new_rows = [1] + bureau_rows
+        # 写第 2..N 个工作表文件
+        for i in range(1, n):
+            new_rows = [1] + rows_map[bureau_names[i]]
             new_xml = _build_sheet_xml(common_prefix, xml_suffix, row_map, new_rows)
-            sheet_name = f'xl/worksheets/sheet{i}.xml'
-            zf.writestr(sheet_name, new_xml.encode('utf-8'))
-
-            # 写 sheet rels（复制图片等关系）
+            zf.writestr(f'xl/worksheets/sheet{i + 1}.xml', new_xml.encode('utf-8'))
+            # 复制 sheet1 的 rels（图片/绘图等引用）
             base_rels_name = 'xl/worksheets/_rels/sheet1.xml.rels'
             if base_rels_name in source_files:
-                rels_data = source_files[base_rels_name].decode('utf-8')
-                # 保持原样（图片引用等）
-                new_rels_name = f'xl/worksheets/_rels/sheet{i}.xml.rels'
-                zf.writestr(new_rels_name, rels_data.encode('utf-8'))
+                zf.writestr(f'xl/worksheets/_rels/sheet{i + 1}.xml.rels',
+                            source_files[base_rels_name])
