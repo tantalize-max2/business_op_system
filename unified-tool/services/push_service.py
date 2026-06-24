@@ -118,7 +118,7 @@ def add_kdocs_cat(name, color):
 def delete_kdocs_cat(cid):
     """删除分类（默认分类不可删），关联表格归入默认分类。"""
     cats = load_kdocs_cats()
-    cats = [c for c in cats if not (c['id'] == cid and c['id'] == 'default')]
+    cats = [c for c in cats if not (c['id'] == cid and cid != 'default')]
     save_kdocs_cats(cats)
     sheets = load_kdocs_sheets()
     for s in sheets:
