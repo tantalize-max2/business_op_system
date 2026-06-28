@@ -361,7 +361,7 @@ function showKdocsEditDialog(sid) {
     fileText.textContent = KD._selectedFilePath;
   } else {
     fileZone.classList.remove('has-file');
-    fileText.textContent = '点击浏览选择本地Excel文件';
+    fileText.textContent = '点击上传本地Excel文件';
   }
 
   kdShowModal('kdEditMask', 'kdEditBox');
@@ -375,17 +375,11 @@ document.getElementById('kdEditClose').addEventListener('click', kdEditClose);
 document.getElementById('kdEditCancelBtn').addEventListener('click', kdEditClose);
 document.getElementById('kdEditMask').addEventListener('click', kdEditClose);
 
-// 拖拽区域 - 点击打开服务端文件浏览器（返回完整路径）
+// 拖拽区域 - 点击打开本地文件选择（仅允许本地上传，禁止浏览云服务器）
 document.getElementById('kdEdFileZone').addEventListener('click', (e) => {
-  // 点击上传按钮时不触发文件浏览（按钮自己有独立事件）
+  // 点击上传按钮时不重复触发（按钮自己有独立事件）
   if (e.target.closest('#kdEdUploadBtn')) return;
-  showFileBrowser((path) => {
-    KD._selectedFilePath = path;
-    const fileZone = document.getElementById('kdEdFileZone');
-    const fileText = document.getElementById('kdEdFileText');
-    fileZone.classList.add('has-file');
-    fileText.textContent = path;
-  });
+  document.getElementById('kdEdFileInput').click();
 });
 
 // 上传本地文件按钮 - 通过FormData上传到服务器 data/uploads 目录
@@ -407,7 +401,7 @@ document.getElementById('kdEdFileInput').addEventListener('change', async (e) =>
     const data = await res.json();
     if (data.error) {
       ntf(data.error, 'error');
-      fileText.textContent = '点击浏览选择本地Excel文件';
+      fileText.textContent = '点击上传本地Excel文件';
       fileZone.classList.remove('has-file');
     } else {
       KD._selectedFilePath = data.path;
@@ -417,7 +411,7 @@ document.getElementById('kdEdFileInput').addEventListener('change', async (e) =>
     }
   } catch (err) {
     ntf('上传失败: ' + err.message, 'error');
-    fileText.textContent = '点击浏览选择本地Excel文件';
+    fileText.textContent = '点击上传本地Excel文件';
     fileZone.classList.remove('has-file');
   }
   // 重置 input，允许再次选择同一文件
@@ -436,7 +430,33 @@ kdFileZone.addEventListener('dragleave', () => {
 kdFileZone.addEventListener('drop', (e) => {
   e.preventDefault();
   kdFileZone.classList.remove('dragover');
-  ntf('浏览器安全限制无法获取完整路径，请点击区域使用文件浏览器选择', 'warn');
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file) return;
+  if (!/\.(xlsx|xls)$/i.test(file.name)) { ntf('仅支持 xlsx/xls 格式', 'error'); return; }
+  // 复用上传逻辑
+  const formData = new FormData();
+  formData.append('file', file);
+  const fileText = document.getElementById('kdEdFileText');
+  fileText.textContent = '上传中...';
+  fetch('/api/kdocs-upload', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        ntf(data.error, 'error');
+        fileText.textContent = '点击上传本地Excel文件';
+        document.getElementById('kdEdFileZone').classList.remove('has-file');
+      } else {
+        KD._selectedFilePath = data.path;
+        document.getElementById('kdEdFileZone').classList.add('has-file');
+        fileText.textContent = data.path;
+        ntf('上传成功: ' + data.name, 'success');
+      }
+    })
+    .catch(err => {
+      ntf('上传失败: ' + err.message, 'error');
+      fileText.textContent = '点击上传本地Excel文件';
+      document.getElementById('kdEdFileZone').classList.remove('has-file');
+    });
 });
 
 // 保存按钮
@@ -658,10 +678,36 @@ document.getElementById('kdScriptEditor').addEventListener('input', function() {
   modifiedBadge.style.display = changed ? '' : 'none';
 });
 
-// 脚本编辑器：一键复制
-document.getElementById('kdScriptCopy').addEventListener('click', () => {
+// 脚本编辑器：一键复制（兼容 HTTP 环境下的 clipboard 降级）
+async function kdCopyText(text) {
+  // 优先使用 Clipboard API（仅在 HTTPS / localhost 等安全上下文可用）
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) { /* 降级到 execCommand */ }
+  }
+  // 降级方案：临时 textarea + execCommand('copy')
+  return new Promise(resolve => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    resolve(ok);
+  });
+}
+
+document.getElementById('kdScriptCopy').addEventListener('click', async () => {
   const editor = document.getElementById('kdScriptEditor');
-  navigator.clipboard.writeText(editor.value).then(() => ntf('已复制到剪贴板')).catch(() => ntf('复制失败', 'error'));
+  const ok = await kdCopyText(editor.value);
+  ntf(ok ? '已复制到剪贴板' : '复制失败，请手动选择复制', ok ? 'success' : 'error');
 });
 
 // 脚本编辑器：一键还原
