@@ -529,34 +529,82 @@ document.getElementById('kdBatchPushBtn').addEventListener('click', async () => 
   document.getElementById('kdBatchArea').style.display = '';
   document.getElementById('kdBatchResults').style.display = 'none';
   document.getElementById('kdBatchMatches').innerHTML = '';
+  // 重置选择状态
+  document.getElementById('kdBatchFolder').value = '';
+  document.getElementById('kdBatchScanBtn').disabled = true;
+  document.getElementById('kdBatchGoBtn').disabled = true;
+  document.getElementById('kdBatchFolderInput').value = '';
   await loadKdocsCats();
 });
 document.getElementById('kdBatchClose').addEventListener('click', () => {
   document.getElementById('kdBatchArea').style.display = 'none';
 });
 
-// 一键推送的浏览按钮
+// 一键推送：选择本地文件夹（通过浏览器原生 input[webkitdirectory]）
+let _batchUploadedFolder = ''; // 上传到服务器后的目录路径
 document.getElementById('kdBatchBrowseBtn').addEventListener('click', () => {
-  showFileBrowser((path) => {
-    document.getElementById('kdBatchFolder').value = path;
+  document.getElementById('kdBatchFolderInput').click();
+});
+
+document.getElementById('kdBatchFolderInput').addEventListener('change', async (e) => {
+  const allFiles = Array.from(e.target.files || []);
+  // 只保留 Excel 文件
+  const excelFiles = allFiles.filter(f => /\.(xlsx|xls)$/i.test(f.name) && !f.name.startsWith('~$'));
+  const folderInput = document.getElementById('kdBatchFolder');
+  const scanBtn = document.getElementById('kdBatchScanBtn');
+  const goBtn = document.getElementById('kdBatchGoBtn');
+
+  if (!excelFiles.length) {
+    ntf('所选文件夹中没有 Excel 文件', 'error');
+    folderInput.value = '';
+    scanBtn.disabled = true;
+    goBtn.disabled = true;
+    e.target.value = '';
+    return;
+  }
+
+  folderInput.value = `已选择 ${excelFiles.length} 个 Excel 文件，上传中...`;
+  scanBtn.disabled = true;
+  goBtn.disabled = true;
+
+  // 上传到服务器
+  const formData = new FormData();
+  excelFiles.forEach(f => formData.append('files', f));
+  try {
+    const res = await fetch('/api/kdocs-upload-folder', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) {
+      ntf(data.error, 'error');
+      folderInput.value = '';
+      e.target.value = '';
+      return;
+    }
+    _batchUploadedFolder = data.folder;
+    folderInput.value = `已上传 ${data.count} 个文件（${data.files.map(n => n).join('、').slice(0, 60)}${data.files.length > 3 ? '...' : ''}）`;
+    scanBtn.disabled = false;
+    goBtn.disabled = false;
+    ntf(`成功上传 ${data.count} 个 Excel 文件`, 'success');
+    // 自动扫描匹配
     renderBatchMatches();
-  });
+  } catch (err) {
+    ntf('上传失败: ' + err.message, 'error');
+    folderInput.value = '';
+    e.target.value = '';
+  }
 });
 
 // 扫描匹配
 document.getElementById('kdBatchScanBtn').addEventListener('click', renderBatchMatches);
-document.getElementById('kdBatchFolder').addEventListener('change', renderBatchMatches);
 
 async function renderBatchMatches() {
-  const folderPath = document.getElementById('kdBatchFolder').value.trim();
   const matchDiv = document.getElementById('kdBatchMatches');
-  if (!folderPath) { matchDiv.innerHTML = '<div class="kd-batch-hint">请输入或浏览文件夹路径</div>'; return; }
+  if (!_batchUploadedFolder) { matchDiv.innerHTML = '<div class="kd-batch-hint">请先选择本地文件夹</div>'; return; }
 
   try {
     const res = await fetch('/api/kdocs-folder-scan', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ folder_path: folderPath })
+      body: JSON.stringify({ folder_path: _batchUploadedFolder })
     });
     const data = await res.json();
     if (data.error) { matchDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">${data.error}</div>`; return; }
@@ -603,8 +651,7 @@ async function renderBatchMatches() {
 }
 
 document.getElementById('kdBatchGoBtn').addEventListener('click', async () => {
-  const folderPath = document.getElementById('kdBatchFolder').value.trim();
-  if (!folderPath) { ntf('请先选择文件夹', 'error'); return; }
+  if (!_batchUploadedFolder) { ntf('请先选择本地文件夹', 'error'); return; }
 
   const resultsDiv = document.getElementById('kdBatchResults');
   resultsDiv.style.display = '';
@@ -614,7 +661,7 @@ document.getElementById('kdBatchGoBtn').addEventListener('click', async () => {
     const res = await fetch('/api/kdocs-push-batch', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ folder_path: folderPath })
+      body: JSON.stringify({ folder_path: _batchUploadedFolder })
     });
     const data = await res.json();
     if (data.error) { resultsDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">${data.error}</div>`; return; }

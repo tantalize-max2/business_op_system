@@ -545,16 +545,17 @@
       </div>
       <div class="kd-batch-body">
         <div class="kd-batch-folder">
-          <label>本地文件夹路径</label>
+          <label>本地文件夹</label>
           <div class="kd-folder-row">
-            <input type="text" id="kdBatchFolder" placeholder="输入或浏览文件夹路径...">
-            <button class="btn btn-outline btn-sm" id="kdBatchBrowseBtn">浏览</button>
-            <button class="btn btn-primary btn-sm" id="kdBatchScanBtn">扫描匹配</button>
+            <input type="text" id="kdBatchFolder" placeholder="点击右侧按钮选择本地文件夹..." readonly>
+            <button class="btn btn-outline btn-sm" id="kdBatchBrowseBtn">选择文件夹</button>
+            <input type="file" id="kdBatchFolderInput" webkitdirectory directory multiple style="display:none">
+            <button class="btn btn-primary btn-sm" id="kdBatchScanBtn" disabled>扫描匹配</button>
           </div>
         </div>
         <div class="kd-batch-matches" id="kdBatchMatches"></div>
         <div class="kd-batch-actions">
-          <button class="btn btn-primary" id="kdBatchGoBtn">开始推送</button>
+          <button class="btn btn-primary" id="kdBatchGoBtn" disabled>开始推送</button>
         </div>
         <div class="kd-batch-results" id="kdBatchResults" style="display:none"></div>
       </div>

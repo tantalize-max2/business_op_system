@@ -58,6 +58,74 @@ def upload_excel_api():
                     'size': os.path.getsize(save_path)})
 
 
+@push_bp.route('/api/kdocs-upload-folder', methods=['POST'])
+def upload_folder_api():
+    """批量上传本地文件夹下的所有 Excel 到服务器（供一键推送使用）
+
+    接收 multipart/form-data，字段名 files（多个文件），保存到
+    data/uploads/batch_<时间戳>/ 子目录，返回该目录绝对路径。
+    ---
+    tags:
+      - 在线推送
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: files
+        in: formData
+        type: file
+        required: true
+        description: 待上传的 Excel 文件列表（仅 xlsx/xls，可多个）
+    responses:
+      200:
+        description: 上传成功
+        schema:
+          type: object
+          properties:
+            message: {type: string}
+            folder: {type: string, description: "服务器保存目录绝对路径"}
+            count: {type: integer, description: "成功保存的文件数"}
+            files:
+              type: array
+              items: {type: string}
+      400:
+        description: 未选择文件 / 无 Excel 文件
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'error': '未选择文件'}), 400
+
+    from datetime import datetime
+    batch_dir_name = 'batch_' + datetime.now().strftime('%Y%m%d_%H%M%S')
+    batch_dir = os.path.join(UPLOAD_DIR, batch_dir_name)
+    os.makedirs(batch_dir, exist_ok=True)
+
+    saved = []
+    for f in files:
+        if not f or not f.filename:
+            continue
+        fname = os.path.basename(f.filename.strip())
+        ext = fname.rsplit('.', 1)[-1].lower() if '.' in fname else ''
+        if ext not in ('xlsx', 'xls'):
+            continue
+        if fname.startswith('~$'):
+            continue
+        f.save(os.path.join(batch_dir, fname))
+        saved.append(fname)
+
+    if not saved:
+        # 清理空目录
+        try:
+            os.rmdir(batch_dir)
+        except OSError:
+            pass
+        return jsonify({'error': '所选文件夹中没有可用的 Excel 文件'}), 400
+
+    return jsonify({'message': '上传成功', 'folder': batch_dir,
+                    'count': len(saved), 'files': saved})
+
+
 @push_bp.route('/api/kdocs-browse', methods=['POST'])
 def browse_local_fs_api():
     """浏览服务器本地文件系统目录内容
