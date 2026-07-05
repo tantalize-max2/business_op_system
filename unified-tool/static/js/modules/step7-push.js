@@ -525,11 +525,19 @@ async function pushKdocsSingle(sid) {
 }
 
 // ===== 一键推送 =====
+// 流程：选择本地文件夹 → 前端按文件名匹配在线表格 → 只上传匹配文件 → 推送
+let _batchSelectedFiles = [];   // 选择的本地 Excel 文件列表
+let _batchMatchedPairs = [];    // 匹配上的 {sheet, file} 对
+let _batchUploadedFolder = '';  // 上传到服务器后的目录路径
+
 document.getElementById('kdBatchPushBtn').addEventListener('click', async () => {
   document.getElementById('kdBatchArea').style.display = '';
   document.getElementById('kdBatchResults').style.display = 'none';
   document.getElementById('kdBatchMatches').innerHTML = '';
-  // 重置选择状态
+  // 重置状态
+  _batchSelectedFiles = [];
+  _batchMatchedPairs = [];
+  _batchUploadedFolder = '';
   document.getElementById('kdBatchFolder').value = '';
   document.getElementById('kdBatchScanBtn').disabled = true;
   document.getElementById('kdBatchGoBtn').disabled = true;
@@ -540,8 +548,7 @@ document.getElementById('kdBatchClose').addEventListener('click', () => {
   document.getElementById('kdBatchArea').style.display = 'none';
 });
 
-// 一键推送：选择本地文件夹（通过浏览器原生 input[webkitdirectory]）
-let _batchUploadedFolder = ''; // 上传到服务器后的目录路径
+// 选择本地文件夹（浏览器原生 input[webkitdirectory]）
 document.getElementById('kdBatchBrowseBtn').addEventListener('click', () => {
   document.getElementById('kdBatchFolderInput').click();
 });
@@ -549,112 +556,123 @@ document.getElementById('kdBatchBrowseBtn').addEventListener('click', () => {
 document.getElementById('kdBatchFolderInput').addEventListener('change', async (e) => {
   const allFiles = Array.from(e.target.files || []);
   // 只保留 Excel 文件
-  const excelFiles = allFiles.filter(f => /\.(xlsx|xls)$/i.test(f.name) && !f.name.startsWith('~$'));
+  _batchSelectedFiles = allFiles.filter(f => /\.(xlsx|xls)$/i.test(f.name) && !f.name.startsWith('~$'));
   const folderInput = document.getElementById('kdBatchFolder');
   const scanBtn = document.getElementById('kdBatchScanBtn');
   const goBtn = document.getElementById('kdBatchGoBtn');
 
-  if (!excelFiles.length) {
+  // 重置上传状态
+  _batchUploadedFolder = '';
+  _batchMatchedPairs = [];
+  goBtn.disabled = true;
+
+  if (!_batchSelectedFiles.length) {
     ntf('所选文件夹中没有 Excel 文件', 'error');
     folderInput.value = '';
     scanBtn.disabled = true;
-    goBtn.disabled = true;
     e.target.value = '';
     return;
   }
 
-  folderInput.value = `已选择 ${excelFiles.length} 个 Excel 文件，上传中...`;
-  scanBtn.disabled = true;
-  goBtn.disabled = true;
-
-  // 上传到服务器
-  const formData = new FormData();
-  excelFiles.forEach(f => formData.append('files', f));
-  try {
-    const res = await fetch('/api/kdocs-upload-folder', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.error) {
-      ntf(data.error, 'error');
-      folderInput.value = '';
-      e.target.value = '';
-      return;
-    }
-    _batchUploadedFolder = data.folder;
-    folderInput.value = `已上传 ${data.count} 个文件（${data.files.map(n => n).join('、').slice(0, 60)}${data.files.length > 3 ? '...' : ''}）`;
-    scanBtn.disabled = false;
-    goBtn.disabled = false;
-    ntf(`成功上传 ${data.count} 个 Excel 文件`, 'success');
-    // 自动扫描匹配
-    renderBatchMatches();
-  } catch (err) {
-    ntf('上传失败: ' + err.message, 'error');
-    folderInput.value = '';
-    e.target.value = '';
-  }
+  folderInput.value = `已选择 ${_batchSelectedFiles.length} 个 Excel 文件`;
+  scanBtn.disabled = false;
+  // 自动扫描匹配
+  renderBatchMatches();
 });
 
-// 扫描匹配
+// 扫描匹配：前端按文件名匹配，不触发上传
 document.getElementById('kdBatchScanBtn').addEventListener('click', renderBatchMatches);
 
 async function renderBatchMatches() {
   const matchDiv = document.getElementById('kdBatchMatches');
-  if (!_batchUploadedFolder) { matchDiv.innerHTML = '<div class="kd-batch-hint">请先选择本地文件夹</div>'; return; }
-
-  try {
-    const res = await fetch('/api/kdocs-folder-scan', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ folder_path: _batchUploadedFolder })
-    });
-    const data = await res.json();
-    if (data.error) { matchDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">${data.error}</div>`; return; }
-
-    const localFiles = data.files || [];
-    if (!localFiles.length) { matchDiv.innerHTML = '<div class="kd-batch-hint">文件夹中无Excel文件</div>'; return; }
-
-    const allRes = await fetch('/api/kdocs-sheets');
-    const allSheets = await allRes.json();
-
-    let html = '<div class="kd-match-list">';
-    let matchCount = 0;
-    allSheets.forEach(s => {
-      const onlineName = s.name.replace(/\.xlsx?$/i, '').toLowerCase();
-      let matched = null;
-      for (const lf of localFiles) {
-        const lfBase = lf.name.replace(/\.xlsx?$/i, '').toLowerCase();
-        if (onlineName && lfBase && (onlineName.includes(lfBase) || lfBase.includes(onlineName))) {
-          matched = lf;
-          break;
-        }
-      }
-      if (!matched) return;
-      matchCount++;
-      const hasConfig = !!s.api_token && !!s.webhook_url;
-      html += `<div class="kd-match-item ${hasConfig ? 'kd-match-ready' : 'kd-match-skip'}">
-        <div class="kd-match-online">
-          <span class="kd-match-dot ${hasConfig ? 'dot-ok' : 'dot-skip'}"></span>
-          <span class="kd-match-name">${esc(s.name)}</span>
-          ${!hasConfig ? '<span class="kd-match-tag tag-no-config">缺少配置</span>' : ''}
-        </div>
-        <div class="kd-match-arrow">&#8594;</div>
-        <div class="kd-match-local">
-          <span class="kd-match-file">${esc(matched.name)}</span>
-        </div>
-      </div>`;
-    });
-    html += '</div>';
-    if (!matchCount) html = '<div class="kd-batch-hint">未找到匹配的在线表格</div>';
-    matchDiv.innerHTML = html;
-  } catch (e) {
-    matchDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">扫描失败: ${e.message}</div>`;
+  if (!_batchSelectedFiles.length) {
+    matchDiv.innerHTML = '<div class="kd-batch-hint">请先选择本地文件夹</div>';
+    return;
   }
+
+  // 获取在线表格列表
+  let allSheets = [];
+  try {
+    const allRes = await fetch('/api/kdocs-sheets');
+    allSheets = await allRes.json();
+  } catch (e) {
+    matchDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">获取在线表格失败: ${e.message}</div>`;
+    return;
+  }
+
+  // 前端按文件名匹配
+  _batchMatchedPairs = [];
+  let html = '<div class="kd-match-list">';
+  let readyCount = 0;
+  allSheets.forEach(s => {
+    const onlineName = s.name.replace(/\.xlsx?$/i, '').toLowerCase();
+    let matchedFile = null;
+    for (const f of _batchSelectedFiles) {
+      const lfBase = f.name.replace(/\.xlsx?$/i, '').toLowerCase();
+      if (onlineName && lfBase && (onlineName.includes(lfBase) || lfBase.includes(onlineName))) {
+        matchedFile = f;
+        break;
+      }
+    }
+    if (!matchedFile) return;
+
+    const hasConfig = !!s.api_token && !!s.webhook_url;
+    if (hasConfig) {
+      _batchMatchedPairs.push({ sheet: s, file: matchedFile });
+      readyCount++;
+    }
+    html += `<div class="kd-match-item ${hasConfig ? 'kd-match-ready' : 'kd-match-skip'}">
+      <div class="kd-match-online">
+        <span class="kd-match-dot ${hasConfig ? 'dot-ok' : 'dot-skip'}"></span>
+        <span class="kd-match-name">${esc(s.name)}</span>
+        ${!hasConfig ? '<span class="kd-match-tag tag-no-config">缺少配置</span>' : ''}
+      </div>
+      <div class="kd-match-arrow">&#8594;</div>
+      <div class="kd-match-local">
+        <span class="kd-match-file">${esc(matchedFile.name)}</span>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  if (!_batchMatchedPairs.length) {
+    html = '<div class="kd-batch-hint">未找到可推送的匹配（名字匹配且已配置 Token/Webhook）</div>';
+    document.getElementById('kdBatchGoBtn').disabled = true;
+  } else {
+    document.getElementById('kdBatchGoBtn').disabled = false;
+  }
+  matchDiv.innerHTML = html;
+  ntf(`匹配到 ${_batchMatchedPairs.length} 个可推送的在线表格`);
 }
 
+// 开始推送：先只上传匹配的文件，再调用批量推送
 document.getElementById('kdBatchGoBtn').addEventListener('click', async () => {
-  if (!_batchUploadedFolder) { ntf('请先选择本地文件夹', 'error'); return; }
+  if (!_batchMatchedPairs.length) { ntf('没有匹配的文件可推送', 'error'); return; }
 
   const resultsDiv = document.getElementById('kdBatchResults');
   resultsDiv.style.display = '';
+  resultsDiv.innerHTML = '<div class="kd-batch-hint">正在上传匹配的文件...</div>';
+  document.getElementById('kdBatchGoBtn').disabled = true;
+
+  // 只上传匹配上的文件
+  const formData = new FormData();
+  _batchMatchedPairs.forEach(p => formData.append('files', p.file));
+  try {
+    const upRes = await fetch('/api/kdocs-upload-folder', { method: 'POST', body: formData });
+    const upData = await upRes.json();
+    if (upData.error) {
+      resultsDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">${upData.error}</div>`;
+      document.getElementById('kdBatchGoBtn').disabled = false;
+      return;
+    }
+    _batchUploadedFolder = upData.folder;
+    ntf(`已上传 ${upData.count} 个匹配文件，开始推送...`, 'success');
+  } catch (err) {
+    resultsDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">上传失败: ${err.message}</div>`;
+    document.getElementById('kdBatchGoBtn').disabled = false;
+    return;
+  }
+
+  // 调用批量推送
   resultsDiv.innerHTML = '<div class="kd-batch-hint">正在推送中，请稍候...</div>';
 
   try {
@@ -685,6 +703,8 @@ document.getElementById('kdBatchGoBtn').addEventListener('click', async () => {
   } catch (e) {
     resultsDiv.innerHTML = `<div class="kd-batch-hint kd-batch-err">推送失败: ${e.message}</div>`;
     ntf('推送失败', 'error');
+  } finally {
+    document.getElementById('kdBatchGoBtn').disabled = false;
   }
 });
 
