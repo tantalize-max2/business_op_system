@@ -410,7 +410,7 @@ def batch_send_email(items, cc_emails, common_files, per_files_map):
                 continue
             security_code, err = get_security_code(session, csrftoken)
             if err:
-                fail_list.append(f"{to_email}: 获取安全码失败")
+                fail_list.append(f"{to_email}: {err}")
                 continue
 
             html_body = build_html_body(body)

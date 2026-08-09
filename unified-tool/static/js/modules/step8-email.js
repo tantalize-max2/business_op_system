@@ -1128,9 +1128,16 @@ const EmailTool = (() => {
             const r = await fetch(`${API}/login/creds`);
             const j = await r.json();
             if (j.success && j.data) {
-                document.getElementById('emLoginAccount').value = j.data.account || '';
-                document.getElementById('emLoginPassword').value = j.data.password || '';
-                document.getElementById('emLoginPhone').value = j.data.phone || '';
+                // 仅作为 placeholder 提示，不预填到输入框（需重新输入）
+                const acctEl = document.getElementById('emLoginAccount');
+                const pwdEl = document.getElementById('emLoginPassword');
+                const phoneEl = document.getElementById('emLoginPhone');
+                acctEl.value = '';
+                pwdEl.value = '';
+                phoneEl.value = '';
+                acctEl.placeholder = j.data.account ? ('当前账号: ' + j.data.account) : '邮箱账号（如 wangy592）';
+                pwdEl.placeholder = j.data.password ? '当前密码（已保存，请重新输入）' : '登录密码';
+                phoneEl.placeholder = j.data.phone ? ('当前手机号: ' + j.data.phone) : '手机号码';
                 document.getElementById('emLoginPhoneMask').textContent = j.data.phone_display || '';
             }
         } catch (e) { }

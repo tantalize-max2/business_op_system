@@ -96,23 +96,59 @@ def scan_folder(folder_path):
 # ========== 分类编排 ==========
 
 def list_kdocs_cats_with_count():
-    """列出所有分类及其关联表格数。"""
+    """列出所有分类及其关联表格数。不返回密码明文，仅返回 has_password 标记。"""
     cats = load_kdocs_cats()
     sheets = load_kdocs_sheets()
+    result = []
     for c in cats:
-        c['count'] = sum(1 for s in sheets if s.get('category') == c['id'])
-    return cats
+        cc = dict(c)  # 浅拷贝，避免修改内存缓存
+        cc['count'] = sum(1 for s in sheets if s.get('category') == c['id'])
+        cc['has_password'] = bool(c.get('password'))
+        cc.pop('password', None)  # 不向前端返回密码明文
+        result.append(cc)
+    return result
 
 
-def add_kdocs_cat(name, color):
-    """添加分类，名称重复返回 None。"""
+def add_kdocs_cat(name, color, password=''):
+    """添加分类，名称重复返回 None。password 设置后不可更改。"""
     cats = load_kdocs_cats()
     if any(c['name'] == name for c in cats):
         return None
     cat = {'id': str(uuid.uuid4())[:8], 'name': name, 'color': color}
+    if password:
+        cat['password'] = password
     cats.append(cat)
     save_kdocs_cats(cats)
     return cat
+
+
+def update_kdocs_cat(cid, name):
+    """重命名分类（仅改名称，密码不可更改）。
+    默认分类不可改名，名称重复返回 None。
+    """
+    if cid == 'default':
+        return None
+    cats = load_kdocs_cats()
+    if any(c['name'] == name for c in cats if c['id'] != cid):
+        return None
+    for c in cats:
+        if c['id'] == cid:
+            c['name'] = name
+            save_kdocs_cats(cats)
+            return c
+    return None
+
+
+def verify_kdocs_cat_password(cid, password):
+    """验证分类密码。无密码的分类视为已通过，返回 True。"""
+    cats = load_kdocs_cats()
+    for c in cats:
+        if c['id'] == cid:
+            stored = c.get('password', '')
+            if not stored:
+                return True  # 无密码，直接放行
+            return stored == password
+    return False  # 分类不存在
 
 
 def delete_kdocs_cat(cid):

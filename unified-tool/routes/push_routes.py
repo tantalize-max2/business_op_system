@@ -5,7 +5,8 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from config import OUTPUT_DIR, UPLOAD_DIR
 from models.push_model import get_airscript_code, save_airscript_code
 from services.push_service import (browse_local_fs, list_kdocs_cats_with_count, add_kdocs_cat,
-                                    delete_kdocs_cat, list_kdocs_sheets, add_kdocs_sheet,
+                                    update_kdocs_cat, verify_kdocs_cat_password, delete_kdocs_cat,
+                                    list_kdocs_sheets, add_kdocs_sheet,
                                     update_kdocs_sheet, delete_kdocs_sheet, push_to_kdocs,
                                     push_to_kdocs_batch, scan_folder)
 
@@ -228,12 +229,85 @@ def add_kdocs_cat_api():
     data = request.json or {}
     name = data.get('name', '').strip()
     color = data.get('color', '#0d9488').strip()
+    password = data.get('password', '').strip()
     if not name:
         return jsonify({'error': '分类名不能为空'}), 400
-    cat = add_kdocs_cat(name, color)
+    cat = add_kdocs_cat(name, color, password)
     if cat is None:
         return jsonify({'error': '分类名已存在'}), 400
-    return jsonify({'message': '添加成功', 'category': cat})
+    # 不向前端返回密码明文
+    safe_cat = dict(cat)
+    safe_cat.pop('password', None)
+    return jsonify({'message': '添加成功', 'category': safe_cat})
+
+
+@push_bp.route('/api/kdocs-categories/<cid>', methods=['PUT'])
+def update_kdocs_cat_api(cid):
+    """重命名分类（仅修改名称，密码不可更改）
+    ---
+    tags:
+      - 在线推送
+    parameters:
+      - name: cid
+        in: path
+        type: string
+        required: true
+        description: 分类ID（default 不可改名）
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required: [name]
+          properties:
+            name: {type: string, description: "新的分类名称"}
+    responses:
+      200:
+        description: 重命名成功
+      400:
+        description: 名称为空/已存在/默认分类不可改名
+    """
+    data = request.json or {}
+    name = data.get('name', '').strip()
+    if not name:
+        return jsonify({'error': '分类名不能为空'}), 400
+    cat = update_kdocs_cat(cid, name)
+    if cat is None:
+        return jsonify({'error': '分类名已存在或不可更改'}), 400
+    return jsonify({'message': '重命名成功', 'category': cat})
+
+
+@push_bp.route('/api/kdocs-categories/<cid>/verify', methods=['POST'])
+def verify_kdocs_cat_api(cid):
+    """验证分类密码
+    ---
+    tags:
+      - 在线推送
+    parameters:
+      - name: cid
+        in: path
+        type: string
+        required: true
+        description: 分类ID
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            password: {type: string, description: "用户输入的密码"}
+    responses:
+      200:
+        description: 验证结果
+        schema:
+          type: object
+          properties:
+            ok: {type: boolean, description: "密码是否正确"}
+    """
+    data = request.json or {}
+    password = data.get('password', '')
+    ok = verify_kdocs_cat_password(cid, password)
+    return jsonify({'ok': ok})
 
 
 @push_bp.route('/api/kdocs-categories/<cid>', methods=['DELETE'])

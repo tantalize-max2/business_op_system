@@ -215,6 +215,7 @@
   border:1px solid var(--bd); border-radius:8px; background:var(--bg);
 }
 .kd-cat-mgr-name { flex:1; font-size:12px; font-weight:600; }
+.kd-cat-lock { font-size:13px; opacity:.7; }
 .kd-cat-mgr-count { font-size:10px; color:var(--t3); font-family:var(--mf); }
 .kd-cat-add-row {
   display:flex; gap:6px; align-items:center;
@@ -225,6 +226,7 @@
   transition:border-color .15s, box-shadow .15s;
 }
 .kd-cat-add-row input:not([type="color"]):not([type="checkbox"]):focus { border-color:var(--ac); box-shadow:0 0 0 2px var(--acg); }
+.kd-cat-add-row button { flex-shrink:0; white-space:nowrap; }
 .kd-cat-mgr-list { display:flex; flex-direction:column; gap:6px; }
 
 /* 分组显示 */

@@ -4,7 +4,8 @@ const KD = {
   cats: [],
   editingId: null,
   activeCat: '',  // 空串=全部
-  _selectedFilePath: '',  // 编辑对话框中选中的本地文件路径
+  _selectedFilePath: '',  // 编辑对话框中选定的本地文件路径
+  verifiedCats: new Set(),  // 已验证密码的分类ID集合（页面刷新后重置）
 };
 
 // 遮掩Token：只显示开头2个+结尾2个字符
@@ -55,7 +56,13 @@ async function loadKdocsSheets() {
   try {
     const catParam = KD.activeCat ? `?category=${encodeURIComponent(KD.activeCat)}` : '';
     const res = await fetch('/api/kdocs-sheets' + catParam);
-    KD.sheets = await res.json();
+    let sheets = await res.json();
+    // "全部"视图下，隐藏未验证加密分类的表格
+    if (!KD.activeCat) {
+      const lockedCatIds = KD.cats.filter(c => c.has_password && !KD.verifiedCats.has(c.id)).map(c => c.id);
+      if (lockedCatIds.length) sheets = sheets.filter(s => !lockedCatIds.includes(s.category));
+    }
+    KD.sheets = sheets;
     renderKdocsList();
   } catch (e) {
     ntf('加载在线表格列表失败', 'error');
@@ -74,19 +81,50 @@ async function loadKdocsCats() {
 function renderKdocsCatBar() {
   const bar = document.getElementById('kdCatBar');
   if (!bar) return;
-  const allCount = KD.sheets.length;
   let html = `<span class="kd-cat-tag ${KD.activeCat === '' ? 'on' : ''}" data-cat="">全部</span>`;
   KD.cats.forEach(c => {
+    const locked = c.has_password && !KD.verifiedCats.has(c.id);
+    const lockIcon = locked ? ' 🔒' : '';
     html += `<span class="kd-cat-tag ${KD.activeCat === c.id ? 'on' : ''}" data-cat="${c.id}" style="${c.color && KD.activeCat === c.id ? `border-color:${c.color};color:${c.color}` : ''}">
-      <span class="kd-cat-dot" style="background:${c.color || '#0d9488'}"></span>${esc(c.name)}<span class="kd-cat-count">${c.count || 0}</span>
+      <span class="kd-cat-dot" style="background:${c.color || '#0d9488'}"></span>${esc(c.name)}${lockIcon}<span class="kd-cat-count">${c.count || 0}</span>
     </span>`;
   });
   bar.innerHTML = html;
   bar.querySelectorAll('.kd-cat-tag').forEach(t => t.addEventListener('click', async () => {
-    KD.activeCat = t.dataset.cat;
+    const catId = t.dataset.cat;
+    // 加密分类需先验证密码（已验证过的直接放行）
+    if (catId) {
+      const cat = KD.cats.find(c => c.id === catId);
+      if (cat && cat.has_password && !KD.verifiedCats.has(catId)) {
+        const ok = await promptCatPassword(cat.name, catId);
+        if (!ok) return;  // 取消或密码错误，不切换
+      }
+    }
+    KD.activeCat = catId;
     await loadKdocsSheets();
     renderKdocsCatBar();
   }));
+}
+
+// ===== 加密分类密码验证弹窗 =====
+function promptCatPassword(catName, catId) {
+  return new Promise(resolve => {
+    glassPrompt(`分类「${catName}」已加密，请输入密码：`, (pwd) => {
+      fetch(`/api/kdocs-categories/${catId}/verify`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      }).then(r => r.json()).then(data => {
+        if (data.ok) {
+          KD.verifiedCats.add(catId);
+          ntf('密码验证成功');
+          resolve(true);
+        } else {
+          ntf('密码错误', 'error');
+          resolve(false);
+        }
+      }).catch(() => { ntf('验证失败', 'error'); resolve(false); });
+    }, { title: '加密分类', placeholder: '请输入密码', confirmText: '验证' });
+  });
 }
 
 // ===== 分类管理对话框 =====
@@ -106,7 +144,9 @@ function renderCatMgrList() {
     listHtml += `<div class="kd-cat-mgr-item">
       <span class="kd-cat-dot" style="background:${c.color || '#0d9488'}"></span>
       <span class="kd-cat-mgr-name">${esc(c.name)}</span>
+      ${c.has_password ? '<span class="kd-cat-lock" title="已设置密码">🔒</span>' : ''}
       <span class="kd-cat-mgr-count">${c.count || 0}个</span>
+      ${c.id !== 'default' ? '<button class="btn btn-ghost btn-xs kd-cat-rename" data-cid="' + c.id + '" data-name="' + esc(c.name) + '">重命名</button>' : ''}
       ${c.id !== 'default' ? `<button class="btn btn-danger btn-xs kd-cat-del" data-cid="${c.id}">删除</button>` : ''}
     </div>`;
   });
@@ -118,16 +158,33 @@ function renderCatMgrList() {
     renderCatMgrList();
     ntf('分类已删除');
   }));
+  listEl.querySelectorAll('.kd-cat-rename').forEach(b => b.addEventListener('click', () => {
+    const cid = b.dataset.cid, oldName = b.dataset.name;
+    glassPrompt('请输入新的分类名称：', (newName) => {
+      if (newName === oldName) return;
+      fetch(`/api/kdocs-categories/${cid}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName })
+      }).then(r => r.json()).then(async data => {
+        if (data.error) { ntf(data.error, 'error'); return; }
+        await loadKdocsCats();
+        renderCatMgrList();
+        ntf('重命名成功');
+      });
+    }, { title: '重命名分类', defaultValue: oldName, confirmText: '保存' });
+  }));
 }
 
 document.getElementById('kdCatAddBtn').addEventListener('click', async () => {
   const name = document.getElementById('kdCatAddName').value.trim();
   const color = document.getElementById('kdCatAddColor').value;
+  const password = document.getElementById('kdCatAddPwd').value.trim();
   if (!name) { ntf('请输入分类名', 'error'); return; }
-  const res = await fetch('/api/kdocs-categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name, color }) });
+  const res = await fetch('/api/kdocs-categories', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ name, color, password }) });
   const data = await res.json();
   if (data.error) { ntf(data.error, 'error'); return; }
   document.getElementById('kdCatAddName').value = '';
+  document.getElementById('kdCatAddPwd').value = '';
   await loadKdocsCats();
   renderCatMgrList();
   ntf('分类已添加');
