@@ -75,7 +75,7 @@ DEFAULT_SPLIT_GROUPS = {
 MAIL_CONFIG = {
     'username': os.environ.get('MAIL_USERNAME', 'wangy592@chinatelecom.cn'),
     'password': os.environ.get('MAIL_PASSWORD', ''),
-    'auth_code': os.environ.get('MAIL_AUTH_CODE', ''),
+    'auth_code': os.environ.get('MAIL_AUTH_CODE', ''),  # 已废弃：邮件发送改用 Playwright 自动登录，不依赖 SMTP 授权码
     'account': os.environ.get('MAIL_ACCOUNT', 'wangy592'),
     'phone': os.environ.get('MAIL_PHONE', ''),
 }

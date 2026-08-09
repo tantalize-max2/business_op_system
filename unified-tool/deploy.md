@@ -3,10 +3,10 @@ AIGC:
   ContentProducer: '001191110102MAD55U9H0F10002'
   ContentPropagator: '001191110102MAD55U9H0F10002'
   Label: '1'
-  ProduceID: '8a9aef29-da71-46ae-8f4f-8c3af96c8ec2'
-  PropagateID: '8a9aef29-da71-46ae-8f4f-8c3af96c8ec2'
-  ReservedCode1: '7ee9ac32-5a88-4ccc-b80a-daa12ddcabb6'
-  ReservedCode2: '7ee9ac32-5a88-4ccc-b80a-daa12ddcabb6'
+  ProduceID: '2117f300-1edf-455a-bc96-f1488946d679'
+  PropagateID: '2117f300-1edf-455a-bc96-f1488946d679'
+  ReservedCode1: 'cfd1a792-c924-42ec-a602-e44b3da665f2'
+  ReservedCode2: 'cfd1a792-c924-42ec-a602-e44b3da665f2'
 ---
 
 # 部署指南
@@ -73,7 +73,7 @@ FLASK_DEBUG=1
 # 邮箱配置（如需使用邮件发送功能）
 MAIL_USERNAME=wangy592@chinatelecom.cn
 MAIL_PASSWORD=你的邮箱密码
-MAIL_AUTH_CODE=你的SMTP授权码（可为空）
+MAIL_AUTH_CODE=
 MAIL_ACCOUNT=wangy592
 MAIL_PHONE=你的手机号
 
@@ -179,7 +179,7 @@ nano .env
 FLASK_DEBUG=0
 MAIL_USERNAME=wangy592@chinatelecom.cn （自己邮箱账号） 
 MAIL_PASSWORD=你的邮箱密码
-MAIL_AUTH_CODE=你的SMTP授权码（可为空）
+MAIL_AUTH_CODE=
 MAIL_ACCOUNT=wangy592
 MAIL_PHONE=你的手机号
 
@@ -191,10 +191,10 @@ API_TOKEN=自定义一串随机字符串
 # CORS 来源限制（逗号分隔），限制可访问的前端地址
 CORS_ORIGINS=http://你的服务器IP:9527
 ```
-> 需要替换自己的邮箱 MAIL_USERNAME、MAIL_AUTH_CODE 和 MAIL_PHONE
+> 需要替换自己的邮箱 MAIL_USERNAME、MAIL_PASSWORD 和 MAIL_PHONE（MAIL_AUTH_CODE 已废弃，留空即可）
 
 ### 安全说明
-- **SMTP 授权码**已改为仅从环境变量 `MAIL_AUTH_CODE` 读取，不再硬编码在代码中。
+- **SMTP 授权码（MAIL_AUTH_CODE）**：已废弃，邮件发送改用 Playwright 自动登录，不依赖 SMTP 授权码，留空即可。
 - **API Token**：留空时不启用（适合本地开发）；生产环境设置后可防止接口被未授权调用。前端通过 localStorage 配合：在浏览器控制台执行 `localStorage.setItem('api-token', '你的token')` 后刷新页面。
 - **CORS 来源**：生产环境务必限定允许的前端地址。
 
